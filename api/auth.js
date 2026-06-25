@@ -1,3 +1,7 @@
+const crypto = require('crypto');
+
+const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -6,13 +10,14 @@ module.exports = async function handler(req, res) {
   if (!validToken) {
     return res.status(500).send(errorPage('서버 설정 오류: DASHBOARD_TOKEN 환경변수가 설정되지 않았습니다.'));
   }
+  const sessionSecret = process.env.SESSION_SECRET || validToken;
 
   if (req.method === 'POST') {
     const body = await readBody(req);
     const params = new URLSearchParams(body);
     const token = params.get('token') || '';
-    if (token === validToken) {
-      setCookieAndRedirect(req, res, validToken);
+    if (secureCompare(token, validToken)) {
+      setCookieAndRedirect(req, res, createSessionValue(sessionSecret));
     } else {
       return res.status(401).send(loginPage(true));
     }
@@ -20,14 +25,9 @@ module.exports = async function handler(req, res) {
   }
 
   if (req.method === 'GET') {
-    const token = (req.query && req.query.token) || '';
-    if (token && token === validToken) {
-      setCookieAndRedirect(req, res, validToken);
-      return;
-    }
     const cookieKey = process.env.COOKIE_KEY || 'weather_ops_auth';
     const cookie = parseCookie(req.headers.cookie || '');
-    if (cookie[cookieKey] === validToken) {
+    if (verifySessionValue(cookie[cookieKey], sessionSecret)) {
       res.writeHead(302, { Location: '/' });
       return res.end();
     }
@@ -45,16 +45,39 @@ function readBody(req) {
   });
 }
 
-function setCookieAndRedirect(req, res, token) {
-  const maxAge = 60 * 60 * 24 * 7;
+function setCookieAndRedirect(req, res, sessionValue) {
   const cookieKey = process.env.COOKIE_KEY || 'weather_ops_auth';
   const host = req.headers.host || '';
   const proto = req.headers['x-forwarded-proto'] || '';
   const isLocal = /^localhost(:|$)|^127\.0\.0\.1(:|$)/.test(host);
   const secure = !isLocal || proto === 'https' ? '; Secure' : '';
-  res.setHeader('Set-Cookie', `${cookieKey}=${encodeURIComponent(token)}; Path=/; HttpOnly${secure}; Max-Age=${maxAge}; SameSite=Lax`);
+  res.setHeader('Set-Cookie', `${cookieKey}=${encodeURIComponent(sessionValue)}; Path=/; HttpOnly${secure}; Max-Age=${SESSION_MAX_AGE_SECONDS}; SameSite=Lax`);
   res.writeHead(302, { Location: '/' });
   res.end();
+}
+
+function createSessionValue(secret) {
+  const issuedAt = String(Date.now());
+  return `${issuedAt}.${signSession(secret, issuedAt)}`;
+}
+
+function verifySessionValue(value, secret) {
+  const parts = String(value || '').split('.');
+  if (parts.length !== 2) return false;
+  const issuedAt = Number(parts[0]);
+  if (!Number.isFinite(issuedAt)) return false;
+  if (Date.now() - issuedAt > SESSION_MAX_AGE_SECONDS * 1000) return false;
+  return secureCompare(parts[1], signSession(secret, parts[0]));
+}
+
+function signSession(secret, issuedAt) {
+  return crypto.createHmac('sha256', secret).update(issuedAt).digest('base64url');
+}
+
+function secureCompare(a, b) {
+  const left = crypto.createHash('sha256').update(String(a || '')).digest();
+  const right = crypto.createHash('sha256').update(String(b || '')).digest();
+  return crypto.timingSafeEqual(left, right);
 }
 
 function parseCookie(str) {
@@ -75,7 +98,7 @@ function loginPage(failed) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Weather Ops Dashboard 인증</title>
+  <title>[OPS] Weather Ops Dashboard 인증</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; min-height: 100vh; display: grid; place-items: center; background: #111827; color: #e5e7eb; }
@@ -92,7 +115,7 @@ function loginPage(failed) {
 </head>
 <body>
   <main class="card">
-    <div class="title">Weather Ops Dashboard</div>
+    <div class="title">[OPS] Weather Ops Dashboard</div>
     <p class="sub">기상 리스크, 현장 조치, AS 정상화, 회복 수요를 확인하는 내부 운영 화면입니다.</p>
     <form method="POST" action="/api/auth">
       <label for="token">액세스 토큰</label>

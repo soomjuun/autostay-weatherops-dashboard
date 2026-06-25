@@ -7,7 +7,7 @@ const state = {
 
 const $ = (id) => document.getElementById(id);
 
-const STATUS_ORDER = { Red: 4, Orange: 3, Yellow: 2, Green: 1 };
+const STATUS_ORDER = { Error: 5, Red: 4, Orange: 3, Yellow: 2, Green: 1, Gray: 0 };
 const PIN_POSITIONS = {
   ilsan: [28, 31],
   goyang: [43, 26],
@@ -54,7 +54,12 @@ async function loadDashboard() {
     state.data = normalize(payload);
     ensureStoreOptions();
     render();
-    if (state.data.system.apiWarning) showError(state.data.system.apiWarning);
+    const warnings = freshnessWarnings();
+    if (state.data.system.apiWarning) {
+      showError(state.data.system.apiWarning);
+    } else if (warnings.length) {
+      showWarning(warnings.join(' · '));
+    }
   } catch (error) {
     showError(`데이터를 불러오지 못했습니다. ${error.message || error}`);
   } finally {
@@ -76,7 +81,7 @@ function normalize(payload) {
     openIssueCount: Number(store.openIssueCount || store.open_issue_count || 0),
     asStatus: store.asStatus || store.as_status || '-',
     recoveryStatus: store.recoveryStatus || store.recovery_status || '-',
-    crmReady: Boolean(store.crmReady || store.crm_ready || store.crmReadyYn === 'Y' || store.crm_ready_yn === 'Y'),
+    crmReady: normalizeBoolean(store.crmReady ?? store.crm_ready ?? store.crmReadyYn ?? store.crm_ready_yn),
     nextAction: store.nextAction || store.next_action || '-'
   }));
 
@@ -98,9 +103,15 @@ function normalize(payload) {
 
 function normalizeStatus(value) {
   const text = String(value || '').toLowerCase();
+  if (text.includes('error') || text.includes('오류') || text.includes('실패') || text.includes('unauthorized') || text.includes('권한')) return 'Error';
   if (text.includes('red')) return 'Red';
+  if (text.includes('제한') || text.includes('중단') || text.includes('위험')) return 'Red';
   if (text.includes('orange')) return 'Orange';
+  if (text.includes('경계') || text.includes('즉시')) return 'Orange';
   if (text.includes('yellow')) return 'Yellow';
+  if (text.includes('주의') || text.includes('관찰')) return 'Yellow';
+  if (text.includes('gray') || text.includes('unknown') || text.includes('대기') || text.includes('미확정')) return 'Gray';
+  if (text.includes('green') || text.includes('정상') || text.includes('완료')) return 'Green';
   return 'Green';
 }
 
@@ -138,14 +149,16 @@ function filteredStores() {
 function renderHero() {
   const { summary } = state.data;
   const status = normalizeStatus(summary.overallStatus || summary.overall_status || topStatus(state.data.stores));
+  const warnings = freshnessWarnings();
   $('overallStatus').textContent = status;
   $('overallStatus').className = `status-word text-${status}`;
   $('headline').textContent = summary.headline || '오늘 운영 조치와 회복 액션을 확인하세요.';
   $('heroMeta').innerHTML = [
     `업데이트 ${formatDateTime(state.data.generatedAt)}`,
     `버전 ${state.data.version}`,
-    state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결'
-  ].map((text) => `<span class="meta-pill">${escapeHtml(text)}</span>`).join('');
+    state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결',
+    ...warnings.map((warning) => `주의: ${warning}`)
+  ].map((text) => `<span class="meta-pill${text.startsWith('주의:') ? ' warning' : ''}">${escapeHtml(text)}</span>`).join('');
 }
 
 function renderKpis() {
@@ -156,6 +169,7 @@ function renderKpis() {
     ['AS 차단', summary.asBlockedCount ?? summary.as_blocked_count ?? 0, '정상화 전 유도 금지'],
     ['회복 조치', summary.recoveryActionCount ?? summary.recovery_action_count ?? 0, 'D+1/D+2 액션'],
     ['CRM 가능', summary.crmReadyCount ?? summary.crm_ready_count ?? 0, '마케팅 실행 후보'],
+    ['성과 대기', summary.dataWaitCount ?? summary.data_wait_count ?? 0, '매출/처리대수 확정 전'],
     ['시스템 오류', summary.systemError24h ?? summary.system_error_24h ?? 0, '최근 24시간']
   ];
   $('kpiStrip').innerHTML = items.map(([label, value, note]) => `
@@ -216,24 +230,28 @@ function renderActionList(items, fallbackTeam) {
 
 function renderRecoveryChart() {
   const recovery = state.data.recovery || {};
+  const selectedSeries = getRecoverySeries(recovery);
+  const labels = selectedSeries.labels || recovery.labels || ['D-day', 'D+1', 'D+2'];
+  const processedRate = selectedSeries.processedRate || selectedSeries.processed_rate || recovery.processedRate || recovery.processed_rate || [];
+  const revenueRate = selectedSeries.revenueRate || selectedSeries.revenue_rate || recovery.revenueRate || recovery.revenue_rate || [];
   const ctx = $('recoveryChart');
   if (state.chart) state.chart.destroy();
   state.chart = new Chart(ctx, {
     type: 'line',
     data: {
-      labels: recovery.labels || ['D-day', 'D+1', 'D+2'],
+      labels,
       datasets: [
         {
-          label: '처리대수 회복률',
-          data: recovery.processedRate || recovery.processed_rate || [],
+          label: state.store === 'all' ? '처리대수 회복률' : `${storeNameById(state.store)} 처리대수 회복률`,
+          data: processedRate,
           borderColor: '#0f6b9f',
           backgroundColor: 'rgba(15,107,159,.12)',
           tension: .35,
           fill: true
         },
         {
-          label: '매출 회복률',
-          data: recovery.revenueRate || recovery.revenue_rate || [],
+          label: state.store === 'all' ? '매출 회복률' : `${storeNameById(state.store)} 매출 회복률`,
+          data: revenueRate,
           borderColor: '#c05621',
           backgroundColor: 'rgba(192,86,33,.08)',
           tension: .35,
@@ -266,9 +284,9 @@ function renderRecoveryQueue() {
     <div class="queue-item">
       <div class="queue-top">
         <span class="queue-store">${escapeHtml(item.store || '-')}</span>
-        <span class="badge ${item.status === 'AS 차단' ? 'Red' : 'Orange'}">${escapeHtml(item.status || '-')}</span>
+        <span class="badge ${queueStatusClass(item.status)}">${escapeHtml(item.status || '-')}</span>
       </div>
-      <div class="queue-body">${escapeHtml(item.stage || '-')} · 처리대수 회복률 ${escapeHtml(item.processedRecoveryRate ?? item.processed_recovery_rate ?? '-')}%</div>
+      <div class="queue-body">${escapeHtml(item.stage || '-')} · 처리대수 회복률 ${formatPercent(item.processedRecoveryRate ?? item.processed_recovery_rate)}</div>
       <div class="queue-foot">
         <span>CRM ${escapeHtml(item.crmAllowed || item.crm_allowed || '-')}</span>
         <span>다음 ${escapeHtml(item.next || '-')}</span>
@@ -341,20 +359,24 @@ async function copyBrief() {
   if (!state.data) return;
   const summary = state.data.summary || {};
   const topStores = state.data.stores
-    .filter((store) => ['Red', 'Orange'].includes(store.status))
+    .filter((store) => ['Error', 'Red', 'Orange'].includes(store.status))
     .slice(0, 5)
     .map((store) => `- ${store.name}: ${store.status} / ${store.nextAction}`)
     .join('\n') || '- 즉시 조치 지점 없음';
   const text = [
-    `[Weather Ops Dashboard] ${formatDateTime(state.data.generatedAt)}`,
-    `전체 상태: ${summary.overallStatus || topStatus(state.data.stores)}`,
-    `즉시 조치: ${summary.immediateCount ?? 0} / 회복 조치: ${summary.recoveryActionCount ?? 0} / CRM 가능: ${summary.crmReadyCount ?? 0}`,
+    `[OPS] Weather Ops Dashboard | ${formatDateTime(state.data.generatedAt)}`,
+    `전체 상태: ${summary.overallStatus || summary.overall_status || topStatus(state.data.stores)}`,
+    `즉시 조치: ${summary.immediateCount ?? summary.immediate_count ?? 0} / 회복 조치: ${summary.recoveryActionCount ?? summary.recovery_action_count ?? 0} / CRM 가능: ${summary.crmReadyCount ?? summary.crm_ready_count ?? 0} / 성과 대기: ${summary.dataWaitCount ?? summary.data_wait_count ?? 0}`,
     '',
     '우선 지점',
     topStores
   ].join('\n');
-  await navigator.clipboard.writeText(text);
-  showError('Slack 공유용 요약을 클립보드에 복사했습니다.');
+  try {
+    await navigator.clipboard.writeText(text);
+    showToast('Slack 공유용 요약을 클립보드에 복사했습니다.');
+  } catch (error) {
+    showError('클립보드 복사에 실패했습니다. 브라우저 권한을 확인한 뒤 다시 시도하세요.');
+  }
 }
 
 function topStatus(stores) {
@@ -362,8 +384,68 @@ function topStatus(stores) {
 }
 
 function findStoreId(storeName) {
-  const found = state.data.stores.find((store) => store.name === storeName || store.name.includes(storeName || '') || String(storeName || '').includes(store.name));
+  const target = normalizeStoreName(storeName);
+  const found = state.data.stores.find((store) => normalizeStoreName(store.name) === target)
+    || state.data.stores.find((store) => normalizeStoreName(store.name).includes(target) || target.includes(normalizeStoreName(store.name)));
   return found ? found.id : slug(storeName);
+}
+
+function normalizeStoreName(value) {
+  return String(value || '').replace(/\s+/g, '').replace(/[()0-9]/g, '').toLowerCase();
+}
+
+function normalizeBoolean(value) {
+  if (typeof value === 'boolean') return value;
+  const text = String(value || '').trim().toLowerCase();
+  if (!text || ['n', 'no', 'false', '0', '불가', '불필요', '대기'].includes(text)) return false;
+  return ['y', 'yes', 'true', '1', '가능', '필요'].includes(text);
+}
+
+function storeNameById(storeId) {
+  const store = state.data.stores.find((item) => item.id === storeId);
+  return store ? store.name : '선택 지점';
+}
+
+function getRecoverySeries(recovery) {
+  if (state.store === 'all') return {};
+  const series = recovery.storeSeries || recovery.store_series || {};
+  return series[state.store] || {};
+}
+
+function queueStatusClass(status) {
+  const text = String(status || '').toLowerCase();
+  if (text.includes('차단') || text.includes('red') || text.includes('중단') || text.includes('불가')) return 'Red';
+  if (text.includes('완료') || text.includes('정상') || text.includes('green')) return 'Green';
+  if (text.includes('대기') || text.includes('미확정') || text.includes('데이터')) return 'Gray';
+  if (text.includes('주의') || text.includes('관찰') || text.includes('yellow')) return 'Yellow';
+  return 'Orange';
+}
+
+function formatPercent(value) {
+  if (value === null || value === undefined || value === '') return '-';
+  return `${escapeHtml(value)}%`;
+}
+
+function freshnessWarnings() {
+  const system = state.data && state.data.system ? state.data.system : {};
+  const summary = state.data && state.data.summary ? state.data.summary : {};
+  const provided = system.freshnessWarnings || system.freshness_warnings || [];
+  const warnings = Array.isArray(provided) ? [...provided] : [];
+  const revenueAge = hoursSince(system.lastRevenueSyncAt || system.last_revenue_sync_at);
+  const generatedAge = hoursSince(state.data && state.data.generatedAt);
+  const systemErrorCount = Number(summary.systemError24h ?? summary.system_error_24h ?? system.systemError24h ?? system.system_error_24h ?? 0);
+  const dataWaitCount = Number(summary.dataWaitCount ?? summary.data_wait_count ?? 0);
+  if (revenueAge !== null && revenueAge > 30) warnings.push('매출 원천 동기화 30시간 초과');
+  if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
+  if (systemErrorCount > 0) warnings.push(`시스템 오류 ${systemErrorCount}건`);
+  if (dataWaitCount > 0) warnings.push(`성과 확정 대기 ${dataWaitCount}건`);
+  return [...new Set(warnings)];
+}
+
+function hoursSince(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return null;
+  return (Date.now() - date.getTime()) / 36e5;
 }
 
 function slug(value) {
@@ -410,8 +492,17 @@ function showLoading(visible) {
 }
 
 function showError(message) {
+  showBanner(message, 'error');
+}
+
+function showWarning(message) {
+  showBanner(message, 'warning');
+}
+
+function showBanner(message, type) {
   const banner = $('errorBanner');
   banner.textContent = message;
+  banner.className = `global-banner ${type || 'error'}`;
   banner.hidden = false;
 }
 
@@ -419,4 +510,15 @@ function hideError() {
   const banner = $('errorBanner');
   banner.hidden = true;
   banner.textContent = '';
+}
+
+function showToast(message) {
+  const toast = $('toast');
+  toast.textContent = message;
+  toast.hidden = false;
+  window.clearTimeout(showToast.timer);
+  showToast.timer = window.setTimeout(() => {
+    toast.hidden = true;
+    toast.textContent = '';
+  }, 2400);
 }

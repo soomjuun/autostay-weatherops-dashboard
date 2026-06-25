@@ -1,4 +1,4 @@
-# AUTOSTAY Weather Ops Dashboard
+# AUTOSTAY [OPS] Weather Ops Dashboard
 
 Weather Ops Pack의 기상 리스크, 현장 조치, AS 정상화, 회복 수요, 사업운영팀/마케팅팀 액션을 한 화면에서 보는 내부 운영 대시보드입니다.
 
@@ -34,7 +34,7 @@ weather-ops-dashboard/
 
 | 변수 | 설명 |
 | --- | --- |
-| `DASHBOARD_TOKEN` | 대시보드 접근 토큰 |
+| `DASHBOARD_TOKEN` | 대시보드 접근 토큰. 32자 이상 랜덤 문자열 권장 |
 
 실데이터 연결 시 필수:
 
@@ -47,8 +47,15 @@ weather-ops-dashboard/
 | 변수 | 설명 |
 | --- | --- |
 | `COOKIE_KEY` | 인증 쿠키 키. 기본값은 `weather_ops_auth` |
+| `SESSION_SECRET` | 인증 세션 쿠키 HMAC 서명 키. 32자 이상 랜덤 문자열 권장 |
 | `WEATHER_OPS_API_TOKEN` | Apps Script API에 `token` 쿼리로 전달할 공유 토큰 |
 | `WEATHER_OPS_ALLOW_SAMPLE` | API 미연결 시 샘플 데이터 표시 여부. 운영 연결 후 `false` 권장 |
+
+Apps Script 속성:
+
+| 속성 | 설명 |
+| --- | --- |
+| `WEATHER_OPS_DASHBOARD_TOKEN` | `WEATHER_OPS_API_TOKEN`과 같은 값으로 입력. Apps Script 대시보드 API 호출을 보호 |
 
 ## 데이터 연결 방식
 
@@ -59,8 +66,9 @@ weather-ops-dashboard/
 1. `WEATHER_OPS_API_URL`이 있으면 Apps Script Web App을 호출합니다.
 2. 호출 URL에는 자동으로 `mode=dashboard`가 붙습니다.
 3. `WEATHER_OPS_API_TOKEN`이 있으면 `token=...`도 함께 붙습니다.
-4. Apps Script 응답을 대시보드 표준 payload로 정규화합니다.
-5. API가 없거나 실패했는데 `WEATHER_OPS_ALLOW_SAMPLE=true`이면 샘플 데이터로 화면을 표시합니다.
+4. Apps Script가 `error` JSON을 반환하면 대시보드 API 오류로 처리합니다.
+5. Apps Script 응답을 대시보드 표준 payload로 정규화합니다.
+6. API가 없거나 실패했는데 `WEATHER_OPS_ALLOW_SAMPLE=true`이면 샘플 데이터로 화면을 표시합니다.
 
 운영 연결 후에는 `WEATHER_OPS_ALLOW_SAMPLE=false`로 바꿔야 데이터 연결 실패가 숨겨지지 않습니다.
 
@@ -70,7 +78,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
 
 ```json
 {
-  "version": "v2.13.4",
+  "version": "v2.14.0",
   "generatedAt": "2026-06-25T09:10:00+09:00",
   "summary": {
     "overallStatus": "Orange",
@@ -79,6 +87,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     "asBlockedCount": 1,
     "recoveryActionCount": 2,
     "crmReadyCount": 2,
+    "dataWaitCount": 1,
     "systemError24h": 0,
     "headline": "강수 리스크로 3개 지점 즉시 확인"
   },
@@ -106,13 +115,20 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     "labels": ["D-day", "D+1", "D+2"],
     "processedRate": [72, 86, 93],
     "revenueRate": [65, 81, 89],
+    "storeSeries": {
+      "hanam": {
+        "processedRate": [68, 82, 91],
+        "revenueRate": [61, 78, 87]
+      }
+    },
     "queue": []
   },
   "system": {
     "lastSummaryAt": "2026-06-25T09:10:00+09:00",
     "lastRevenueSyncAt": "2026-06-25T05:40:00+09:00",
-    "appsScriptVersion": "v2.13.4",
-    "dataFreshness": "실데이터"
+    "appsScriptVersion": "v2.14.0",
+    "dataFreshness": "실데이터",
+    "freshnessWarnings": []
   },
   "weatherTimeline": []
 }
@@ -133,19 +149,21 @@ autostay-weather-ops-dashboard
 1. GitHub에 `weather-ops-dashboard` 폴더 내용을 업로드합니다.
 2. Vercel에서 신규 프로젝트를 생성하고 GitHub 저장소를 연결합니다.
 3. Framework Preset은 `Other` 또는 자동 감지 상태로 둡니다.
-4. Environment Variables에 `DASHBOARD_TOKEN`을 등록합니다.
+4. Environment Variables에 `DASHBOARD_TOKEN`, `SESSION_SECRET`을 등록합니다.
 5. 처음에는 `WEATHER_OPS_ALLOW_SAMPLE=true`로 배포해 화면을 확인합니다.
 6. Apps Script Web App URL이 준비되면 `WEATHER_OPS_API_URL`을 등록합니다.
-7. 실데이터 연결 확인 후 `WEATHER_OPS_ALLOW_SAMPLE=false`로 변경합니다.
-8. 재배포합니다.
+7. Apps Script 속성에 `WEATHER_OPS_DASHBOARD_TOKEN`을 입력하고, Vercel의 `WEATHER_OPS_API_TOKEN`에도 같은 값을 등록합니다.
+8. 실데이터 연결 확인 후 `WEATHER_OPS_ALLOW_SAMPLE=false`로 변경합니다.
+9. 재배포합니다.
 
 ## 운영 화면 구성
 
-- 상단: 전체 상태, 즉시 조치, 주의 관찰, AS 차단, 회복 조치, CRM 가능, 시스템 오류
-- 지역 리스크 맵: 7개 직영점 상태를 Green/Yellow/Orange/Red로 표시
+- 상단: 전체 상태, 즉시 조치, 주의 관찰, AS 차단, 회복 조치, CRM 가능, 성과 대기, 시스템 오류
+- 지역 리스크 맵: 7개 직영점 상태를 Green/Yellow/Orange/Red/Error로 표시
 - 사업운영팀 액션: 안전, AS, 현장 준비, 정상화 게이트 중심
 - 마케팅팀 액션: CRM, 쿠폰, 재방문 유도, 회복 수요 흡수 중심
 - 회복률 차트: 처리대수 회복률과 매출 회복률 비교
+- 지점 필터 선택 시 해당 지점의 회복률 추이를 우선 표시
 - 회복 큐: CRM 가능 여부와 AS 차단 상태
 - 시스템 상태: 마지막 요약, 매출 동기화, Apps Script 버전, 데이터 상태
 
@@ -153,5 +171,7 @@ autostay-weather-ops-dashboard
 
 - 토큰은 코드에 저장하지 않습니다.
 - `DASHBOARD_TOKEN`은 Vercel 환경변수로만 관리합니다.
+- 로그인 쿠키에는 원 토큰을 저장하지 않고 HMAC 서명 세션값만 저장합니다.
+- `GET /api/auth?token=` 방식은 사용하지 않습니다.
 - 운영 연결 후 샘플 데이터 fallback을 끕니다.
 - Apps Script API에 별도 토큰을 둘 경우 `WEATHER_OPS_API_TOKEN`을 사용합니다.

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Weather Ops Dashboard</title>
+  <title>[OPS] Weather Ops Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
   <link rel="stylesheet" href="style.css">
@@ -21,20 +21,21 @@
 <body>
   <div id="loadingOverlay" class="loading-overlay">
     <div class="loading-card">
-      <div class="loading-title">Weather Ops Dashboard</div>
+      <div class="loading-title">[OPS] Weather Ops Dashboard</div>
       <div class="loading-sub">기상 리스크와 회복 액션을 불러오는 중입니다.</div>
       <div class="loading-bar"><span id="loadingBar"></span></div>
     </div>
   </div>
 
   <div id="errorBanner" class="global-banner" hidden></div>
+  <div id="toast" class="toast" hidden></div>
 
   <main class="app-shell">
     <header class="hero">
       <div class="hero-main">
         <div>
           <div class="eyebrow">AUTOSTAY DIRECT STORES · WEATHER OPS</div>
-          <h1>Weather Ops Dashboard</h1>
+          <h1>[OPS] Weather Ops Dashboard</h1>
           <p class="hero-copy">기상 리스크, 현장 정상화, 회복 수요, 사업운영/마케팅 액션을 하나의 운영 화면에서 확인합니다.</p>
           <div id="heroMeta" class="hero-meta"></div>
         </div>
@@ -50,6 +51,7 @@
     <section class="toolbar" aria-label="대시보드 필터">
       <div class="segmented" id="riskFilter">
         <button class="active" data-risk="all">전체</button>
+        <button data-risk="Error">Error</button>
         <button data-risk="Red">Red</button>
         <button data-risk="Orange">Orange</button>
         <button data-risk="Yellow">Yellow</button>

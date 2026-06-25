@@ -11,6 +11,8 @@
   --yellow: #b7791f;
   --orange: #c05621;
   --red: #b91c1c;
+  --error: #7f1d1d;
+  --gray: #64748b;
   --shadow: 0 18px 48px rgba(31, 41, 55, 0.08);
   --r: 8px;
 }
@@ -60,6 +62,30 @@ button { cursor: pointer; }
   color: #9a3412;
   font-size: 13px;
   font-weight: 700;
+}
+.global-banner.error {
+  background: #fef2f2;
+  border-bottom-color: #fecaca;
+  color: #991b1b;
+}
+.global-banner.warning {
+  background: #fff7ed;
+  border-bottom-color: #fed7aa;
+  color: #9a3412;
+}
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  z-index: 60;
+  max-width: min(360px, calc(100vw - 40px));
+  padding: 12px 14px;
+  border-radius: var(--r);
+  background: #0f172a;
+  color: #fff;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, .22);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .app-shell {
@@ -115,6 +141,10 @@ h1 {
   font-size: 12px;
   font-weight: 700;
 }
+.meta-pill.warning {
+  background: #fff7ed;
+  color: #9a3412;
+}
 .command-card {
   background: rgba(255,255,255,.1);
   border: 1px solid rgba(255,255,255,.22);
@@ -127,7 +157,7 @@ h1 {
 
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 10px;
   margin-top: 22px;
 }
@@ -277,6 +307,14 @@ select { min-width: 180px; }
 .status-Yellow { border-color: var(--yellow); }
 .status-Orange { border-color: var(--orange); }
 .status-Red { border-color: var(--red); }
+.status-Error { border-color: var(--error); }
+.status-Gray { border-color: var(--gray); }
+.text-Green { color: #bbf7d0; }
+.text-Yellow { color: #fde68a; }
+.text-Orange { color: #fed7aa; }
+.text-Red,
+.text-Error { color: #fecaca; }
+.text-Gray { color: #cbd5e1; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -290,6 +328,8 @@ select { min-width: 180px; }
 .badge.Yellow { color: #92400e; background: #fef3c7; }
 .badge.Orange { color: #9a3412; background: #ffedd5; }
 .badge.Red { color: #991b1b; background: #fee2e2; }
+.badge.Error { color: #7f1d1d; background: #fecaca; }
+.badge.Gray { color: #334155; background: #e2e8f0; }
 
 .action-columns {
   display: grid;
@@ -422,7 +462,7 @@ td:last-child { min-width: 280px; }
   .action-columns {
     grid-template-columns: 1fr;
   }
-  .kpi-strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 
 @media (max-width: 720px) {
