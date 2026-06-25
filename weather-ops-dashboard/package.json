@@ -1,0 +1,13 @@
+{
+  "name": "autostay-weather-ops-dashboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AUTOSTAY Weather Ops Pack dashboard for operations, recovery, and marketing actions.",
+  "engines": {
+    "node": "22.x"
+  },
+  "scripts": {
+    "dev": "vercel dev",
+    "start": "vercel dev"
+  }
+}
