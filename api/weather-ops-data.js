@@ -68,6 +68,7 @@ function normalizePayload(payload, source) {
     marketingActions: Array.isArray(payload.marketingActions) ? payload.marketingActions : payload.marketing_actions || [],
     recovery: payload.recovery || {},
     system: payload.system || {},
+    visuals: payload.visuals || {},
     weatherTimeline: Array.isArray(payload.weatherTimeline) ? payload.weatherTimeline : payload.weather_timeline || []
   };
 }
@@ -205,7 +206,7 @@ function samplePayload(source) {
   ];
 
   return {
-    version: 'sample-v0.2',
+    version: 'sample-v0.3',
     generatedAt: iso,
     source,
     summary: {
@@ -242,6 +243,21 @@ function samplePayload(source) {
         { store: '하남 미사', stage: 'D+1', status: '회복 조치 필요', processedRecoveryRate: 82, crmAllowed: 'Y', next: 'CRM 승인' },
         { store: '광명점', stage: 'D+1', status: '회복 조치 필요', processedRecoveryRate: 79, crmAllowed: 'Y', next: '쿠폰 금액 확정' },
         { store: '서울 성수', stage: 'D+1', status: 'AS 차단', processedRecoveryRate: 44, crmAllowed: 'N', next: '기술요청 링크/정상화 확인' }
+      ]
+    },
+    visuals: {
+      recoveryFunnel: [
+        { key: 'detected', label: '하락 감지', count: 3 },
+        { key: 'action', label: '조치 필요', count: 3 },
+        { key: 'normalized', label: '정상화 통과', count: 2 },
+        { key: 'crmQueued', label: 'CRM 후보', count: 2 },
+        { key: 'crmSent', label: '발송/실행', count: 0 },
+        { key: 'revisited', label: '재방문 회수', count: 0 }
+      ],
+      recoveryGapByStore: [
+        { storeId: 'hanam', store: '하남 미사', processedRate: 91, revenueRate: 87, gap: 4 },
+        { storeId: 'gwangmyeong', store: '광명점', processedRate: 88, revenueRate: 86, gap: 2 },
+        { storeId: 'seongsu', store: '서울 성수', processedRate: 55, revenueRate: 52, gap: 3 }
       ]
     },
     system: {

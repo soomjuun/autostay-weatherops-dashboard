@@ -78,7 +78,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
 
 ```json
 {
-  "version": "v2.14.0",
+  "version": "v2.15.0",
   "generatedAt": "2026-06-25T09:10:00+09:00",
   "summary": {
     "overallStatus": "Orange",
@@ -123,10 +123,18 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     },
     "queue": []
   },
+  "visuals": {
+    "statusDistribution": [{ "status": "Orange", "count": 3 }],
+    "riskMatrix": [],
+    "recoveryFunnel": [{ "key": "detected", "label": "하락 감지", "count": 3 }],
+    "recoveryGapByStore": [{ "storeId": "hanam", "store": "하남 미사", "gap": 4 }],
+    "processedBulletByStore": [],
+    "systemTrend": []
+  },
   "system": {
     "lastSummaryAt": "2026-06-25T09:10:00+09:00",
     "lastRevenueSyncAt": "2026-06-25T05:40:00+09:00",
-    "appsScriptVersion": "v2.14.0",
+    "appsScriptVersion": "v2.15.0",
     "dataFreshness": "실데이터",
     "freshnessWarnings": []
   },
@@ -165,7 +173,19 @@ autostay-weather-ops-dashboard
 - 회복률 차트: 처리대수 회복률과 매출 회복률 비교
 - 지점 필터 선택 시 해당 지점의 회복률 추이를 우선 표시
 - 회복 큐: CRM 가능 여부와 AS 차단 상태
+- 상태 분포: 현재 필터 기준 지점 상태 비중
+- 지점 x 리스크 매트릭스: 강수/강풍/한파/대설/대기질/폭염/AS/회복 리스크
+- 회복 실행 깔때기: 하락 감지 -> 조치 필요 -> 정상화 통과 -> CRM 후보 -> 발송/재방문
+- 지점별 회복 곡선: 7개 지점 처리대수/매출 회복률 스몰멀티플
+- 처리대수-매출 갭: 처리량 회복 대비 매출 회복 지연 지점
 - 시스템 상태: 마지막 요약, 매출 동기화, Apps Script 버전, 데이터 상태
+
+## Apps Script 운영 메모
+
+- `doGet(mode=dashboard)`는 정상 payload를 60초 동안 `CacheService`에 보관합니다.
+- 캐시는 인증 토큰 검증 후에만 사용하며, 인증 실패/오류 응답은 캐시하지 않습니다.
+- 대시보드 시각화용 `visuals` 필드는 Apps Script가 제공하면 그대로 사용하고, 없으면 프론트가 현재 `stores`/`recovery` 데이터로 보수 계산합니다.
+- 실지도/레이더 고도화는 Store_Master의 `latitude`/`longitude` 및 기상 스냅샷 탭이 준비된 뒤 진행합니다.
 
 ## 보안 원칙
 

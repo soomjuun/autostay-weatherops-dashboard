@@ -2,7 +2,9 @@ const state = {
   data: null,
   risk: 'all',
   store: 'all',
-  chart: null
+  chart: null,
+  statusChart: null,
+  recoveryGapChart: null
 };
 
 const $ = (id) => document.getElementById(id);
@@ -74,8 +76,9 @@ function normalize(payload) {
     region: store.region || '',
     dri: store.dri || store.owner || '-',
     status: normalizeStatus(store.status || store.risk || 'Green'),
-    weather: store.weather || store.trigger || '-',
-    weatherDetail: store.weatherDetail || store.weather_detail || '',
+    weather: normalizeWeatherLabel(store),
+    weatherDetail: normalizeWeatherDetail(store),
+    weatherData: typeof store.weather === 'object' && store.weather !== null ? store.weather : (store.weatherData || store.weather_data || {}),
     trigger: store.trigger || '-',
     riskScore: Number(store.riskScore || store.risk_score || 0),
     openIssueCount: Number(store.openIssueCount || store.open_issue_count || 0),
@@ -97,6 +100,7 @@ function normalize(payload) {
     marketingActions: payload.marketingActions || payload.marketing_actions || [],
     recovery: payload.recovery || {},
     system: payload.system || {},
+    visuals: payload.visuals || {},
     weatherTimeline: payload.weatherTimeline || payload.weather_timeline || []
   };
 }
@@ -113,6 +117,20 @@ function normalizeStatus(value) {
   if (text.includes('gray') || text.includes('unknown') || text.includes('대기') || text.includes('미확정')) return 'Gray';
   if (text.includes('green') || text.includes('정상') || text.includes('완료')) return 'Green';
   return 'Green';
+}
+
+function normalizeWeatherLabel(store) {
+  if (typeof store.weather === 'object' && store.weather !== null) {
+    return store.weather.label || store.weather.triggerLabel || store.weather.trigger_label || store.trigger || '-';
+  }
+  return store.weather || store.trigger || '-';
+}
+
+function normalizeWeatherDetail(store) {
+  if (typeof store.weather === 'object' && store.weather !== null) {
+    return store.weather.summary || store.weather.detail || store.weather.peakTime || store.weather.peak_time || '';
+  }
+  return store.weatherDetail || store.weather_detail || '';
 }
 
 function ensureStoreOptions() {
@@ -133,6 +151,11 @@ function render() {
   renderActions();
   renderRecoveryChart();
   renderRecoveryQueue();
+  renderStatusChart();
+  renderRiskMatrix();
+  renderRecoveryFunnel();
+  renderRecoverySparklines();
+  renderRecoveryGapChart();
   renderStoreTable();
   renderTimeline();
   renderSystem();
@@ -256,7 +279,9 @@ function renderRecoveryChart() {
           backgroundColor: 'rgba(192,86,33,.08)',
           tension: .35,
           fill: false
-        }
+        },
+        referenceLineDataset('기준 100%', labels, 100, '#64748b'),
+        referenceLineDataset('조치 기준 90%', labels, 90, '#c05621')
       ]
     },
     options: {
@@ -268,6 +293,122 @@ function renderRecoveryChart() {
       },
       scales: {
         y: { suggestedMin: 0, suggestedMax: 120, ticks: { callback: (value) => `${value}%` } }
+      }
+    }
+  });
+}
+
+function renderStatusChart() {
+  const rows = statusDistributionRows();
+  const ctx = $('statusChart');
+  if (state.statusChart) state.statusChart.destroy();
+  state.statusChart = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: rows.map((row) => row.status),
+      datasets: [{
+        data: rows.map((row) => row.count),
+        backgroundColor: rows.map((row) => statusColor(row.status, .86)),
+        borderColor: '#ffffff',
+        borderWidth: 2
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom' },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.parsed}개` } }
+      },
+      cutout: '64%'
+    }
+  });
+}
+
+function renderRiskMatrix() {
+  const rows = riskMatrixRows().filter((row) => state.store === 'all' || row.storeId === state.store);
+  if (!rows.length) {
+    $('riskMatrix').innerHTML = '<div class="empty-state">현재 필터 기준 리스크 데이터가 없습니다.</div>';
+    return;
+  }
+  const labels = rows[0].cells.map((cell) => cell.label);
+  $('riskMatrix').innerHTML = `
+    <div class="matrix-row matrix-head">
+      <div class="matrix-store">지점</div>
+      ${labels.map((label) => `<div>${escapeHtml(label)}</div>`).join('')}
+    </div>
+    ${rows.map((row) => `
+      <div class="matrix-row">
+        <div class="matrix-store">${escapeHtml(row.store)}</div>
+        ${row.cells.map((cell) => `<div class="matrix-cell ${normalizeStatus(cell.level)}" title="${escapeAttr(row.store)} ${escapeAttr(cell.label)} ${escapeAttr(cell.level)}"></div>`).join('')}
+      </div>
+    `).join('')}
+  `;
+}
+
+function renderRecoveryFunnel() {
+  const rows = recoveryFunnelRows();
+  const max = Math.max(...rows.map((row) => Number(row.count || 0)), 1);
+  $('recoveryFunnel').innerHTML = rows.map((row) => {
+    const count = Number(row.count || 0);
+    const width = Math.max(8, Math.round(count / max * 100));
+    return `
+      <div class="funnel-item">
+        <div class="funnel-label"><span>${escapeHtml(row.label)}</span><b>${count.toLocaleString('ko-KR')}</b></div>
+        <div class="funnel-track"><span style="width:${width}%"></span></div>
+      </div>
+    `;
+  }).join('');
+}
+
+function renderRecoverySparklines() {
+  const stores = filteredStores();
+  const recovery = state.data.recovery || {};
+  const rows = stores.map((store) => {
+    const series = rateSeriesForStore(store.id, recovery);
+    return { store, processed: series.processedRate || [], revenue: series.revenueRate || [] };
+  });
+  $('recoverySparklines').innerHTML = rows.map((row) => `
+    <div class="spark-card">
+      <div class="spark-top">
+        <strong>${escapeHtml(row.store.name)}</strong>
+        <span class="badge ${row.store.status}">${escapeHtml(row.store.status)}</span>
+      </div>
+      ${sparkSvg(row.processed, row.revenue)}
+      <div class="spark-foot">
+        <span>처리 ${formatPercent(lastNumber(row.processed))}</span>
+        <span>매출 ${formatPercent(lastNumber(row.revenue))}</span>
+      </div>
+    </div>
+  `).join('') || '<div class="empty-state">현재 필터 기준 회복 곡선이 없습니다.</div>';
+}
+
+function renderRecoveryGapChart() {
+  const rows = recoveryGapRows();
+  const ctx = $('recoveryGapChart');
+  if (state.recoveryGapChart) state.recoveryGapChart.destroy();
+  state.recoveryGapChart = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: rows.map((row) => row.store),
+      datasets: [{
+        label: '처리대수 회복률 - 매출 회복률',
+        data: rows.map((row) => row.gap),
+        backgroundColor: rows.map((row) => row.gap >= 0 ? 'rgba(15,107,159,.72)' : 'rgba(192,86,33,.72)'),
+        borderColor: rows.map((row) => row.gap >= 0 ? '#0f6b9f' : '#c05621'),
+        borderWidth: 1
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.x > 0 ? '+' : ''}${ctx.parsed.x}%p` } }
+      },
+      scales: {
+        x: { ticks: { callback: (value) => `${value}%p` } }
       }
     }
   });
@@ -335,6 +476,152 @@ function renderSystem() {
       <div class="system-value">${escapeHtml(formatMaybeDate(value))}</div>
     </div>
   `).join('');
+}
+
+function referenceLineDataset(label, labels, value, color) {
+  return {
+    label,
+    data: labels.map(() => value),
+    borderColor: color,
+    backgroundColor: 'transparent',
+    borderDash: [6, 6],
+    pointRadius: 0,
+    tension: 0,
+    fill: false
+  };
+}
+
+function statusDistributionRows() {
+  const stores = filteredStores();
+  return ['Error', 'Red', 'Orange', 'Yellow', 'Green', 'Gray']
+    .map((status) => ({ status, count: stores.filter((store) => store.status === status).length }))
+    .filter((row) => row.count > 0);
+}
+
+function riskMatrixRows() {
+  const provided = state.data.visuals && state.data.visuals.riskMatrix;
+  const rows = Array.isArray(provided) && provided.length ? provided : deriveRiskMatrixRows();
+  const visibleStoreIds = new Set(filteredStores().map((store) => store.id));
+  return rows.filter((row) => visibleStoreIds.has(row.storeId || findStoreId(row.store)));
+}
+
+function deriveRiskMatrixRows() {
+  const triggers = [
+    ['rain', '강수', ['강수', '비', '우천']],
+    ['wind', '강풍', ['강풍', '풍속', '바람']],
+    ['cold', '한파', ['한파', '동파', '저온']],
+    ['snow', '대설', ['대설', '적설', '눈', '결빙']],
+    ['dust', '대기질', ['미세먼지', '황사', '대기질', 'pm']],
+    ['heat', '폭염', ['폭염', '고온', '더위']]
+  ];
+  return state.data.stores.map((store) => {
+    const text = `${store.weather} ${store.weatherDetail} ${store.trigger} ${store.nextAction}`.toLowerCase();
+    return {
+      storeId: store.id,
+      store: store.name,
+      cells: triggers.map(([key, label, words]) => ({
+        key,
+        label,
+        level: words.some((word) => text.includes(String(word).toLowerCase())) ? store.status : 'Green'
+      })).concat([
+        { key: 'as', label: 'AS', level: queueStatusClass(store.asStatus) === 'Red' ? 'Red' : 'Green' },
+        { key: 'recovery', label: '회복', level: recoveryCellLevel(store.recoveryStatus) }
+      ])
+    };
+  });
+}
+
+function recoveryFunnelRows() {
+  const provided = state.data.visuals && state.data.visuals.recoveryFunnel;
+  if (Array.isArray(provided) && provided.length) return provided;
+  const queue = (state.data.recovery && state.data.recovery.queue) || [];
+  const crmReadyCount = state.data.stores.filter((store) => store.crmReady).length;
+  return [
+    { key: 'detected', label: '하락 감지', count: queue.length },
+    { key: 'action', label: '조치 필요', count: queue.filter((item) => !String(item.status || '').includes('완료')).length },
+    { key: 'normalized', label: '정상화 통과', count: queue.filter((item) => !String(item.status || '').includes('차단')).length },
+    { key: 'crmQueued', label: 'CRM 후보', count: crmReadyCount },
+    { key: 'crmSent', label: '발송/실행', count: queue.filter((item) => String(item.next || '').includes('발송')).length },
+    { key: 'revisited', label: '재방문 회수', count: 0 }
+  ];
+}
+
+function recoveryGapRows() {
+  const provided = state.data.visuals && (state.data.visuals.recoveryGapByStore || state.data.visuals.recovery_gap_by_store);
+  const rows = Array.isArray(provided) && provided.length ? provided : deriveRecoveryGapRows();
+  const visibleStoreIds = new Set(filteredStores().map((store) => store.id));
+  return rows
+    .map((row) => ({ ...row, storeId: row.storeId || row.store_id || findStoreId(row.store) }))
+    .filter((row) => state.store === 'all' || visibleStoreIds.has(row.storeId))
+    .slice(0, 8);
+}
+
+function deriveRecoveryGapRows() {
+  const recovery = state.data.recovery || {};
+  return state.data.stores.map((store) => {
+    const series = rateSeriesForStore(store.id, recovery);
+    const processed = lastNumber(series.processedRate);
+    const revenue = lastNumber(series.revenueRate);
+    return {
+      storeId: store.id,
+      store: store.name,
+      processedRate: processed,
+      revenueRate: revenue,
+      gap: processed !== null && revenue !== null ? processed - revenue : null
+    };
+  }).filter((row) => row.gap !== null).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
+}
+
+function rateSeriesForStore(storeId, recovery) {
+  const series = recovery.storeSeries || recovery.store_series || {};
+  const selected = series[storeId] || {};
+  return {
+    processedRate: selected.processedRate || selected.processed_rate || recovery.processedRate || recovery.processed_rate || [],
+    revenueRate: selected.revenueRate || selected.revenue_rate || recovery.revenueRate || recovery.revenue_rate || []
+  };
+}
+
+function sparkSvg(processed, revenue) {
+  const hasData = [...processed, ...revenue].some((value) => Number.isFinite(Number(value)));
+  if (!hasData) return '<div class="spark-empty">회복 데이터 대기</div>';
+  return `
+    <svg class="sparkline" viewBox="0 0 180 56" role="img" aria-label="회복률 스파크라인">
+      <line x1="0" y1="8" x2="180" y2="8" class="spark-ref"></line>
+      <polyline class="spark-line processed" points="${sparkPoints(processed)}"></polyline>
+      <polyline class="spark-line revenue" points="${sparkPoints(revenue)}"></polyline>
+    </svg>
+  `;
+}
+
+function sparkPoints(values) {
+  const clean = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  if (!clean.length) return '';
+  const maxIndex = Math.max(clean.length - 1, 1);
+  return clean.map((value, index) => {
+    const x = Math.round(index / maxIndex * 180);
+    const y = Math.round(52 - Math.max(0, Math.min(value, 120)) / 120 * 48);
+    return `${x},${y}`;
+  }).join(' ');
+}
+
+function statusColor(status, alpha = 1) {
+  const colors = {
+    Error: [127, 29, 29],
+    Red: [185, 28, 28],
+    Orange: [192, 86, 33],
+    Yellow: [183, 121, 31],
+    Green: [31, 122, 79],
+    Gray: [100, 116, 139]
+  };
+  const rgb = colors[status] || colors.Gray;
+  return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+}
+
+function recoveryCellLevel(value) {
+  const text = String(value || '');
+  if (text.includes('차단') || text.includes('필요')) return 'Orange';
+  if (text.includes('대기') || text.includes('관찰') || text.includes('준비')) return 'Yellow';
+  return 'Green';
 }
 
 function openStoreDialog(storeId) {
@@ -424,6 +711,15 @@ function queueStatusClass(status) {
 function formatPercent(value) {
   if (value === null || value === undefined || value === '') return '-';
   return `${escapeHtml(value)}%`;
+}
+
+function lastNumber(values) {
+  const list = Array.isArray(values) ? values : [];
+  for (let i = list.length - 1; i >= 0; i -= 1) {
+    const value = Number(list[i]);
+    if (Number.isFinite(value)) return value;
+  }
+  return null;
 }
 
 function freshnessWarnings() {

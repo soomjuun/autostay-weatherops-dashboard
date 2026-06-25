@@ -114,6 +114,58 @@
       </article>
     </section>
 
+    <section class="visual-grid" aria-label="운영 시각화">
+      <article class="panel status-panel">
+        <div class="panel-head">
+          <div>
+            <h2>상태 분포</h2>
+            <p>현재 필터 기준 지점 상태 비중입니다.</p>
+          </div>
+        </div>
+        <div class="donut-wrap"><canvas id="statusChart"></canvas></div>
+      </article>
+
+      <article class="panel risk-panel">
+        <div class="panel-head">
+          <div>
+            <h2>지점 × 리스크</h2>
+            <p>기상/AS/회복 리스크를 격자로 봅니다.</p>
+          </div>
+        </div>
+        <div id="riskMatrix" class="risk-matrix"></div>
+      </article>
+
+      <article class="panel funnel-panel">
+        <div class="panel-head">
+          <div>
+            <h2>회복 실행 깔때기</h2>
+            <p>하락 감지 이후 CRM·재방문까지 어디서 멈추는지 봅니다.</p>
+          </div>
+        </div>
+        <div id="recoveryFunnel" class="funnel-list"></div>
+      </article>
+
+      <article class="panel small-multiple-panel">
+        <div class="panel-head">
+          <div>
+            <h2>지점별 회복 곡선</h2>
+            <p>처리대수와 매출 회복률의 지점별 흐름입니다.</p>
+          </div>
+        </div>
+        <div id="recoverySparklines" class="spark-grid"></div>
+      </article>
+
+      <article class="panel gap-panel">
+        <div class="panel-head">
+          <div>
+            <h2>처리대수-매출 갭</h2>
+            <p>처리량은 회복했지만 매출이 따라오지 않는 지점을 찾습니다.</p>
+          </div>
+        </div>
+        <div class="chart-wrap compact"><canvas id="recoveryGapChart"></canvas></div>
+      </article>
+    </section>
+
     <section class="panel table-panel">
       <div class="panel-head">
         <div>
