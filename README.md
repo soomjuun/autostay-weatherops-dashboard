@@ -78,7 +78,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
 
 ```json
 {
-  "version": "v2.15.2",
+  "version": "v2.15.3",
   "generatedAt": "2026-06-25T09:10:00+09:00",
   "summary": {
     "overallStatus": "Orange",
@@ -143,8 +143,12 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
   },
   "system": {
     "lastSummaryAt": "2026-06-25T09:10:00+09:00",
+    "lastSummaryStatus": "sent",
+    "summaryFreshnessLevel": "ok",
+    "latestDueSummaryAt": "2026-06-25T09:10:00+09:00",
+    "nextSummaryDueAt": "2026-06-25T16:30:00+09:00",
     "lastRevenueSyncAt": "2026-06-25T05:40:00+09:00",
-    "appsScriptVersion": "v2.15.2",
+    "appsScriptVersion": "v2.15.3",
     "dataFreshness": "실데이터",
     "freshnessWarnings": []
   },
@@ -195,6 +199,8 @@ autostay-weather-ops-dashboard
 - `doGet(mode=dashboard)`는 정상 payload를 60초 동안 `CacheService`에 보관합니다.
 - 대시보드 새로고침은 `/api/weather-ops-data?fresh=1`을 통해 Apps Script의 60초 캐시를 우회할 수 있습니다.
 - 캐시는 인증 토큰 검증 후에만 사용하며, 인증 실패/오류 응답은 캐시하지 않습니다.
+- `마지막 요약` 신선도는 단순 4시간 기준이 아니라 Apps Script의 09:10/16:30 종합 요약 스케줄과 45분 유예시간 기준으로 표시합니다.
+- 운영 개시 전이거나 지점별 Webhook 미등록으로 운영 로그가 비어 있어도 Apps Script가 `Alert_Log`에 종합 요약 heartbeat를 남기면 `lastSummaryAt`이 갱신됩니다.
 - `stores[].weatherData`는 최신 Action_Log의 구조화 컬럼(`weather_pop`, `weather_pcp`, `weather_wsd`, `weather_tmp_min`, `weather_tmp_max`, `weather_sno`, `weather_pm10`, `weather_pm25`, `weather_peak_time`, `weather_base_at`)을 우선 사용합니다.
 - `stores[].weatherData.levels`는 Apps Script의 `RULES` 기준으로 계산된 칩별 위험등급입니다. 프론트는 이 값을 사용해 Green/Yellow/Orange/Red 색상을 표시합니다.
 - 구조화 컬럼이 없는 과거 행은 호환용으로만 `weather_summary` 텍스트 fallback을 사용합니다.

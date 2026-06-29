@@ -504,8 +504,10 @@ function renderTimeline() {
 function renderSystem() {
   const system = state.data.system || {};
   const warnings = freshnessWarnings();
+  const lastSummaryAt = system.lastSummaryAt || system.last_summary_at || '-';
+  const summaryFreshnessLevel = system.summaryFreshnessLevel || system.summary_freshness_level;
   const items = [
-    { label: '마지막 요약', value: system.lastSummaryAt || system.last_summary_at || '-', className: systemFreshnessClass(system.lastSummaryAt || system.last_summary_at, 4) },
+    { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || systemFreshnessClass(lastSummaryAt, 8) },
     { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
     { label: 'Apps Script', value: system.appsScriptVersion || system.apps_script_version || state.data.version, className: 'ok' },
     { label: '데이터 상태', value: system.dataFreshness || system.data_freshness || state.data.source, className: state.data.source && state.data.source.startsWith('sample') ? 'warning' : 'ok' }

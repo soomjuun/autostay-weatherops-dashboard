@@ -289,7 +289,7 @@ function samplePayload(source) {
     system: {
       lastSummaryAt: iso,
       lastRevenueSyncAt: iso,
-      appsScriptVersion: 'v2.15.2',
+      appsScriptVersion: 'v2.15.3',
       dataFreshness: '샘플 데이터',
       freshnessWarnings: source === 'sample_no_api_url' ? ['실데이터 API 미연결'] : [],
       apiWarning: source === 'sample_no_api_url' ? 'WEATHER_OPS_API_URL 미설정: 샘플 데이터 표시 중' : ''
