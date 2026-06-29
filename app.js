@@ -205,6 +205,7 @@ function renderMap() {
   const stores = filteredStores();
   $('mapCount').textContent = `${stores.length}개 지점`;
   $('metroMap').innerHTML = stores.map((store, index) => {
+    const weatherChips = renderWeatherMetricChips(store, 3);
     return `
       <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}">
         <span class="pin-top">
@@ -212,6 +213,7 @@ function renderMap() {
           <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
         </span>
         <span class="pin-meta">${escapeHtml(store.weather)} · ${escapeHtml(store.dri)}</span>
+        ${weatherChips ? `<span class="weather-chip-row">${weatherChips}</span>` : ''}
         <span class="pin-action">${escapeHtml(store.nextAction)}</span>
       </button>
     `;
@@ -246,6 +248,16 @@ function renderActionList(items, fallbackTeam) {
 }
 
 function renderRecoveryChart() {
+  const panel = $('recoveryChartPanel');
+  if (state.store === 'all') {
+    if (state.chart) {
+      state.chart.destroy();
+      state.chart = null;
+    }
+    panel.hidden = true;
+    return;
+  }
+  panel.hidden = false;
   if (typeof Chart === 'undefined') {
     $('recoveryChartWrap').innerHTML = '<div class="empty-state">회복률 차트 라이브러리 로딩 대기 중입니다.</div>';
     return;
@@ -497,13 +509,13 @@ function renderStoreTable() {
   const rows = filteredStores();
   $('storeTable').innerHTML = rows.map((store) => `
     <tr>
-      <td><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
-      <td><span class="badge ${store.status}">${store.status}</span><br><span class="muted">점수 ${store.riskScore}</span></td>
-      <td>${escapeHtml(store.weather)}<br><span class="muted">${escapeHtml(store.weatherDetail || store.trigger)}</span></td>
-      <td>${escapeHtml(store.asStatus)}</td>
-      <td>${escapeHtml(store.recoveryStatus)}<br><span class="muted">CRM ${store.crmReady ? '가능' : '대기'}</span></td>
-      <td>${escapeHtml(store.dri)}</td>
-      <td>${escapeHtml(store.nextAction)}</td>
+      <td data-label="지점"><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
+      <td data-label="상태"><span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span><br><span class="muted">점수 ${store.riskScore}</span></td>
+      <td data-label="기상/트리거">${escapeHtml(store.weather)}<br><span class="muted">${escapeHtml(store.weatherDetail || store.trigger)}</span>${renderWeatherMetricChips(store, 4) ? `<div class="weather-chip-row table-weather">${renderWeatherMetricChips(store, 4)}</div>` : ''}</td>
+      <td data-label="AS">${escapeHtml(store.asStatus)}</td>
+      <td data-label="회복">${escapeHtml(store.recoveryStatus)}<br><span class="muted">CRM ${store.crmReady ? '가능' : '대기'}</span></td>
+      <td data-label="담당">${escapeHtml(store.dri)}</td>
+      <td data-label="다음 액션">${escapeHtml(store.nextAction)}</td>
     </tr>
   `).join('') || '<tr><td colspan="7">현재 필터 기준 지점이 없습니다.</td></tr>';
 }
@@ -521,18 +533,68 @@ function renderTimeline() {
 
 function renderSystem() {
   const system = state.data.system || {};
+  const warnings = freshnessWarnings();
   const items = [
-    ['마지막 요약', system.lastSummaryAt || system.last_summary_at || '-'],
-    ['매출 동기화', system.lastRevenueSyncAt || system.last_revenue_sync_at || '-'],
-    ['Apps Script', system.appsScriptVersion || system.apps_script_version || state.data.version],
-    ['데이터 상태', system.dataFreshness || system.data_freshness || state.data.source]
+    { label: '마지막 요약', value: system.lastSummaryAt || system.last_summary_at || '-', className: systemFreshnessClass(system.lastSummaryAt || system.last_summary_at, 4) },
+    { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
+    { label: 'Apps Script', value: system.appsScriptVersion || system.apps_script_version || state.data.version, className: 'ok' },
+    { label: '데이터 상태', value: system.dataFreshness || system.data_freshness || state.data.source, className: state.data.source && state.data.source.startsWith('sample') ? 'warning' : 'ok' }
   ];
-  $('systemStatus').innerHTML = items.map(([label, value]) => `
-    <div class="system-item">
-      <div class="system-label">${escapeHtml(label)}</div>
-      <div class="system-value">${escapeHtml(formatMaybeDate(value))}</div>
+  $('systemStatus').innerHTML = items.map((item) => `
+    <div class="system-item ${escapeAttr(item.className)}">
+      <span class="system-dot" aria-hidden="true"></span>
+      <div class="system-label">${escapeHtml(item.label)}</div>
+      <div class="system-value">${escapeHtml(formatMaybeDate(item.value))}</div>
     </div>
-  `).join('');
+  `).join('') + (warnings.length ? `
+    <div class="system-item warning system-wide">
+      <span class="system-dot" aria-hidden="true"></span>
+      <div class="system-label">주의 신호</div>
+      <div class="system-value">${warnings.map(escapeHtml).join(' · ')}</div>
+    </div>
+  ` : '');
+}
+
+function renderWeatherMetricChips(store, limit = 3) {
+  const chips = weatherMetricRows(store).slice(0, limit);
+  return chips.map((chip) => `<span class="weather-chip">${escapeHtml(chip.label)} ${escapeHtml(chip.value)}</span>`).join('');
+}
+
+function weatherMetricRows(store) {
+  const data = store.weatherData || {};
+  const rows = [
+    ['강수확률', firstPresent(data, ['pop', 'POP', 'rainProbability', 'rain_probability', 'precipitationProbability', 'precipitation_probability']), '%'],
+    ['강수량', firstPresent(data, ['pcp', 'PCP', 'rainfall', 'rainfallMm', 'rainfall_mm', 'precipitation', 'precipitationMm']), 'mm'],
+    ['피크', firstPresent(data, ['peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']), ''],
+    ['풍속', firstPresent(data, ['wsd', 'WSD', 'windSpeed', 'wind_speed']), 'm/s'],
+    ['최고기온', firstPresent(data, ['tmpMax', 'tmp_max', 'tmx', 'TMX', 'TMP_MAX']), 'C'],
+    ['적설', firstPresent(data, ['sno', 'SNO', 'snow', 'snowfall', 'snowfallCm']), 'cm'],
+    ['PM10', firstPresent(data, ['pm10', 'PM10']), ''],
+    ['PM2.5', firstPresent(data, ['pm25', 'pm2_5', 'PM25', 'PM2_5']), '']
+  ];
+  return rows
+    .filter(([, value]) => value !== null && value !== undefined && value !== '' && value !== '-')
+    .map(([label, value, unit]) => ({ label, value: `${value}${unit}` }));
+}
+
+function weatherMetricText(store) {
+  const rows = weatherMetricRows(store);
+  return rows.length ? rows.map((row) => `${row.label} ${row.value}`).join(' · ') : '-';
+}
+
+function firstPresent(source, keys) {
+  for (const key of keys) {
+    if (source && source[key] !== undefined && source[key] !== null && source[key] !== '') return source[key];
+  }
+  return null;
+}
+
+function systemFreshnessClass(value, thresholdHours) {
+  const age = hoursSince(value);
+  if (age === null) return 'warning';
+  if (age > thresholdHours) return 'danger';
+  if (age > thresholdHours * 0.7) return 'warning';
+  return 'ok';
 }
 
 function referenceLineDataset(label, labels, value, color) {
@@ -712,6 +774,7 @@ function openStoreDialog(storeId) {
   $('dialogBody').innerHTML = [
     ['상태', store.status],
     ['기상/트리거', `${store.weather} · ${store.weatherDetail || store.trigger}`],
+    ['기상 수치', weatherMetricText(store)],
     ['DRI', store.dri],
     ['AS 상태', store.asStatus],
     ['회복 상태', store.recoveryStatus],

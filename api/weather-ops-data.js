@@ -86,6 +86,7 @@ function samplePayload(source) {
       weather: '비 예보',
       weatherDetail: '오후 강수 가능성 높음',
       trigger: '강수',
+      weatherData: { pop: 60, pcp: 3, peakTime: '15시', windSpeed: 3.1, tmpMax: 30, pm10: 32 },
       riskScore: 58,
       openIssueCount: 1,
       asStatus: '정상',
@@ -104,6 +105,7 @@ function samplePayload(source) {
       weather: '강한 비',
       weatherDetail: '피크 전 강수 집중 가능',
       trigger: '강수',
+      weatherData: { pop: 80, pcp: 4, peakTime: '16시', windSpeed: 4.2, tmpMax: 29, pm10: 28 },
       riskScore: 82,
       openIssueCount: 2,
       asStatus: '정상',
@@ -122,6 +124,7 @@ function samplePayload(source) {
       weather: '주의 낮음',
       weatherDetail: '운영 제한 요인 없음',
       trigger: '정상',
+      weatherData: { pop: 20, pcp: 0, peakTime: '-', windSpeed: 2.4, tmpMax: 28, pm10: 24 },
       riskScore: 22,
       openIssueCount: 0,
       asStatus: '정상',
@@ -140,6 +143,7 @@ function samplePayload(source) {
       weather: '비 예보',
       weatherDetail: '저녁 강수 가능',
       trigger: '강수',
+      weatherData: { pop: 70, pcp: 4, peakTime: '19시', windSpeed: 3.8, tmpMax: 30, pm10: 35 },
       riskScore: 61,
       openIssueCount: 1,
       asStatus: '정상',
@@ -158,6 +162,7 @@ function samplePayload(source) {
       weather: '비/대기질 주의',
       weatherDetail: '강수 후 미세먼지 완화 가능',
       trigger: '강수',
+      weatherData: { pop: 80, pcp: 2, peakTime: '17시', windSpeed: 3.5, tmpMax: 30, pm10: 58 },
       riskScore: 76,
       openIssueCount: 2,
       asStatus: '정상',
@@ -176,6 +181,7 @@ function samplePayload(source) {
       weather: '강수 집중',
       weatherDetail: '고객 동선 안전 확인 필요',
       trigger: '강수',
+      weatherData: { pop: 90, pcp: 5, peakTime: '15시', windSpeed: 4.8, tmpMax: 30, pm10: 41 },
       riskScore: 91,
       openIssueCount: 3,
       asStatus: '정상화 대기',
@@ -194,6 +200,7 @@ function samplePayload(source) {
       weather: '비 예보',
       weatherDetail: '신규점 기준 축적 중',
       trigger: '강수',
+      weatherData: { pop: 60, pcp: 3, peakTime: '16시', windSpeed: 2.9, tmpMax: 29, pm10: 31 },
       riskScore: 54,
       openIssueCount: 1,
       asStatus: '정상',
@@ -206,7 +213,7 @@ function samplePayload(source) {
   ];
 
   return {
-    version: 'sample-v0.4',
+    version: 'sample-v0.5',
     generatedAt: iso,
     source,
     summary: {
@@ -267,7 +274,7 @@ function samplePayload(source) {
     system: {
       lastSummaryAt: iso,
       lastRevenueSyncAt: iso,
-      appsScriptVersion: 'v2.15.0',
+      appsScriptVersion: 'v2.15.1',
       dataFreshness: '샘플 데이터',
       freshnessWarnings: source === 'sample_no_api_url' ? ['실데이터 API 미연결'] : [],
       apiWarning: source === 'sample_no_api_url' ? 'WEATHER_OPS_API_URL 미설정: 샘플 데이터 표시 중' : ''

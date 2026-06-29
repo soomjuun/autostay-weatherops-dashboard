@@ -315,6 +315,27 @@ select { min-width: 180px; }
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+.weather-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.weather-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #eef6ff;
+  color: #075985;
+  font-size: 10.5px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+.table-weather {
+  margin-top: 7px;
+}
 
 .status-Green { border-color: var(--green); }
 .status-Yellow { border-color: var(--yellow); }
@@ -797,6 +818,28 @@ td:last-child { min-width: 280px; }
 .system-grid {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
+.system-item {
+  position: relative;
+  padding-left: 30px;
+}
+.system-item.ok { border-color: #bbf7d0; background: #f0fdf4; }
+.system-item.warning { border-color: #fed7aa; background: #fff7ed; }
+.system-item.danger { border-color: #fecaca; background: #fef2f2; }
+.system-wide {
+  grid-column: 1 / -1;
+}
+.system-dot {
+  position: absolute;
+  left: 12px;
+  top: 14px;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--gray);
+}
+.system-item.ok .system-dot { background: var(--green); }
+.system-item.warning .system-dot { background: var(--orange); }
+.system-item.danger .system-dot { background: var(--red); }
 .system-label { color: var(--muted); font-size: 12px; font-weight: 800; }
 .system-value { margin-top: 6px; font-size: 13px; font-weight: 850; word-break: break-word; }
 
@@ -870,4 +913,43 @@ td:last-child { min-width: 280px; }
   .heat-head { display: none; }
   .matrix-store,
   .heat-store { margin-top: 6px; }
+  .table-wrap { overflow: visible; }
+  table { min-width: 0; }
+  table,
+  thead,
+  tbody,
+  tr,
+  th,
+  td {
+    display: block;
+    width: 100%;
+  }
+  thead { display: none; }
+  tbody {
+    display: grid;
+    gap: 10px;
+  }
+  tr {
+    border: 1px solid var(--line);
+    border-radius: var(--r);
+    background: #fbfdff;
+    padding: 8px 10px;
+  }
+  td {
+    display: grid;
+    grid-template-columns: 86px 1fr;
+    gap: 10px;
+    border-bottom: 1px solid #eef2f7;
+    padding: 8px 0;
+  }
+  td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 900;
+  }
+  td:last-child {
+    min-width: 0;
+    border-bottom: 0;
+  }
 }
