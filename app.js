@@ -301,11 +301,14 @@ function renderRecoveryChart() {
 
 function renderStatusBar() {
   const rows = statusDistributionRows();
+  const stores = filteredStores();
   const total = rows.reduce((sum, row) => sum + Number(row.count || 0), 0);
   if (!total) {
     $('statusStrip').innerHTML = '<div class="empty-state">현재 필터 기준 지점이 없습니다.</div>';
     return;
   }
+  const focusStores = stores.filter((store) => store.status !== 'Green' && store.status !== 'Gray').slice(0, 4);
+  const fallbackStores = focusStores.length ? focusStores : stores.slice(0, 3);
   const summary = rows.map((row) => `
     <span class="status-count status-${row.status}">
       <b>${escapeHtml(levelLabel(row.status))}</b>${Number(row.count || 0)}개
@@ -320,7 +323,25 @@ function renderStatusBar() {
     <div class="status-summary">${summary}</div>
     <div class="status-bar" aria-label="오늘 지점 상태">${segments}</div>
     <div class="status-note">총 ${total}개 지점 · 높은 심각도 순으로 표시</div>
+    <div class="status-focus">
+      <div class="status-focus-title">${focusStores.length ? '우선 확인 지점' : '현재 관찰 지점'}</div>
+      <div class="status-focus-list">
+        ${fallbackStores.map((store) => `
+          <button class="status-focus-item status-${store.status}" type="button" data-store="${escapeAttr(store.id)}">
+            <span class="focus-top">
+              <strong>${escapeHtml(store.name)}</strong>
+              <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
+            </span>
+            <span class="focus-meta">${escapeHtml(store.weather)} · ${escapeHtml(store.recoveryStatus)} · CRM ${store.crmReady ? '가능' : '대기'}</span>
+            <span class="focus-action">${escapeHtml(store.nextAction)}</span>
+          </button>
+        `).join('')}
+      </div>
+    </div>
   `;
+  $('statusStrip').querySelectorAll('.status-focus-item').forEach((button) => {
+    button.addEventListener('click', () => openStoreDialog(button.dataset.store));
+  });
 }
 
 function renderRiskMatrix() {
@@ -372,12 +393,18 @@ function renderRecoveryStageHeatmap() {
   const stores = filteredStores();
   const recovery = state.data.recovery || {};
   const labels = recovery.labels || ['D-day', 'D+1', 'D+2'];
+  const gridStyle = `grid-template-columns:minmax(86px,1.05fr) repeat(${labels.length}, minmax(58px,.8fr))`;
   if (!stores.length) {
     $('recoveryStageHeatmap').innerHTML = '<div class="empty-state">현재 필터 기준 회복 데이터가 없습니다.</div>';
     return;
   }
   $('recoveryStageHeatmap').innerHTML = `
-    <div class="heat-row heat-head" style="grid-template-columns:minmax(118px,1.2fr) repeat(${labels.length}, minmax(86px,1fr))">
+    <div class="heat-legend">
+      <span><i class="level-good"></i>100% 이상</span>
+      <span><i class="level-watch"></i>90~99%</span>
+      <span><i class="level-action"></i>90% 미만</span>
+    </div>
+    <div class="heat-row heat-head" style="${gridStyle}">
       <div>지점</div>
       ${labels.map((label) => `<div>${escapeHtml(label)}</div>`).join('')}
     </div>
@@ -386,7 +413,7 @@ function renderRecoveryStageHeatmap() {
       const processed = series.processedRate || [];
       const revenue = series.revenueRate || [];
       return `
-        <div class="heat-row" style="grid-template-columns:minmax(118px,1.2fr) repeat(${labels.length}, minmax(86px,1fr))">
+        <div class="heat-row" style="${gridStyle}">
           <div class="heat-store"><strong>${escapeHtml(store.name)}</strong><span>${escapeHtml(levelLabel(store.status))}</span></div>
           ${labels.map((label, index) => {
             const processedRate = numericOrNull(processed[index]);
@@ -435,7 +462,13 @@ function renderRecoveryComparison() {
         </div>
       </div>
     `;
-  }).join('');
+  }).join('') + `
+    <div class="comparison-legend">
+      <span><i class="legend-dot processed"></i>이용 회복률</span>
+      <span><i class="legend-dot revenue"></i>매출 회복률</span>
+      <span>갭이 클수록 결제/단가/구독 믹스 확인 필요</span>
+    </div>
+  `;
 }
 
 function renderRecoveryQueue() {
