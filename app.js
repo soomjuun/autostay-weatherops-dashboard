@@ -37,11 +37,20 @@ function bindEvents() {
   $('riskFilter').querySelectorAll('button').forEach((button) => {
     button.addEventListener('click', () => {
       state.risk = button.dataset.risk;
-      $('riskFilter').querySelectorAll('button').forEach((b) => b.classList.toggle('active', b === button));
+      updateRiskFilterState();
       render();
     });
   });
   $('dialogClose').addEventListener('click', () => $('storeDialog').close());
+  updateRiskFilterState();
+}
+
+function updateRiskFilterState() {
+  $('riskFilter').querySelectorAll('button').forEach((button) => {
+    const active = button.dataset.risk === state.risk;
+    button.classList.toggle('active', active);
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
 }
 
 async function loadDashboard(options = {}) {
@@ -222,7 +231,7 @@ function renderMap() {
   $('metroMap').innerHTML = stores.map((store, index) => {
     const weatherChips = renderWeatherMetricChips(store, 3);
     return `
-      <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}">
+      <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}" aria-label="${escapeAttr(`${store.name} ${levelLabel(store.status)}. ${store.weather}. 다음 액션: ${store.nextAction}`)}">
         <span class="pin-top">
           <strong>${escapeHtml(store.name)}</strong>
           <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
@@ -245,7 +254,7 @@ function renderActions() {
 
 function renderActionList(items, fallbackTeam) {
   const filtered = (items || []).filter(matchesSelectedStore);
-  if (!filtered.length) return '<div class="action-item"><div class="action-body">현재 필터 기준 조치 항목이 없습니다.</div></div>';
+  if (!filtered.length) return '<div class="empty-state compact">현재 필터 기준 조치 항목이 없습니다.</div>';
   return filtered.map((item) => `
     <div class="action-item">
       <div class="action-top">
@@ -289,32 +298,37 @@ function renderRecoveryChart() {
   const processedRate = selectedSeries.processedRate || selectedSeries.processed_rate || recovery.processedRate || recovery.processed_rate || [];
   const revenueRate = selectedSeries.revenueRate || selectedSeries.revenue_rate || recovery.revenueRate || recovery.revenue_rate || [];
   const ctx = $('recoveryChart');
-  if (state.chart) state.chart.destroy();
+  const chartData = {
+    labels,
+    datasets: [
+      {
+        label: state.store === 'all' ? '처리대수 회복률' : `${storeNameById(state.store)} 처리대수 회복률`,
+        data: processedRate,
+        borderColor: '#0f6b9f',
+        backgroundColor: 'rgba(15,107,159,.12)',
+        tension: .35,
+        fill: true
+      },
+      {
+        label: state.store === 'all' ? '매출 회복률' : `${storeNameById(state.store)} 매출 회복률`,
+        data: revenueRate,
+        borderColor: '#c05621',
+        backgroundColor: 'rgba(192,86,33,.08)',
+        tension: .35,
+        fill: false
+      },
+      referenceLineDataset('기준 100%', labels, 100, '#64748b'),
+      referenceLineDataset('조치 기준 90%', labels, 90, '#c05621')
+    ]
+  };
+  if (state.chart) {
+    state.chart.data = chartData;
+    state.chart.update();
+    return;
+  }
   state.chart = new Chart(ctx, {
     type: 'line',
-    data: {
-      labels,
-      datasets: [
-        {
-          label: state.store === 'all' ? '처리대수 회복률' : `${storeNameById(state.store)} 처리대수 회복률`,
-          data: processedRate,
-          borderColor: '#0f6b9f',
-          backgroundColor: 'rgba(15,107,159,.12)',
-          tension: .35,
-          fill: true
-        },
-        {
-          label: state.store === 'all' ? '매출 회복률' : `${storeNameById(state.store)} 매출 회복률`,
-          data: revenueRate,
-          borderColor: '#c05621',
-          backgroundColor: 'rgba(192,86,33,.08)',
-          tension: .35,
-          fill: false
-        },
-        referenceLineDataset('기준 100%', labels, 100, '#64748b'),
-        referenceLineDataset('조치 기준 90%', labels, 90, '#c05621')
-      ]
-    },
+    data: chartData,
     options: {
       responsive: true,
       maintainAspectRatio: false,
@@ -797,6 +811,7 @@ function openStoreDialog(storeId) {
     <div class="detail-row"><b>${escapeHtml(label)}</b><span>${escapeHtml(value)}</span></div>
   `).join('');
   $('storeDialog').showModal();
+  $('dialogClose').focus();
 }
 
 async function copyBrief() {

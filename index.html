@@ -19,7 +19,7 @@
   </script>
 </head>
 <body>
-  <div id="loadingOverlay" class="loading-overlay">
+  <div id="loadingOverlay" class="loading-overlay" aria-live="polite" aria-busy="true">
     <div class="loading-card">
       <div class="loading-title">[OPS] Weather Ops Dashboard</div>
       <div class="loading-sub">기상 리스크와 회복 액션을 불러오는 중입니다.</div>
@@ -27,8 +27,8 @@
     </div>
   </div>
 
-  <div id="errorBanner" class="global-banner" hidden></div>
-  <div id="toast" class="toast" hidden></div>
+  <div id="errorBanner" class="global-banner" role="status" aria-live="polite" hidden></div>
+  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <main class="app-shell">
     <header class="hero">
@@ -204,7 +204,7 @@
     </section>
   </main>
 
-  <dialog id="storeDialog" class="store-dialog">
+  <dialog id="storeDialog" class="store-dialog" aria-labelledby="dialogTitle">
     <div class="dialog-head">
       <h2 id="dialogTitle">지점 상세</h2>
       <button id="dialogClose" type="button" aria-label="닫기">닫기</button>

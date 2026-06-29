@@ -29,6 +29,17 @@ body {
 
 button, select { font: inherit; }
 button { cursor: pointer; }
+button:focus-visible,
+select:focus-visible,
+dialog:focus-visible,
+.store-pin:focus-visible {
+  outline: 3px solid rgba(15, 107, 159, .72);
+  outline-offset: 3px;
+}
+button:disabled {
+  cursor: not-allowed;
+  opacity: .56;
+}
 
 .loading-overlay {
   position: fixed;
@@ -203,6 +214,7 @@ select {
   font-weight: 800;
 }
 .segmented button {
+  flex: 0 0 auto;
   border-color: transparent;
   background: transparent;
   color: var(--muted);
@@ -301,6 +313,10 @@ select { min-width: 180px; }
 .store-pin:hover {
   transform: translateY(-2px);
   box-shadow: 0 14px 30px rgba(15, 23, 42, .12);
+}
+.store-pin:focus-visible {
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(15, 23, 42, .14);
 }
 .pin-top {
   display: flex;
@@ -733,13 +749,17 @@ select { min-width: 180px; }
   min-height: 70px;
   display: grid;
   place-items: center;
+  padding: 12px;
   color: var(--muted);
   background: #f8fafc;
   border: 1px dashed var(--line);
   border-radius: var(--r);
   font-size: 12px;
   font-weight: 800;
+  line-height: 1.45;
+  text-align: center;
 }
+.empty-state.compact { min-height: 56px; }
 
 .table-panel { margin-top: 16px; }
 .table-wrap { overflow: auto; }
@@ -854,6 +874,9 @@ td:last-child { min-width: 280px; }
   }
   .kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .metro-map { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .panel-head {
+    align-items: flex-start;
+  }
 }
 
 @media (max-width: 720px) {
@@ -861,6 +884,7 @@ td:last-child { min-width: 280px; }
   .hero { padding: 18px; }
   .toolbar { align-items: stretch; flex-direction: column; }
   .segmented { overflow-x: auto; }
+  .segmented button { min-width: 76px; }
   .icon-btn, .icon-btn.secondary, select { width: 100%; margin-left: 0; }
   .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metro-map { grid-template-columns: 1fr; }
@@ -926,5 +950,30 @@ td:last-child { min-width: 280px; }
   td:last-child {
     min-width: 0;
     border-bottom: 0;
+  }
+}
+
+@media (max-width: 420px) {
+  .kpi-strip { grid-template-columns: 1fr; }
+  .hero-meta { gap: 6px; }
+  .meta-pill {
+    width: 100%;
+    justify-content: center;
+    white-space: normal;
+    text-align: center;
+  }
+  .panel {
+    padding: 14px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
   }
 }
