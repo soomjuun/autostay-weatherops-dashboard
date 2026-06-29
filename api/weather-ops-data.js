@@ -7,15 +7,19 @@ module.exports = async function handler(req, res) {
 
   const apiUrl = process.env.WEATHER_OPS_API_URL;
   const apiToken = process.env.WEATHER_OPS_API_TOKEN || '';
-  const allowSample = String(process.env.WEATHER_OPS_ALLOW_SAMPLE || 'true').toLowerCase() !== 'false';
+  const allowSample = String(process.env.WEATHER_OPS_ALLOW_SAMPLE || 'false').toLowerCase() === 'true';
 
   if (!apiUrl) {
     if (!allowSample) {
+      res.setHeader('X-Weather-Ops-Source', 'missing_config');
       return res.status(500).json({
         error: 'WEATHER_OPS_API_URL is not configured.',
-        source: 'missing_config'
+        source: 'missing_config',
+        detail: 'Set WEATHER_OPS_API_URL to the deployed Apps Script Web App URL. Sample data is disabled by default for production safety.',
+        requiredEnv: ['WEATHER_OPS_API_URL']
       });
     }
+    res.setHeader('X-Weather-Ops-Source', 'sample_no_api_url');
     return res.status(200).json(samplePayload('sample_no_api_url'));
   }
 
@@ -34,17 +38,21 @@ module.exports = async function handler(req, res) {
     if (parsed && parsed.error) {
       throw new Error(parsed.error);
     }
+    res.setHeader('X-Weather-Ops-Source', 'apps_script');
     return res.status(200).json(normalizePayload(parsed, 'apps_script'));
   } catch (error) {
     if (!allowSample) {
+      res.setHeader('X-Weather-Ops-Source', 'upstream_error');
       return res.status(502).json({
         error: 'Weather Ops upstream request failed.',
         detail: error && error.message ? error.message : String(error),
-        source: 'upstream_error'
+        source: 'upstream_error',
+        requiredEnv: ['WEATHER_OPS_API_URL', 'WEATHER_OPS_API_TOKEN']
       });
     }
     const payload = samplePayload('sample_upstream_error');
     payload.system.apiWarning = error && error.message ? error.message : String(error);
+    res.setHeader('X-Weather-Ops-Source', 'sample_upstream_error');
     return res.status(200).json(payload);
   }
 };

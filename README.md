@@ -49,7 +49,7 @@ weather-ops-dashboard/
 | `COOKIE_KEY` | 인증 쿠키 키. 기본값은 `weather_ops_auth` |
 | `SESSION_SECRET` | 인증 세션 쿠키 HMAC 서명 키. 32자 이상 랜덤 문자열 권장 |
 | `WEATHER_OPS_API_TOKEN` | Apps Script API에 `token` 쿼리로 전달할 공유 토큰 |
-| `WEATHER_OPS_ALLOW_SAMPLE` | API 미연결 시 샘플 데이터 표시 여부. 운영 연결 후 `false` 권장 |
+| `WEATHER_OPS_ALLOW_SAMPLE` | 샘플 데이터 표시 여부. 운영 기본값은 `false`, 데모/개발 검토 때만 `true` |
 
 Apps Script 속성:
 
@@ -68,9 +68,9 @@ Apps Script 속성:
 3. `WEATHER_OPS_API_TOKEN`이 있으면 `token=...`도 함께 붙습니다.
 4. Apps Script가 `error` JSON을 반환하면 대시보드 API 오류로 처리합니다.
 5. Apps Script 응답을 대시보드 표준 payload로 정규화합니다.
-6. API가 없거나 실패했는데 `WEATHER_OPS_ALLOW_SAMPLE=true`이면 샘플 데이터로 화면을 표시합니다.
+6. API가 없거나 실패하면 기본적으로 오류를 표시합니다. `WEATHER_OPS_ALLOW_SAMPLE=true`를 명시한 경우에만 샘플 데이터로 화면을 표시합니다.
 
-운영 연결 후에는 `WEATHER_OPS_ALLOW_SAMPLE=false`로 바꿔야 데이터 연결 실패가 숨겨지지 않습니다.
+운영에서는 `WEATHER_OPS_ALLOW_SAMPLE=false`를 유지해야 데이터 연결 실패가 숨겨지지 않습니다.
 
 ## 기대 Apps Script 응답 형태
 
@@ -168,11 +168,11 @@ autostay-weather-ops-dashboard
 2. Vercel에서 신규 프로젝트를 생성하고 GitHub 저장소를 연결합니다.
 3. Framework Preset은 `Other` 또는 자동 감지 상태로 둡니다.
 4. Environment Variables에 `DASHBOARD_TOKEN`, `SESSION_SECRET`을 등록합니다.
-5. 처음에는 `WEATHER_OPS_ALLOW_SAMPLE=true`로 배포해 화면을 확인합니다.
-6. Apps Script Web App URL이 준비되면 `WEATHER_OPS_API_URL`을 등록합니다.
-7. Apps Script 속성에 `WEATHER_OPS_DASHBOARD_TOKEN`을 입력하고, Vercel의 `WEATHER_OPS_API_TOKEN`에도 같은 값을 등록합니다.
-8. 실데이터 연결 확인 후 `WEATHER_OPS_ALLOW_SAMPLE=false`로 변경합니다.
-9. 재배포합니다.
+5. Apps Script Web App URL을 `WEATHER_OPS_API_URL`에 등록합니다.
+6. Apps Script 속성에 `WEATHER_OPS_DASHBOARD_TOKEN`을 입력하고, Vercel의 `WEATHER_OPS_API_TOKEN`에도 같은 값을 등록합니다.
+7. `WEATHER_OPS_ALLOW_SAMPLE=false`를 등록합니다.
+8. 재배포 후 화면 상단 데이터 상태가 `실데이터 연결`인지 확인합니다.
+9. 데모/개발 확인이 필요할 때만 별도 환경에서 `WEATHER_OPS_ALLOW_SAMPLE=true`를 임시 사용합니다.
 
 ## 운영 화면 구성
 
@@ -207,5 +207,5 @@ autostay-weather-ops-dashboard
 - `DASHBOARD_TOKEN`은 Vercel 환경변수로만 관리합니다.
 - 로그인 쿠키에는 원 토큰을 저장하지 않고 HMAC 서명 세션값만 저장합니다.
 - `GET /api/auth?token=` 방식은 사용하지 않습니다.
-- 운영 연결 후 샘플 데이터 fallback을 끕니다.
+- 운영 환경에서는 샘플 데이터 fallback을 켜지 않습니다.
 - Apps Script API에 별도 토큰을 둘 경우 `WEATHER_OPS_API_TOKEN`을 사용합니다.
