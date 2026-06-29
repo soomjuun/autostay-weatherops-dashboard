@@ -16,6 +16,11 @@ const STATUS_LABELS = {
   Green: '정상',
   Gray: '대기'
 };
+const SUMMARY_SCHEDULES = [
+  { hour: 9, minute: 10 },
+  { hour: 16, minute: 30 }
+];
+const SUMMARY_GRACE_MINUTES = 45;
 
 document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
@@ -892,16 +897,67 @@ function freshnessWarnings() {
   const system = state.data && state.data.system ? state.data.system : {};
   const summary = state.data && state.data.summary ? state.data.summary : {};
   const provided = system.freshnessWarnings || system.freshness_warnings || [];
-  const warnings = Array.isArray(provided) ? [...provided] : [];
+  const warnings = Array.isArray(provided)
+    ? provided.filter((warning) => !String(warning || '').includes('마지막 요약 알림이 4시간 이상'))
+    : [];
+  const summaryWarning = summaryFreshnessWarning(system);
   const revenueAge = hoursSince(system.lastRevenueSyncAt || system.last_revenue_sync_at);
   const generatedAge = hoursSince(state.data && state.data.generatedAt);
   const systemErrorCount = Number(summary.systemError24h ?? summary.system_error_24h ?? system.systemError24h ?? system.system_error_24h ?? 0);
   const dataWaitCount = Number(summary.dataWaitCount ?? summary.data_wait_count ?? 0);
+  if (summaryWarning) warnings.push(summaryWarning);
   if (revenueAge !== null && revenueAge > 30) warnings.push('매출 원천 동기화 30시간 초과');
   if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
   if (systemErrorCount > 0) warnings.push(`시스템 오류 ${systemErrorCount}건`);
   if (dataWaitCount > 0) warnings.push(`성과 확정 대기 ${dataWaitCount}건`);
   return [...new Set(warnings)];
+}
+
+function summaryFreshnessWarning(system) {
+  if (system.summaryFreshnessLevel || system.summary_freshness_level) return '';
+  const lastSummaryAt = system.lastSummaryAt || system.last_summary_at;
+  const lastSummaryMs = Date.parse(lastSummaryAt || '');
+  if (!Number.isFinite(lastSummaryMs)) return '종합 요약 실행 기록이 없습니다. sendWeatherOpsSummary 실행 여부를 확인하세요.';
+  const latestDue = latestDueSummaryDate(new Date());
+  if (latestDue && lastSummaryMs + 60000 < latestDue.getTime()) {
+    return `예정된 종합 요약(${formatKstTimeOnly(latestDue)})이 ${SUMMARY_GRACE_MINUTES}분 유예시간 내 기록되지 않았습니다.`;
+  }
+  return '';
+}
+
+function latestDueSummaryDate(now) {
+  return summaryScheduleCandidates(now, -1, 0)
+    .filter((date) => date.getTime() + SUMMARY_GRACE_MINUTES * 60000 <= now.getTime())
+    .sort((a, b) => b.getTime() - a.getTime())[0] || null;
+}
+
+function summaryScheduleCandidates(now, startOffset, endOffset) {
+  const candidates = [];
+  for (let offset = startOffset; offset <= endOffset; offset += 1) {
+    const dateKey = kstDateKey(new Date(now.getTime() + offset * 86400000));
+    SUMMARY_SCHEDULES.forEach((schedule) => {
+      candidates.push(new Date(`${dateKey}T${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}:00+09:00`));
+    });
+  }
+  return candidates;
+}
+
+function kstDateKey(date) {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).format(date);
+}
+
+function formatKstTimeOnly(value) {
+  return new Intl.DateTimeFormat('ko-KR', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false
+  }).format(value);
 }
 
 function hoursSince(value) {
