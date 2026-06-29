@@ -149,7 +149,6 @@ function render() {
   renderActions();
   renderRecoveryChart();
   renderRecoveryQueue();
-  renderStatusBar();
   renderRiskMatrix();
   renderRecoveryFunnel();
   renderRecoveryStageHeatmap();
@@ -230,7 +229,7 @@ function renderActions() {
 }
 
 function renderActionList(items, fallbackTeam) {
-  const filtered = (items || []).filter((item) => state.store === 'all' || slug(item.store) === state.store || findStoreId(item.store) === state.store);
+  const filtered = (items || []).filter(matchesSelectedStore);
   if (!filtered.length) return '<div class="action-item"><div class="action-body">현재 필터 기준 조치 항목이 없습니다.</div></div>';
   return filtered.map((item) => `
     <div class="action-item">
@@ -250,14 +249,17 @@ function renderActionList(items, fallbackTeam) {
 
 function renderRecoveryChart() {
   const panel = $('recoveryChartPanel');
+  const grid = $('primaryDashboardGrid');
   if (state.store === 'all') {
     if (state.chart) {
       state.chart.destroy();
       state.chart = null;
     }
     panel.hidden = true;
+    if (grid) grid.classList.add('chart-hidden');
     return;
   }
+  if (grid) grid.classList.remove('chart-hidden');
   panel.hidden = false;
   if (typeof Chart === 'undefined') {
     $('recoveryChartWrap').innerHTML = '<div class="empty-state">회복률 차트 라이브러리 로딩 대기 중입니다.</div>';
@@ -309,51 +311,6 @@ function renderRecoveryChart() {
         y: { suggestedMin: 0, suggestedMax: 120, ticks: { callback: (value) => `${value}%` } }
       }
     }
-  });
-}
-
-function renderStatusBar() {
-  const rows = statusDistributionRows();
-  const stores = filteredStores();
-  const total = rows.reduce((sum, row) => sum + Number(row.count || 0), 0);
-  if (!total) {
-    $('statusStrip').innerHTML = '<div class="empty-state">현재 필터 기준 지점이 없습니다.</div>';
-    return;
-  }
-  const focusStores = stores.filter((store) => store.status !== 'Green' && store.status !== 'Gray').slice(0, 4);
-  const fallbackStores = focusStores.length ? focusStores : stores.slice(0, 3);
-  const summary = rows.map((row) => `
-    <span class="status-count status-${row.status}">
-      <b>${escapeHtml(levelLabel(row.status))}</b>${Number(row.count || 0)}개
-    </span>
-  `).join('');
-  const segments = rows.map((row) => `
-    <span class="status-segment status-${row.status}" style="flex-grow:${Number(row.count || 0)}">
-      ${escapeHtml(levelLabel(row.status))} ${Number(row.count || 0)}
-    </span>
-  `).join('');
-  $('statusStrip').innerHTML = `
-    <div class="status-summary">${summary}</div>
-    <div class="status-bar" aria-label="오늘 지점 상태">${segments}</div>
-    <div class="status-note">총 ${total}개 지점 · 높은 심각도 순으로 표시</div>
-    <div class="status-focus">
-      <div class="status-focus-title">${focusStores.length ? '우선 확인 지점' : '현재 관찰 지점'}</div>
-      <div class="status-focus-list">
-        ${fallbackStores.map((store) => `
-          <button class="status-focus-item status-${store.status}" type="button" data-store="${escapeAttr(store.id)}">
-            <span class="focus-top">
-              <strong>${escapeHtml(store.name)}</strong>
-              <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
-            </span>
-            <span class="focus-meta">${escapeHtml(store.weather)} · ${escapeHtml(store.recoveryStatus)} · CRM ${store.crmReady ? '가능' : '대기'}</span>
-            <span class="focus-action">${escapeHtml(store.nextAction)}</span>
-          </button>
-        `).join('')}
-      </div>
-    </div>
-  `;
-  $('statusStrip').querySelectorAll('.status-focus-item').forEach((button) => {
-    button.addEventListener('click', () => openStoreDialog(button.dataset.store));
   });
 }
 
@@ -486,21 +443,23 @@ function renderRecoveryComparison() {
 
 function renderRecoveryQueue() {
   const queue = (state.data.recovery && state.data.recovery.queue) || [];
-  const filtered = queue.filter((item) => state.store === 'all' || slug(item.store) === state.store || findStoreId(item.store) === state.store);
+  const filtered = queue.filter(matchesSelectedStore);
   if (!filtered.length) {
-    $('recoveryQueue').innerHTML = '<div class="queue-item"><div class="queue-body">현재 필터 기준 회복 큐가 없습니다.</div></div>';
+    $('recoveryQueue').innerHTML = '<div class="empty-state">현재 필터 기준 회복 큐가 없습니다.</div>';
     return;
   }
   $('recoveryQueue').innerHTML = filtered.map((item) => `
     <div class="queue-item">
-      <div class="queue-top">
-        <span class="queue-store">${escapeHtml(item.store || '-')}</span>
-        <span class="badge ${queueStatusClass(item.status)}">${escapeHtml(item.status || '-')}</span>
+      <div class="queue-main">
+        <div class="queue-top">
+          <span class="queue-store">${escapeHtml(item.store || '-')}</span>
+          <span class="badge ${queueStatusClass(item.status)}">${escapeHtml(item.status || '-')}</span>
+        </div>
+        <div class="queue-body">${escapeHtml(item.stage || '-')} · 처리대수 회복률 ${formatPercent(item.processedRecoveryRate ?? item.processed_recovery_rate)}</div>
       </div>
-      <div class="queue-body">${escapeHtml(item.stage || '-')} · 처리대수 회복률 ${formatPercent(item.processedRecoveryRate ?? item.processed_recovery_rate)}</div>
-      <div class="queue-foot">
-        <span>CRM ${escapeHtml(item.crmAllowed || item.crm_allowed || '-')}</span>
-        <span>다음 ${escapeHtml(item.next || '-')}</span>
+      <div class="queue-side">
+        <span class="queue-chip">CRM ${escapeHtml(item.crmAllowed || item.crm_allowed || '-')}</span>
+        <span class="queue-next">${escapeHtml(item.next || '-')}</span>
       </div>
     </div>
   `).join('');
@@ -652,13 +611,6 @@ function referenceLineDataset(label, labels, value, color) {
     tension: 0,
     fill: false
   };
-}
-
-function statusDistributionRows() {
-  const stores = filteredStores();
-  return ['Error', 'Red', 'Orange', 'Yellow', 'Green', 'Gray']
-    .map((status) => ({ status, count: stores.filter((store) => store.status === status).length }))
-    .filter((row) => row.count > 0);
 }
 
 function levelLabel(status) {
@@ -860,9 +812,23 @@ function topStatus(stores) {
 
 function findStoreId(storeName) {
   const target = normalizeStoreName(storeName);
-  const found = state.data.stores.find((store) => normalizeStoreName(store.name) === target)
-    || state.data.stores.find((store) => normalizeStoreName(store.name).includes(target) || target.includes(normalizeStoreName(store.name)));
+  const raw = String(storeName || '').trim();
+  const found = state.data.stores.find((store) => store.id === raw || slug(store.id) === slug(raw))
+    || state.data.stores.find((store) => normalizeStoreName(store.name) === target);
   return found ? found.id : slug(storeName);
+}
+
+function matchesSelectedStore(item) {
+  if (state.store === 'all') return true;
+  const candidates = [
+    item && item.storeId,
+    item && item.store_id,
+    item && item.id,
+    item && item.store,
+    item && item.storeName,
+    item && item.store_name,
+  ].filter((value) => value !== null && value !== undefined && value !== '');
+  return candidates.some((value) => findStoreId(value) === state.store || slug(value) === state.store);
 }
 
 function normalizeStoreName(value) {
