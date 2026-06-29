@@ -50,7 +50,7 @@ async function loadDashboard(options = {}) {
       return;
     }
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || `HTTP ${response.status}`);
+    if (!response.ok) throw new Error(formatApiError(payload, response.status));
     state.data = normalize(payload);
     ensureStoreOptions();
     render();
@@ -65,6 +65,16 @@ async function loadDashboard(options = {}) {
   } finally {
     showLoading(false);
   }
+}
+
+function formatApiError(payload, status) {
+  const parts = [payload && payload.error ? payload.error : `HTTP ${status}`];
+  if (payload && payload.detail) parts.push(payload.detail);
+  if (payload && Array.isArray(payload.requiredEnv) && payload.requiredEnv.length) {
+    parts.push(`필수 환경변수: ${payload.requiredEnv.join(', ')}`);
+  }
+  if (payload && payload.source) parts.push(`source=${payload.source}`);
+  return parts.join(' | ');
 }
 
 function normalize(payload) {
