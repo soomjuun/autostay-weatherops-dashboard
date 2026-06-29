@@ -2,22 +2,19 @@ const state = {
   data: null,
   risk: 'all',
   store: 'all',
-  chart: null,
-  statusChart: null,
-  recoveryGapChart: null
+  chart: null
 };
 
 const $ = (id) => document.getElementById(id);
 
 const STATUS_ORDER = { Error: 5, Red: 4, Orange: 3, Yellow: 2, Green: 1, Gray: 0 };
-const PIN_POSITIONS = {
-  ilsan: [28, 31],
-  goyang: [43, 26],
-  jayuro: [21, 47],
-  hanam: [68, 44],
-  gwangmyeong: [48, 69],
-  seongsu: [59, 57],
-  anseong: [72, 77]
+const STATUS_LABELS = {
+  Error: '오류',
+  Red: '중단',
+  Orange: '조치',
+  Yellow: '주의',
+  Green: '정상',
+  Gray: '대기'
 };
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -151,11 +148,11 @@ function render() {
   renderActions();
   renderRecoveryChart();
   renderRecoveryQueue();
-  renderStatusChart();
+  renderStatusBar();
   renderRiskMatrix();
   renderRecoveryFunnel();
-  renderRecoverySparklines();
-  renderRecoveryGapChart();
+  renderRecoveryStageHeatmap();
+  renderRecoveryComparison();
   renderStoreTable();
   renderTimeline();
   renderSystem();
@@ -208,23 +205,20 @@ function renderMap() {
   const stores = filteredStores();
   $('mapCount').textContent = `${stores.length}개 지점`;
   $('metroMap').innerHTML = stores.map((store, index) => {
-    const pos = PIN_POSITIONS[store.id] || fallbackPosition(index);
     return `
-      <button class="store-pin status-${store.status}" style="left:${pos[0]}%;top:${pos[1]}%" type="button" data-store="${escapeAttr(store.id)}">
-        <strong>${escapeHtml(store.name)}</strong>
-        <span>${escapeHtml(store.weather)} · ${escapeHtml(store.dri)}</span>
-        <span class="badge ${store.status}">${store.status}</span>
+      <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}">
+        <span class="pin-top">
+          <strong>${escapeHtml(store.name)}</strong>
+          <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
+        </span>
+        <span class="pin-meta">${escapeHtml(store.weather)} · ${escapeHtml(store.dri)}</span>
+        <span class="pin-action">${escapeHtml(store.nextAction)}</span>
       </button>
     `;
   }).join('');
   $('metroMap').querySelectorAll('.store-pin').forEach((button) => {
     button.addEventListener('click', () => openStoreDialog(button.dataset.store));
   });
-}
-
-function fallbackPosition(index) {
-  const positions = [[30,30], [50,28], [68,40], [38,56], [58,62], [72,75], [25,76]];
-  return positions[index % positions.length];
 }
 
 function renderActions() {
@@ -252,6 +246,13 @@ function renderActionList(items, fallbackTeam) {
 }
 
 function renderRecoveryChart() {
+  if (typeof Chart === 'undefined') {
+    $('recoveryChartWrap').innerHTML = '<div class="empty-state">회복률 차트 라이브러리 로딩 대기 중입니다.</div>';
+    return;
+  }
+  if (!$('recoveryChart')) {
+    $('recoveryChartWrap').innerHTML = '<canvas id="recoveryChart"></canvas>';
+  }
   const recovery = state.data.recovery || {};
   const selectedSeries = getRecoverySeries(recovery);
   const labels = selectedSeries.labels || recovery.labels || ['D-day', 'D+1', 'D+2'];
@@ -298,31 +299,28 @@ function renderRecoveryChart() {
   });
 }
 
-function renderStatusChart() {
+function renderStatusBar() {
   const rows = statusDistributionRows();
-  const ctx = $('statusChart');
-  if (state.statusChart) state.statusChart.destroy();
-  state.statusChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      labels: rows.map((row) => row.status),
-      datasets: [{
-        data: rows.map((row) => row.count),
-        backgroundColor: rows.map((row) => statusColor(row.status, .86)),
-        borderColor: '#ffffff',
-        borderWidth: 2
-      }]
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: 'bottom' },
-        tooltip: { callbacks: { label: (ctx) => `${ctx.label}: ${ctx.parsed}개` } }
-      },
-      cutout: '64%'
-    }
-  });
+  const total = rows.reduce((sum, row) => sum + Number(row.count || 0), 0);
+  if (!total) {
+    $('statusStrip').innerHTML = '<div class="empty-state">현재 필터 기준 지점이 없습니다.</div>';
+    return;
+  }
+  const summary = rows.map((row) => `
+    <span class="status-count status-${row.status}">
+      <b>${escapeHtml(levelLabel(row.status))}</b>${Number(row.count || 0)}개
+    </span>
+  `).join('');
+  const segments = rows.map((row) => `
+    <span class="status-segment status-${row.status}" style="flex-grow:${Number(row.count || 0)}">
+      ${escapeHtml(levelLabel(row.status))} ${Number(row.count || 0)}
+    </span>
+  `).join('');
+  $('statusStrip').innerHTML = `
+    <div class="status-summary">${summary}</div>
+    <div class="status-bar" aria-label="오늘 지점 상태">${segments}</div>
+    <div class="status-note">총 ${total}개 지점 · 높은 심각도 순으로 표시</div>
+  `;
 }
 
 function renderRiskMatrix() {
@@ -331,16 +329,21 @@ function renderRiskMatrix() {
     $('riskMatrix').innerHTML = '<div class="empty-state">현재 필터 기준 리스크 데이터가 없습니다.</div>';
     return;
   }
-  const labels = rows[0].cells.map((cell) => cell.label);
+  const columns = activeRiskColumns(rows);
+  const gridStyle = `grid-template-columns:minmax(112px,1.25fr) repeat(${columns.length}, minmax(64px,1fr))`;
   $('riskMatrix').innerHTML = `
-    <div class="matrix-row matrix-head">
+    <div class="matrix-row matrix-head" style="${gridStyle}">
       <div class="matrix-store">지점</div>
-      ${labels.map((label) => `<div>${escapeHtml(label)}</div>`).join('')}
+      ${columns.map((column) => `<div>${escapeHtml(column.label)}</div>`).join('')}
     </div>
     ${rows.map((row) => `
-      <div class="matrix-row">
+      <div class="matrix-row${isNormalRiskRow(row, columns) ? ' is-muted' : ''}" style="${gridStyle}">
         <div class="matrix-store">${escapeHtml(row.store)}</div>
-        ${row.cells.map((cell) => `<div class="matrix-cell ${normalizeStatus(cell.level)}" title="${escapeAttr(row.store)} ${escapeAttr(cell.label)} ${escapeAttr(cell.level)}"></div>`).join('')}
+        ${columns.map((column) => {
+          const cell = matrixCellForColumn(row, column);
+          const level = normalizeStatus(cell.level);
+          return `<div class="matrix-cell ${level}" title="${escapeAttr(row.store)} ${escapeAttr(cell.label)} ${escapeAttr(levelLabel(level))}">${escapeHtml(levelLabel(level))}</div>`;
+        }).join('')}
       </div>
     `).join('')}
   `;
@@ -349,69 +352,90 @@ function renderRiskMatrix() {
 function renderRecoveryFunnel() {
   const rows = recoveryFunnelRows();
   const max = Math.max(...rows.map((row) => Number(row.count || 0)), 1);
-  $('recoveryFunnel').innerHTML = rows.map((row) => {
+  $('recoveryFunnel').innerHTML = rows.map((row, index) => {
     const count = Number(row.count || 0);
     const width = Math.max(8, Math.round(count / max * 100));
+    const previous = index > 0 ? Number(rows[index - 1].count || 0) : null;
+    const conversion = previous && previous > 0 ? Math.round(count / previous * 100) : null;
+    const dropoff = previous !== null ? Math.max(0, previous - count) : null;
     return `
       <div class="funnel-item">
         <div class="funnel-label"><span>${escapeHtml(row.label)}</span><b>${count.toLocaleString('ko-KR')}</b></div>
         <div class="funnel-track"><span style="width:${width}%"></span></div>
+        <div class="funnel-note">${index === 0 ? '시작 단계' : `전 단계 대비 ${conversion === null ? '-' : `${conversion}%`} 유지 · ${dropoff.toLocaleString('ko-KR')}건 이탈`}</div>
       </div>
     `;
   }).join('');
 }
 
-function renderRecoverySparklines() {
+function renderRecoveryStageHeatmap() {
   const stores = filteredStores();
   const recovery = state.data.recovery || {};
-  const rows = stores.map((store) => {
-    const series = rateSeriesForStore(store.id, recovery);
-    return { store, processed: series.processedRate || [], revenue: series.revenueRate || [] };
-  });
-  $('recoverySparklines').innerHTML = rows.map((row) => `
-    <div class="spark-card">
-      <div class="spark-top">
-        <strong>${escapeHtml(row.store.name)}</strong>
-        <span class="badge ${row.store.status}">${escapeHtml(row.store.status)}</span>
-      </div>
-      ${sparkSvg(row.processed, row.revenue)}
-      <div class="spark-foot">
-        <span>처리 ${formatPercent(lastNumber(row.processed))}</span>
-        <span>매출 ${formatPercent(lastNumber(row.revenue))}</span>
-      </div>
+  const labels = recovery.labels || ['D-day', 'D+1', 'D+2'];
+  if (!stores.length) {
+    $('recoveryStageHeatmap').innerHTML = '<div class="empty-state">현재 필터 기준 회복 데이터가 없습니다.</div>';
+    return;
+  }
+  $('recoveryStageHeatmap').innerHTML = `
+    <div class="heat-row heat-head" style="grid-template-columns:minmax(118px,1.2fr) repeat(${labels.length}, minmax(86px,1fr))">
+      <div>지점</div>
+      ${labels.map((label) => `<div>${escapeHtml(label)}</div>`).join('')}
     </div>
-  `).join('') || '<div class="empty-state">현재 필터 기준 회복 곡선이 없습니다.</div>';
+    ${stores.map((store) => {
+      const series = rateSeriesForStore(store.id, recovery, false);
+      const processed = series.processedRate || [];
+      const revenue = series.revenueRate || [];
+      return `
+        <div class="heat-row" style="grid-template-columns:minmax(118px,1.2fr) repeat(${labels.length}, minmax(86px,1fr))">
+          <div class="heat-store"><strong>${escapeHtml(store.name)}</strong><span>${escapeHtml(levelLabel(store.status))}</span></div>
+          ${labels.map((label, index) => {
+            const processedRate = numericOrNull(processed[index]);
+            const revenueRate = numericOrNull(revenue[index]);
+            return `
+              <div class="heat-cell ${recoveryRateLevel(processedRate)}">
+                <b>${formatPercent(processedRate)}</b>
+                <span>매출 ${formatPercent(revenueRate)}</span>
+              </div>
+            `;
+          }).join('')}
+        </div>
+      `;
+    }).join('')}
+  `;
 }
 
-function renderRecoveryGapChart() {
+function renderRecoveryComparison() {
   const rows = recoveryGapRows();
-  const ctx = $('recoveryGapChart');
-  if (state.recoveryGapChart) state.recoveryGapChart.destroy();
-  state.recoveryGapChart = new Chart(ctx, {
-    type: 'bar',
-    data: {
-      labels: rows.map((row) => row.store),
-      datasets: [{
-        label: '처리대수 회복률 - 매출 회복률',
-        data: rows.map((row) => row.gap),
-        backgroundColor: rows.map((row) => row.gap >= 0 ? 'rgba(15,107,159,.72)' : 'rgba(192,86,33,.72)'),
-        borderColor: rows.map((row) => row.gap >= 0 ? '#0f6b9f' : '#c05621'),
-        borderWidth: 1
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (ctx) => `${ctx.parsed.x > 0 ? '+' : ''}${ctx.parsed.x}%p` } }
-      },
-      scales: {
-        x: { ticks: { callback: (value) => `${value}%p` } }
-      }
-    }
-  });
+  if (!rows.length) {
+    $('recoveryComparison').innerHTML = '<div class="empty-state">현재 필터 기준 이용/매출 회복 비교 데이터가 없습니다.</div>';
+    return;
+  }
+  $('recoveryComparison').innerHTML = rows.map((row) => {
+    const processed = numericOrNull(row.processedRate ?? row.processed_rate);
+    const revenue = numericOrNull(row.revenueRate ?? row.revenue_rate);
+    const gap = numericOrNull(row.gap ?? (processed !== null && revenue !== null ? processed - revenue : null));
+    const processedPos = ratePosition(processed);
+    const revenuePos = ratePosition(revenue);
+    const left = Math.min(processedPos, revenuePos);
+    const width = Math.max(2, Math.abs(processedPos - revenuePos));
+    return `
+      <div class="comparison-row">
+        <div class="comparison-top">
+          <strong>${escapeHtml(row.store || storeNameById(row.storeId))}</strong>
+          <span>${escapeHtml(formatSignedPercentPoint(gap))} · ${escapeHtml(recoveryGapMeaning(gap))}</span>
+        </div>
+        <div class="dumbbell" aria-label="${escapeAttr(row.store)} 이용 회복 ${formatPercent(processed)}, 매출 회복 ${formatPercent(revenue)}">
+          <span class="dumbbell-range" style="left:${left}%;width:${width}%"></span>
+          <span class="dumbbell-dot processed" style="left:${processedPos}%"></span>
+          <span class="dumbbell-dot revenue" style="left:${revenuePos}%"></span>
+        </div>
+        <div class="comparison-foot">
+          <span><i class="legend-dot processed"></i>이용 ${formatPercent(processed)}</span>
+          <span><i class="legend-dot revenue"></i>매출 ${formatPercent(revenue)}</span>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 function renderRecoveryQueue() {
@@ -498,11 +522,39 @@ function statusDistributionRows() {
     .filter((row) => row.count > 0);
 }
 
+function levelLabel(status) {
+  return STATUS_LABELS[normalizeStatus(status)] || STATUS_LABELS.Green;
+}
+
 function riskMatrixRows() {
   const provided = state.data.visuals && state.data.visuals.riskMatrix;
   const rows = Array.isArray(provided) && provided.length ? provided : deriveRiskMatrixRows();
   const visibleStoreIds = new Set(filteredStores().map((store) => store.id));
   return rows.filter((row) => visibleStoreIds.has(row.storeId || findStoreId(row.store)));
+}
+
+function activeRiskColumns(rows) {
+  const activeKeys = new Set();
+  const columnsByKey = new Map();
+  rows.forEach((row) => {
+    (row.cells || []).forEach((cell) => {
+      const key = cell.key || cell.label;
+      if (!columnsByKey.has(key)) columnsByKey.set(key, { key, label: cell.label || key });
+      if (normalizeStatus(cell.level) !== 'Green') activeKeys.add(key);
+    });
+  });
+  const columns = [...columnsByKey.values()].filter((column) => activeKeys.has(column.key));
+  return columns.length ? columns : [{ key: 'normal', label: '정상' }];
+}
+
+function matrixCellForColumn(row, column) {
+  if (column.key === 'normal') return { key: 'normal', label: '정상', level: 'Green' };
+  return (row.cells || []).find((cell) => (cell.key || cell.label) === column.key)
+    || { key: column.key, label: column.label, level: 'Green' };
+}
+
+function isNormalRiskRow(row, columns) {
+  return columns.every((column) => normalizeStatus(matrixCellForColumn(row, column).level) === 'Green');
 }
 
 function deriveRiskMatrixRows() {
@@ -572,49 +624,45 @@ function deriveRecoveryGapRows() {
   }).filter((row) => row.gap !== null).sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap));
 }
 
-function rateSeriesForStore(storeId, recovery) {
+function rateSeriesForStore(storeId, recovery, allowGlobalFallback = true) {
   const series = recovery.storeSeries || recovery.store_series || {};
   const selected = series[storeId] || {};
   return {
-    processedRate: selected.processedRate || selected.processed_rate || recovery.processedRate || recovery.processed_rate || [],
-    revenueRate: selected.revenueRate || selected.revenue_rate || recovery.revenueRate || recovery.revenue_rate || []
+    processedRate: selected.processedRate || selected.processed_rate || (allowGlobalFallback ? recovery.processedRate || recovery.processed_rate : []) || [],
+    revenueRate: selected.revenueRate || selected.revenue_rate || (allowGlobalFallback ? recovery.revenueRate || recovery.revenue_rate : []) || []
   };
 }
 
-function sparkSvg(processed, revenue) {
-  const hasData = [...processed, ...revenue].some((value) => Number.isFinite(Number(value)));
-  if (!hasData) return '<div class="spark-empty">회복 데이터 대기</div>';
-  return `
-    <svg class="sparkline" viewBox="0 0 180 56" role="img" aria-label="회복률 스파크라인">
-      <line x1="0" y1="8" x2="180" y2="8" class="spark-ref"></line>
-      <polyline class="spark-line processed" points="${sparkPoints(processed)}"></polyline>
-      <polyline class="spark-line revenue" points="${sparkPoints(revenue)}"></polyline>
-    </svg>
-  `;
+function numericOrNull(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }
 
-function sparkPoints(values) {
-  const clean = values.map((value) => Number(value)).filter((value) => Number.isFinite(value));
-  if (!clean.length) return '';
-  const maxIndex = Math.max(clean.length - 1, 1);
-  return clean.map((value, index) => {
-    const x = Math.round(index / maxIndex * 180);
-    const y = Math.round(52 - Math.max(0, Math.min(value, 120)) / 120 * 48);
-    return `${x},${y}`;
-  }).join(' ');
+function recoveryRateLevel(value) {
+  if (value === null) return 'level-wait';
+  if (value >= 100) return 'level-good';
+  if (value >= 90) return 'level-watch';
+  return 'level-action';
 }
 
-function statusColor(status, alpha = 1) {
-  const colors = {
-    Error: [127, 29, 29],
-    Red: [185, 28, 28],
-    Orange: [192, 86, 33],
-    Yellow: [183, 121, 31],
-    Green: [31, 122, 79],
-    Gray: [100, 116, 139]
-  };
-  const rgb = colors[status] || colors.Gray;
-  return `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+function ratePosition(value) {
+  const safe = value === null ? 0 : Math.max(0, Math.min(120, Number(value)));
+  return Math.round(safe / 120 * 100);
+}
+
+function formatSignedPercentPoint(value) {
+  if (value === null || value === undefined || value === '') return '갭 -';
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '갭 -';
+  return `갭 ${number > 0 ? '+' : ''}${Math.round(number)}%p`;
+}
+
+function recoveryGapMeaning(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '비교 데이터 대기';
+  if (Math.abs(number) < 3) return '이용·매출 균형';
+  if (number > 0) return '이용 회복, 매출 지연';
+  return '매출 우위, 단가·결제 믹스 확인';
 }
 
 function recoveryCellLevel(value) {

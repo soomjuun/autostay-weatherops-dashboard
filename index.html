@@ -66,12 +66,12 @@
       <article class="panel map-panel">
         <div class="panel-head">
           <div>
-            <h2>지역 리스크 맵</h2>
-            <p>지점 위치는 운영 판단을 돕기 위한 schematic 배치입니다.</p>
+            <h2>지점 현황</h2>
+            <p>오늘 봐야 할 지점 상태와 다음 액션을 한 줄로 확인합니다.</p>
           </div>
           <span id="mapCount" class="tag">7개 지점</span>
         </div>
-        <div class="metro-map" id="metroMap" aria-label="직영점 기상 리스크 맵"></div>
+        <div class="metro-map" id="metroMap" aria-label="직영점 지점 현황"></div>
       </article>
 
       <article class="panel action-panel">
@@ -100,7 +100,7 @@
             <p>처리대수 회복률을 1차 신호로 보고, 매출 회복률은 보조로 봅니다.</p>
           </div>
         </div>
-        <div class="chart-wrap"><canvas id="recoveryChart"></canvas></div>
+        <div id="recoveryChartWrap" class="chart-wrap"><canvas id="recoveryChart"></canvas></div>
       </article>
 
       <article class="panel queue-panel">
@@ -118,18 +118,18 @@
       <article class="panel status-panel">
         <div class="panel-head">
           <div>
-            <h2>상태 분포</h2>
-            <p>현재 필터 기준 지점 상태 비중입니다.</p>
+            <h2>오늘 지점 상태</h2>
+            <p>필터 기준 지점을 심각도 순서로 압축해 봅니다.</p>
           </div>
         </div>
-        <div class="donut-wrap"><canvas id="statusChart"></canvas></div>
+        <div id="statusStrip" class="status-strip"></div>
       </article>
 
       <article class="panel risk-panel">
         <div class="panel-head">
           <div>
-            <h2>지점 × 리스크</h2>
-            <p>기상/AS/회복 리스크를 격자로 봅니다.</p>
+            <h2>오늘 기상 리스크</h2>
+            <p>오늘 활성화된 리스크만 표시하고, 정상 지점은 흐리게 처리합니다.</p>
           </div>
         </div>
         <div id="riskMatrix" class="risk-matrix"></div>
@@ -138,7 +138,7 @@
       <article class="panel funnel-panel">
         <div class="panel-head">
           <div>
-            <h2>회복 실행 깔때기</h2>
+            <h2>회복 실행 단계</h2>
             <p>하락 감지 이후 CRM·재방문까지 어디서 멈추는지 봅니다.</p>
           </div>
         </div>
@@ -148,21 +148,21 @@
       <article class="panel small-multiple-panel">
         <div class="panel-head">
           <div>
-            <h2>지점별 회복 곡선</h2>
-            <p>처리대수와 매출 회복률의 지점별 흐름입니다.</p>
+            <h2>지점별 회복 진행</h2>
+            <p>D-day, D+1, D+2 회복률을 단계별 색상과 숫자로 확인합니다.</p>
           </div>
         </div>
-        <div id="recoverySparklines" class="spark-grid"></div>
+        <div id="recoveryStageHeatmap" class="heatmap-table"></div>
       </article>
 
       <article class="panel gap-panel">
         <div class="panel-head">
           <div>
-            <h2>처리대수-매출 갭</h2>
-            <p>처리량은 회복했지만 매출이 따라오지 않는 지점을 찾습니다.</p>
+            <h2>이용 회복 vs 매출 회복</h2>
+            <p>이용은 회복했지만 매출이 따라오지 않는 지점을 찾습니다.</p>
           </div>
         </div>
-        <div class="chart-wrap compact"><canvas id="recoveryGapChart"></canvas></div>
+        <div id="recoveryComparison" class="comparison-list"></div>
       </article>
     </section>
 

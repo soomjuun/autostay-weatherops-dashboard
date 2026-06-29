@@ -206,7 +206,7 @@ function samplePayload(source) {
   ];
 
   return {
-    version: 'sample-v0.3',
+    version: 'sample-v0.4',
     generatedAt: iso,
     source,
     summary: {
@@ -235,9 +235,13 @@ function samplePayload(source) {
       processedRate: [72, 86, 93],
       revenueRate: [65, 81, 89],
       storeSeries: {
+        ilsan: { processedRate: [74, 91, 102], revenueRate: [69, 88, 98] },
         hanam: { processedRate: [68, 82, 91], revenueRate: [61, 78, 87] },
+        goyang: { processedRate: [93, 105, 111], revenueRate: [90, 101, 108] },
+        jayuro: { processedRate: [78, 92, 101], revenueRate: [73, 89, 97] },
         gwangmyeong: { processedRate: [70, 79, 88], revenueRate: [64, 76, 86] },
-        seongsu: { processedRate: [42, 44, 55], revenueRate: [39, 41, 52] }
+        seongsu: { processedRate: [42, 44, 55], revenueRate: [39, 41, 52] },
+        anseong: { processedRate: [66, 84, 95], revenueRate: [58, 79, 92] }
       },
       queue: [
         { store: '하남 미사', stage: 'D+1', status: '회복 조치 필요', processedRecoveryRate: 82, crmAllowed: 'Y', next: 'CRM 승인' },
@@ -263,7 +267,7 @@ function samplePayload(source) {
     system: {
       lastSummaryAt: iso,
       lastRevenueSyncAt: iso,
-      appsScriptVersion: 'v2.14.0',
+      appsScriptVersion: 'v2.15.0',
       dataFreshness: '샘플 데이터',
       freshnessWarnings: source === 'sample_no_api_url' ? ['실데이터 API 미연결'] : [],
       apiWarning: source === 'sample_no_api_url' ? 'WEATHER_OPS_API_URL 미설정: 샘플 데이터 표시 중' : ''
