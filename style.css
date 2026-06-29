@@ -327,11 +327,38 @@ select { min-width: 180px; }
   min-height: 20px;
   padding: 0 6px;
   border-radius: 999px;
+  border: 1px solid #dbeafe;
   background: #eef6ff;
   color: #075985;
   font-size: 10.5px;
   font-weight: 850;
   white-space: nowrap;
+}
+.weather-chip.level-Green {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+.weather-chip.level-Yellow {
+  border-color: #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+}
+.weather-chip.level-Orange {
+  border-color: #fed7aa;
+  background: #fff7ed;
+  color: #9a3412;
+}
+.weather-chip.level-Red,
+.weather-chip.level-Error {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #991b1b;
+}
+.weather-chip.level-Gray {
+  border-color: #e2e8f0;
+  background: #f8fafc;
+  color: #475569;
 }
 .table-weather {
   margin-top: 7px;

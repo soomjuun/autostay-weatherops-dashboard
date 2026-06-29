@@ -23,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 function bindEvents() {
-  $('refreshBtn').addEventListener('click', loadDashboard);
+  $('refreshBtn').addEventListener('click', () => loadDashboard({ fresh: true }));
   $('copyBriefBtn').addEventListener('click', copyBrief);
   $('storeFilter').addEventListener('change', (event) => {
     state.store = event.target.value;
@@ -39,11 +39,12 @@ function bindEvents() {
   $('dialogClose').addEventListener('click', () => $('storeDialog').close());
 }
 
-async function loadDashboard() {
+async function loadDashboard(options = {}) {
   showLoading(true);
   hideError();
   try {
-    const response = await fetch('/api/weather-ops-data', { cache: 'no-store' });
+    const url = options.fresh ? '/api/weather-ops-data?fresh=1' : '/api/weather-ops-data';
+    const response = await fetch(url, { cache: 'no-store' });
     if (response.status === 401) {
       window.location.href = '/api/auth';
       return;
@@ -557,24 +558,67 @@ function renderSystem() {
 
 function renderWeatherMetricChips(store, limit = 3) {
   const chips = weatherMetricRows(store).slice(0, limit);
-  return chips.map((chip) => `<span class="weather-chip">${escapeHtml(chip.label)} ${escapeHtml(chip.value)}</span>`).join('');
+  return chips.map((chip) => {
+    const level = normalizeStatus(chip.level || 'Gray');
+    return `<span class="weather-chip level-${escapeAttr(level)}">${escapeHtml(chip.label)} ${escapeHtml(chip.value)}</span>`;
+  }).join('');
 }
 
 function weatherMetricRows(store) {
   const data = store.weatherData || {};
   const rows = [
-    ['강수확률', firstPresent(data, ['pop', 'POP', 'rainProbability', 'rain_probability', 'precipitationProbability', 'precipitation_probability']), '%'],
-    ['강수량', firstPresent(data, ['pcp', 'PCP', 'rainfall', 'rainfallMm', 'rainfall_mm', 'precipitation', 'precipitationMm']), 'mm'],
-    ['피크', firstPresent(data, ['peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']), ''],
-    ['풍속', firstPresent(data, ['wsd', 'WSD', 'windSpeed', 'wind_speed']), 'm/s'],
-    ['최고기온', firstPresent(data, ['tmpMax', 'tmp_max', 'tmx', 'TMX', 'TMP_MAX']), 'C'],
-    ['적설', firstPresent(data, ['sno', 'SNO', 'snow', 'snowfall', 'snowfallCm']), 'cm'],
-    ['PM10', firstPresent(data, ['pm10', 'PM10']), ''],
-    ['PM2.5', firstPresent(data, ['pm25', 'pm2_5', 'PM25', 'PM2_5']), '']
+    { key: 'pop', label: '강수확률', value: firstPresent(data, ['pop', 'POP', 'rainProbability', 'rain_probability', 'precipitationProbability', 'precipitation_probability']), unit: '%' },
+    { key: 'pcp', label: '강수량', value: firstPresent(data, ['pcp', 'PCP', 'rainfall', 'rainfallMm', 'rainfall_mm', 'precipitation', 'precipitationMm']), unit: 'mm' },
+    { key: 'peakTime', label: '피크', value: firstPresent(data, ['peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']), unit: '' },
+    { key: 'windSpeed', label: '풍속', value: firstPresent(data, ['wsd', 'WSD', 'windSpeed', 'wind_speed']), unit: 'm/s' },
+    { key: 'tmpMax', label: '최고기온', value: firstPresent(data, ['tmpMax', 'tmp_max', 'tmx', 'TMX', 'TMP_MAX']), unit: 'C' },
+    { key: 'tmpMin', label: '최저기온', value: firstPresent(data, ['tmpMin', 'tmp_min', 'tmn', 'TMN', 'TMP_MIN']), unit: 'C' },
+    { key: 'snowfallCm', label: '적설', value: firstPresent(data, ['sno', 'SNO', 'snow', 'snowfall', 'snowfallCm']), unit: 'cm' },
+    { key: 'pm10', label: 'PM10', value: firstPresent(data, ['pm10', 'PM10']), unit: '' },
+    { key: 'pm25', label: 'PM2.5', value: firstPresent(data, ['pm25', 'pm2_5', 'PM25', 'PM2_5']), unit: '' }
   ];
   return rows
-    .filter(([, value]) => value !== null && value !== undefined && value !== '' && value !== '-')
-    .map(([label, value, unit]) => ({ label, value: `${value}${unit}` }));
+    .filter((row) => row.value !== null && row.value !== undefined && row.value !== '' && row.value !== '-')
+    .map((row, index) => ({
+      key: row.key,
+      label: row.label,
+      value: `${row.value}${row.unit}`,
+      level: weatherMetricLevel(data, row.key),
+      order: index
+    }))
+    .sort((a, b) => weatherMetricPriority(store, a.key) - weatherMetricPriority(store, b.key)
+      || (STATUS_ORDER[normalizeStatus(b.level)] || 0) - (STATUS_ORDER[normalizeStatus(a.level)] || 0)
+      || a.order - b.order);
+}
+
+function weatherMetricLevel(data, key) {
+  const levels = data.levels || data.metricLevels || data.metric_levels || {};
+  if (key === 'peakTime') return highestWeatherMetricLevel(levels) || 'Gray';
+  const camelLevelKey = `${key}Level`;
+  const snakeLevelKey = `${key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}_level`;
+  return firstPresent(levels, [key, camelLevelKey, snakeLevelKey])
+    || firstPresent(data, [camelLevelKey, snakeLevelKey])
+    || 'Green';
+}
+
+function highestWeatherMetricLevel(levels) {
+  return Object.values(levels || {}).reduce((top, value) => {
+    const level = normalizeStatus(value);
+    return (STATUS_ORDER[level] || 0) > (STATUS_ORDER[top] || 0) ? level : top;
+  }, 'Gray');
+}
+
+function weatherMetricPriority(store, key) {
+  const text = `${store.trigger || ''} ${store.weather || ''} ${store.weatherDetail || ''}`.toLowerCase();
+  const priority = [];
+  if (text.includes('강수') || text.includes('비') || text.includes('rain')) priority.push('pop', 'pcp', 'peakTime');
+  if (text.includes('강풍') || text.includes('풍속') || text.includes('wind')) priority.push('windSpeed', 'peakTime');
+  if (text.includes('폭염') || text.includes('더위') || text.includes('heat')) priority.push('tmpMax', 'peakTime');
+  if (text.includes('한파') || text.includes('동파') || text.includes('cold')) priority.push('tmpMin', 'peakTime');
+  if (text.includes('대설') || text.includes('적설') || text.includes('눈') || text.includes('snow')) priority.push('snowfallCm', 'peakTime');
+  if (text.includes('먼지') || text.includes('황사') || text.includes('dust')) priority.push('pm10', 'pm25', 'peakTime');
+  const index = priority.indexOf(key);
+  return index >= 0 ? index : 100;
 }
 
 function weatherMetricText(store) {

@@ -20,7 +20,7 @@ module.exports = async function handler(req, res) {
   }
 
   try {
-    const upstreamUrl = buildUpstreamUrl(apiUrl, apiToken);
+    const upstreamUrl = buildUpstreamUrl(apiUrl, apiToken, req);
     const upstream = await fetch(upstreamUrl, {
       method: 'GET',
       headers: { 'Accept': 'application/json' },
@@ -49,10 +49,13 @@ module.exports = async function handler(req, res) {
   }
 };
 
-function buildUpstreamUrl(rawUrl, token) {
+function buildUpstreamUrl(rawUrl, token, req) {
   const url = new URL(rawUrl);
+  const requestUrl = new URL(req && req.url ? req.url : '/', 'http://weather-ops.local');
+  const fresh = requestUrl.searchParams.get('fresh');
   if (!url.searchParams.get('mode')) url.searchParams.set('mode', 'dashboard');
   if (token && !url.searchParams.get('token')) url.searchParams.set('token', token);
+  if (fresh && !url.searchParams.get('fresh')) url.searchParams.set('fresh', fresh);
   return url.toString();
 }
 
@@ -73,6 +76,10 @@ function normalizePayload(payload, source) {
   };
 }
 
+function sampleWeatherData(data, levels) {
+  return Object.assign({}, data, { levels: levels || {} });
+}
+
 function samplePayload(source) {
   const now = new Date();
   const iso = now.toISOString();
@@ -86,7 +93,7 @@ function samplePayload(source) {
       weather: '비 예보',
       weatherDetail: '오후 강수 가능성 높음',
       trigger: '강수',
-      weatherData: { pop: 60, pcp: 3, peakTime: '15시', windSpeed: 3.1, tmpMax: 30, pm10: 32 },
+      weatherData: sampleWeatherData({ pop: 60, pcp: 3, peakTime: '15시', windSpeed: 3.1, tmpMax: 30, pm10: 32 }, { pop: 'Yellow', pcp: 'Yellow', tmpMax: 'Yellow', windSpeed: 'Green', pm10: 'Green' }),
       riskScore: 58,
       openIssueCount: 1,
       asStatus: '정상',
@@ -105,7 +112,7 @@ function samplePayload(source) {
       weather: '강한 비',
       weatherDetail: '피크 전 강수 집중 가능',
       trigger: '강수',
-      weatherData: { pop: 80, pcp: 4, peakTime: '16시', windSpeed: 4.2, tmpMax: 29, pm10: 28 },
+      weatherData: sampleWeatherData({ pop: 80, pcp: 4, peakTime: '16시', windSpeed: 4.2, tmpMax: 29, pm10: 28 }, { pop: 'Orange', pcp: 'Orange', tmpMax: 'Green', windSpeed: 'Green', pm10: 'Green' }),
       riskScore: 82,
       openIssueCount: 2,
       asStatus: '정상',
@@ -124,7 +131,7 @@ function samplePayload(source) {
       weather: '주의 낮음',
       weatherDetail: '운영 제한 요인 없음',
       trigger: '정상',
-      weatherData: { pop: 20, pcp: 0, peakTime: '-', windSpeed: 2.4, tmpMax: 28, pm10: 24 },
+      weatherData: sampleWeatherData({ pop: 20, pcp: 0, peakTime: '-', windSpeed: 2.4, tmpMax: 28, pm10: 24 }, { pop: 'Green', pcp: 'Green', tmpMax: 'Green', windSpeed: 'Green', pm10: 'Green' }),
       riskScore: 22,
       openIssueCount: 0,
       asStatus: '정상',
@@ -143,7 +150,7 @@ function samplePayload(source) {
       weather: '비 예보',
       weatherDetail: '저녁 강수 가능',
       trigger: '강수',
-      weatherData: { pop: 70, pcp: 4, peakTime: '19시', windSpeed: 3.8, tmpMax: 30, pm10: 35 },
+      weatherData: sampleWeatherData({ pop: 70, pcp: 4, peakTime: '19시', windSpeed: 3.8, tmpMax: 30, pm10: 35 }, { pop: 'Yellow', pcp: 'Yellow', tmpMax: 'Yellow', windSpeed: 'Green', pm10: 'Green' }),
       riskScore: 61,
       openIssueCount: 1,
       asStatus: '정상',
@@ -162,7 +169,7 @@ function samplePayload(source) {
       weather: '비/대기질 주의',
       weatherDetail: '강수 후 미세먼지 완화 가능',
       trigger: '강수',
-      weatherData: { pop: 80, pcp: 2, peakTime: '17시', windSpeed: 3.5, tmpMax: 30, pm10: 58 },
+      weatherData: sampleWeatherData({ pop: 80, pcp: 2, peakTime: '17시', windSpeed: 3.5, tmpMax: 30, pm10: 58 }, { pop: 'Orange', pcp: 'Orange', tmpMax: 'Yellow', windSpeed: 'Green', pm10: 'Green' }),
       riskScore: 76,
       openIssueCount: 2,
       asStatus: '정상',
@@ -181,7 +188,7 @@ function samplePayload(source) {
       weather: '강수 집중',
       weatherDetail: '고객 동선 안전 확인 필요',
       trigger: '강수',
-      weatherData: { pop: 90, pcp: 5, peakTime: '15시', windSpeed: 4.8, tmpMax: 30, pm10: 41 },
+      weatherData: sampleWeatherData({ pop: 90, pcp: 5, peakTime: '15시', windSpeed: 4.8, tmpMax: 30, pm10: 41 }, { pop: 'Orange', pcp: 'Orange', tmpMax: 'Yellow', windSpeed: 'Green', pm10: 'Green' }),
       riskScore: 91,
       openIssueCount: 3,
       asStatus: '정상화 대기',
@@ -200,7 +207,7 @@ function samplePayload(source) {
       weather: '비 예보',
       weatherDetail: '신규점 기준 축적 중',
       trigger: '강수',
-      weatherData: { pop: 60, pcp: 3, peakTime: '16시', windSpeed: 2.9, tmpMax: 29, pm10: 31 },
+      weatherData: sampleWeatherData({ pop: 60, pcp: 3, peakTime: '16시', windSpeed: 2.9, tmpMax: 29, pm10: 31 }, { pop: 'Yellow', pcp: 'Yellow', tmpMax: 'Green', windSpeed: 'Green', pm10: 'Green' }),
       riskScore: 54,
       openIssueCount: 1,
       asStatus: '정상',
@@ -213,7 +220,7 @@ function samplePayload(source) {
   ];
 
   return {
-    version: 'sample-v0.5',
+    version: 'sample-v0.6',
     generatedAt: iso,
     source,
     summary: {
@@ -274,7 +281,7 @@ function samplePayload(source) {
     system: {
       lastSummaryAt: iso,
       lastRevenueSyncAt: iso,
-      appsScriptVersion: 'v2.15.1',
+      appsScriptVersion: 'v2.15.2',
       dataFreshness: '샘플 데이터',
       freshnessWarnings: source === 'sample_no_api_url' ? ['실데이터 API 미연결'] : [],
       apiWarning: source === 'sample_no_api_url' ? 'WEATHER_OPS_API_URL 미설정: 샘플 데이터 표시 중' : ''

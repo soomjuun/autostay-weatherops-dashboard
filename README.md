@@ -78,7 +78,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
 
 ```json
 {
-  "version": "v2.15.1",
+  "version": "v2.15.2",
   "generatedAt": "2026-06-25T09:10:00+09:00",
   "summary": {
     "overallStatus": "Orange",
@@ -101,6 +101,16 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
       "weather": "강한 비",
       "weatherDetail": "피크 전 강수 집중 가능",
       "trigger": "강수",
+      "weatherData": {
+        "pop": 80,
+        "pcp": 4,
+        "peakTime": "16:00",
+        "weatherBaseAt": "2026-06-25T08:00:00+09:00",
+        "levels": {
+          "pop": "Orange",
+          "pcp": "Orange"
+        }
+      },
       "riskScore": 82,
       "openIssueCount": 2,
       "asStatus": "정상",
@@ -134,7 +144,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
   "system": {
     "lastSummaryAt": "2026-06-25T09:10:00+09:00",
     "lastRevenueSyncAt": "2026-06-25T05:40:00+09:00",
-    "appsScriptVersion": "v2.15.1",
+    "appsScriptVersion": "v2.15.2",
     "dataFreshness": "실데이터",
     "freshnessWarnings": []
   },
@@ -184,8 +194,11 @@ autostay-weather-ops-dashboard
 ## Apps Script 운영 메모
 
 - `doGet(mode=dashboard)`는 정상 payload를 60초 동안 `CacheService`에 보관합니다.
+- 대시보드 새로고침은 `/api/weather-ops-data?fresh=1`을 통해 Apps Script의 60초 캐시를 우회할 수 있습니다.
 - 캐시는 인증 토큰 검증 후에만 사용하며, 인증 실패/오류 응답은 캐시하지 않습니다.
-- `stores[].weatherData`는 최신 Action_Log의 `weather_summary`에서 강수확률, 예상강수, 풍속, 기온, 미세먼지 수치를 파싱해 제공합니다.
+- `stores[].weatherData`는 최신 Action_Log의 구조화 컬럼(`weather_pop`, `weather_pcp`, `weather_wsd`, `weather_tmp_min`, `weather_tmp_max`, `weather_sno`, `weather_pm10`, `weather_pm25`, `weather_peak_time`, `weather_base_at`)을 우선 사용합니다.
+- `stores[].weatherData.levels`는 Apps Script의 `RULES` 기준으로 계산된 칩별 위험등급입니다. 프론트는 이 값을 사용해 Green/Yellow/Orange/Red 색상을 표시합니다.
+- 구조화 컬럼이 없는 과거 행은 호환용으로만 `weather_summary` 텍스트 fallback을 사용합니다.
 - 대시보드 시각화용 `visuals` 필드는 Apps Script가 제공하면 그대로 사용하고, 없으면 프론트가 현재 `stores`/`recovery` 데이터로 보수 계산합니다.
 - 실지도/레이더 고도화는 Store_Master의 `latitude`/`longitude` 및 기상 스냅샷 탭이 준비된 뒤 진행합니다.
 
