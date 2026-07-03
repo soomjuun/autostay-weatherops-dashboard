@@ -188,9 +188,10 @@ autostay-weather-ops-dashboard
 - `recovery.gapByStore` 또는 `recovery.gap_by_store`는 `visuals.recoveryGapByStore`와 동일한 회복 비교 데이터로 정규화됩니다.
 - `recovery.bulletByStore` 또는 `recovery.bullet_by_store`는 `visuals.processedBulletByStore`와 동일한 처리대수 bullet 데이터로 정규화됩니다.
 - `visuals.systemTrend`와 `visuals.openActionTrend`는 운영 추이 패널에서 함께 사용됩니다.
-- `visuals.recoveryFunnel`의 `asBlocked`/`AS 차단` 항목은 CRM·재방문 전환율 계산에서 제외하고 별도 참고 지표로 표시합니다.
-- `stores[].weatherData.peakTime`은 `HH:mm`, `HHmm`, `H시`, ISO 날짜시간, 시트 시간값을 `HH:mm`으로 정규화합니다. `1899-12-30 00:00` 계열의 시트 잔여값은 `피크 미정`으로 표시합니다.
+- `visuals.recoveryFunnel`의 AS 차단 항목은 `key: "asBlocked"` 또는 라벨 `AS 차단`으로 전달합니다. 대시보드는 이 항목을 CRM·재방문 전환율 계산에서 제외하고 별도 참고 지표로 표시합니다.
+- `stores[].weatherData.peakTime`은 `HH:mm`, `HHmm`, `H시`, `시만`, ISO 날짜시간, 시트 시간값을 `HH:mm`으로 정규화합니다. `1899-12-30 00:00` 계열의 시트 잔여값은 `피크 미정`으로 표시합니다.
 - `stores[].weatherData.weatherBaseAt`은 유효한 날짜시간만 `MM-DD HH:mm`으로 표시하고, 1899년 계열 sentinel 날짜는 화면에서 제외합니다.
+- 시간 포맷은 브라우저 로컬시간이 아니라 KST 기준으로 표시합니다.
 
 ## 운영 화면 구성
 

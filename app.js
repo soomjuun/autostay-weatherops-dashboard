@@ -1168,7 +1168,7 @@ function formatMetricValue(value, unit = '') {
 }
 
 function formatPeakTime(value) {
-  return formatClockValue(value, { unknownLabel: '미정' });
+  return formatClockValue(value, { unknownLabel: '미정', allowHourOnly: true });
 }
 
 function formatClockValue(value, options = {}) {
@@ -1184,7 +1184,8 @@ function formatClockValue(value, options = {}) {
   }
 
   if (value instanceof Date && Number.isFinite(value.getTime())) {
-    return clockFromParts(value.getHours(), value.getMinutes(), unknownLabel);
+    if (isSentinelDate(value)) return unknownLabel;
+    return formatKstTimeOnly(value);
   }
 
   const text = String(value).trim();
@@ -1198,6 +1199,11 @@ function formatClockValue(value, options = {}) {
 
   const compactTime = text.match(/^([01]?\d|2[0-3])([0-5]\d)$/);
   if (compactTime) return clockFromParts(compactTime[1], compactTime[2], unknownLabel);
+
+  if (options.allowHourOnly) {
+    const hourOnly = text.match(/^([01]?\d|2[0-3])$/);
+    if (hourOnly) return clockFromParts(hourOnly[1], 0, unknownLabel);
+  }
 
   const date = new Date(text);
   if (Number.isFinite(date.getTime()) && isDateLikeText(text) && hasTimeSignal(text) && !isSentinelDate(date)) {

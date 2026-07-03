@@ -1097,6 +1097,17 @@ td:last-child { min-width: 280px; }
   .heat-head { display: none; }
   .matrix-store,
   .heat-store { margin-top: 6px; }
+  .weather-chip-row {
+    gap: 6px;
+  }
+  .weather-chip {
+    max-width: none;
+    min-height: 22px;
+    white-space: normal;
+    line-height: 1.25;
+    overflow: visible;
+    text-overflow: clip;
+  }
   .table-wrap { overflow: visible; }
   table { min-width: 0; }
   table,
