@@ -34,7 +34,7 @@ module.exports = async function handler(req, res) {
     if (!upstream.ok) {
       throw new Error(`Apps Script HTTP ${upstream.status}: ${text.slice(0, 160)}`);
     }
-    const parsed = JSON.parse(text);
+    const parsed = JSON.parse(text.replace(/^\uFEFF/, ''));
     if (parsed && parsed.error) {
       throw new Error(parsed.error);
     }
@@ -69,19 +69,56 @@ function buildUpstreamUrl(rawUrl, token, req) {
 
 function normalizePayload(payload, source) {
   const now = new Date().toISOString();
+  const data = unwrapDashboardPayload(payload);
+  const recovery = objectOrEmpty(data.recovery);
+  const visuals = normalizeVisuals(objectOrEmpty(data.visuals), recovery);
   return {
-    version: payload.version || 'unknown',
-    generatedAt: payload.generatedAt || payload.generated_at || now,
+    version: data.version || payload.version || 'unknown',
+    generatedAt: data.generatedAt || data.generated_at || payload.generatedAt || payload.generated_at || now,
     source,
-    summary: payload.summary || {},
-    stores: Array.isArray(payload.stores) ? payload.stores : [],
-    opsActions: Array.isArray(payload.opsActions) ? payload.opsActions : payload.ops_actions || [],
-    marketingActions: Array.isArray(payload.marketingActions) ? payload.marketingActions : payload.marketing_actions || [],
-    recovery: payload.recovery || {},
-    system: payload.system || {},
-    visuals: payload.visuals || {},
-    weatherTimeline: Array.isArray(payload.weatherTimeline) ? payload.weatherTimeline : payload.weather_timeline || []
+    summary: objectOrEmpty(data.summary),
+    stores: arrayOrEmpty(data.stores || data.storeRows || data.store_rows),
+    opsActions: arrayOrEmpty(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
+    marketingActions: arrayOrEmpty(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
+    recovery,
+    system: objectOrEmpty(data.system),
+    visuals,
+    weatherTimeline: arrayOrEmpty(data.weatherTimeline || data.weather_timeline || data.timeline)
   };
+}
+
+function unwrapDashboardPayload(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  const candidates = [
+    payload.dashboardPayload,
+    payload.dashboard_payload,
+    payload.payload,
+    payload.data,
+    payload.dashboard
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      if (candidate.summary || candidate.stores || candidate.recovery || candidate.system || candidate.visuals) return candidate;
+    }
+  }
+  return payload;
+}
+
+function normalizeVisuals(visuals, recovery) {
+  return Object.assign({}, visuals, {
+    recoveryGapByStore: arrayOrEmpty(visuals.recoveryGapByStore || visuals.recovery_gap_by_store || recovery.gapByStore || recovery.gap_by_store),
+    processedBulletByStore: arrayOrEmpty(visuals.processedBulletByStore || visuals.processed_bullet_by_store || recovery.bulletByStore || recovery.bullet_by_store),
+    systemTrend: arrayOrEmpty(visuals.systemTrend || visuals.system_trend),
+    openActionTrend: arrayOrEmpty(visuals.openActionTrend || visuals.open_action_trend)
+  });
+}
+
+function objectOrEmpty(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function arrayOrEmpty(value) {
+  return Array.isArray(value) ? value : [];
 }
 
 function sampleWeatherData(data, levels) {

@@ -8,15 +8,6 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
   <link rel="stylesheet" href="style.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
-  <script>
-    (function() {
-      fetch('/api/check', { cache: 'no-store' })
-        .then(function(response) {
-          if (response.status === 401) window.location.href = '/api/auth';
-        })
-        .catch(function() {});
-    })();
-  </script>
 </head>
 <body>
   <div id="loadingOverlay" class="loading-overlay" aria-live="polite" aria-busy="true">
@@ -143,6 +134,7 @@
           </div>
         </div>
         <div id="recoveryStageHeatmap" class="heatmap-table"></div>
+        <div id="processedBulletList" class="bullet-list"></div>
       </article>
 
       <article class="panel gap-panel">
@@ -200,6 +192,7 @@
           </div>
         </div>
         <div id="systemStatus" class="system-grid"></div>
+        <div id="systemTrend" class="trend-list"></div>
       </article>
     </section>
   </main>

@@ -22,10 +22,20 @@ const SUMMARY_SCHEDULES = [
 ];
 const SUMMARY_GRACE_MINUTES = 45;
 
+checkAuthSession();
+
 document.addEventListener('DOMContentLoaded', () => {
   bindEvents();
   loadDashboard();
 });
+
+function checkAuthSession() {
+  fetch('/api/check', { cache: 'no-store' })
+    .then((response) => {
+      if (response.status === 401) window.location.href = '/api/auth';
+    })
+    .catch(() => {});
+}
 
 function bindEvents() {
   $('refreshBtn').addEventListener('click', () => loadDashboard({ fresh: true }));
@@ -92,39 +102,96 @@ function formatApiError(payload, status) {
 }
 
 function normalize(payload) {
-  const stores = (payload.stores || []).map((store) => ({
-    id: store.id || store.store_id || slug(store.name || store.store_name),
-    name: store.name || store.store_name || '-',
-    region: store.region || '',
-    dri: store.dri || store.owner || '-',
-    status: normalizeStatus(store.status || store.risk || 'Green'),
-    weather: normalizeWeatherLabel(store),
-    weatherDetail: normalizeWeatherDetail(store),
-    weatherData: typeof store.weather === 'object' && store.weather !== null ? store.weather : (store.weatherData || store.weather_data || {}),
-    trigger: store.trigger || '-',
-    riskScore: Number(store.riskScore || store.risk_score || 0),
-    openIssueCount: Number(store.openIssueCount || store.open_issue_count || 0),
-    asStatus: store.asStatus || store.as_status || '-',
-    recoveryStatus: store.recoveryStatus || store.recovery_status || '-',
-    crmReady: normalizeBoolean(store.crmReady ?? store.crm_ready ?? store.crmReadyYn ?? store.crm_ready_yn),
-    nextAction: store.nextAction || store.next_action || '-'
-  }));
+  const raw = objectFrom(payload);
+  const data = unwrapPayload(raw);
+  const stores = arrayFrom(data.stores || data.storeRows || data.store_rows).map(normalizeStore);
 
   stores.sort((a, b) => (STATUS_ORDER[b.status] || 0) - (STATUS_ORDER[a.status] || 0) || b.riskScore - a.riskScore);
 
   return {
-    version: payload.version || 'unknown',
-    generatedAt: payload.generatedAt || payload.generated_at || new Date().toISOString(),
-    source: payload.source || 'unknown',
-    summary: payload.summary || {},
+    version: firstPresent(data, ['version']) || firstPresent(raw, ['version']) || 'unknown',
+    generatedAt: firstPresent(data, ['generatedAt', 'generated_at']) || firstPresent(raw, ['generatedAt', 'generated_at']) || new Date().toISOString(),
+    source: data.source || raw.source || 'unknown',
+    summary: objectFrom(data.summary),
     stores,
-    opsActions: payload.opsActions || payload.ops_actions || [],
-    marketingActions: payload.marketingActions || payload.marketing_actions || [],
-    recovery: payload.recovery || {},
-    system: payload.system || {},
-    visuals: payload.visuals || {},
-    weatherTimeline: payload.weatherTimeline || payload.weather_timeline || []
+    opsActions: arrayFrom(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
+    marketingActions: arrayFrom(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
+    recovery: objectFrom(data.recovery),
+    system: objectFrom(data.system),
+    visuals: normalizeVisuals(objectFrom(data.visuals), objectFrom(data.recovery)),
+    weatherTimeline: arrayFrom(data.weatherTimeline || data.weather_timeline || data.timeline)
   };
+}
+
+function unwrapPayload(payload) {
+  if (!payload || typeof payload !== 'object') return {};
+  const candidates = [
+    payload.dashboardPayload,
+    payload.dashboard_payload,
+    payload.payload,
+    payload.data,
+    payload.dashboard
+  ];
+  for (const candidate of candidates) {
+    if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
+      if (candidate.summary || candidate.stores || candidate.recovery || candidate.system || candidate.visuals) return candidate;
+    }
+  }
+  return payload;
+}
+
+function normalizeStore(store) {
+  store = objectFrom(store);
+  const name = firstPresent(store, ['name', 'storeName', 'store_name', 'store', '지점명', '지점', '매장명']) || '-';
+  return {
+    id: firstPresent(store, ['id', 'storeId', 'store_id', 'storeCode', 'store_code', '지점ID']) || slug(name),
+    name,
+    region: firstPresent(store, ['region', 'area', 'address', '권역', '지역']) || '',
+    dri: firstPresent(store, ['dri', 'owner', 'manager', 'storeDri', 'store_dri', '담당', '담당자']) || '-',
+    status: normalizeStatus(firstPresent(store, ['status', 'risk', 'level', 'riskLevel', 'risk_level', '상태']) || 'Green'),
+    weather: normalizeWeatherLabel(store),
+    weatherDetail: normalizeWeatherDetail(store),
+    weatherData: normalizeWeatherData(store),
+    trigger: firstPresent(store, ['trigger', 'triggerType', 'trigger_type', 'triggerLabel', 'trigger_label', '트리거']) || '-',
+    riskScore: numberFrom(firstPresent(store, ['riskScore', 'risk_score', 'score', 'risk_point', '점수']), 0),
+    openIssueCount: numberFrom(firstPresent(store, ['openIssueCount', 'open_issue_count', 'issueCount', 'issue_count']), 0),
+    asStatus: firstPresent(store, ['asStatus', 'as_status', 'normalizationGate', 'normalization_gate', 'AS상태']) || '-',
+    recoveryStatus: firstPresent(store, ['recoveryStatus', 'recovery_status', 'recoveryState', 'recovery_state', '회복상태']) || '-',
+    crmReady: normalizeBoolean(firstPresent(store, ['crmReady', 'crm_ready', 'crmReadyYn', 'crm_ready_yn', 'crmAllowed', 'crm_allowed', 'crm_allowed_yn'])),
+    nextAction: firstPresent(store, ['nextAction', 'next_action', 'recommendedAction', 'recommended_action', 'action', '다음액션']) || '-'
+  };
+}
+
+function normalizeVisuals(visuals, recovery) {
+  return Object.assign({}, visuals, {
+    recoveryGapByStore: arrayFrom(visuals.recoveryGapByStore || visuals.recovery_gap_by_store || recovery.gapByStore || recovery.gap_by_store),
+    processedBulletByStore: arrayFrom(visuals.processedBulletByStore || visuals.processed_bullet_by_store || recovery.bulletByStore || recovery.bullet_by_store),
+    systemTrend: arrayFrom(visuals.systemTrend || visuals.system_trend),
+    openActionTrend: arrayFrom(visuals.openActionTrend || visuals.open_action_trend)
+  });
+}
+
+function normalizeWeatherData(store) {
+  store = objectFrom(store);
+  const objectWeather = typeof store.weather === 'object' && store.weather !== null ? store.weather : {};
+  const data = Object.assign({}, objectWeather, objectFrom(store.weatherData || store.weather_data || store.weatherMetrics || store.weather_metrics));
+  const aliases = {
+    pop: ['weather_pop', 'rainProbability', 'rain_probability', '강수확률'],
+    pcp: ['weather_pcp', 'rainfallMm', 'rainfall_mm', 'precipitationMm', 'precipitation_mm', '강수량'],
+    windSpeed: ['weather_wsd', 'wsd', 'wind_speed', '풍속'],
+    tmpMax: ['weather_tmp_max', 'tmp_max', 'tmx', '최고기온'],
+    tmpMin: ['weather_tmp_min', 'tmp_min', 'tmn', '최저기온'],
+    snowfallCm: ['weather_sno', 'sno', 'snowfall_cm', '적설'],
+    pm10: ['weather_pm10', 'air_pm10', 'PM10', '미세먼지'],
+    pm25: ['weather_pm25', 'air_pm25', 'PM25', 'PM2_5', '초미세먼지'],
+    peakTime: ['weather_peak_time', 'peak_time', 'weatherPeakTime', 'weather_peak_time', '피크시각'],
+    weatherBaseAt: ['weather_base_at', 'weatherBaseAt', 'base_at', '기상기준시각']
+  };
+  Object.keys(aliases).forEach((key) => {
+    const value = firstPresent(store, aliases[key]);
+    if (value !== null) data[key] = value;
+  });
+  return data;
 }
 
 function normalizeStatus(value) {
@@ -142,17 +209,19 @@ function normalizeStatus(value) {
 }
 
 function normalizeWeatherLabel(store) {
+  store = objectFrom(store);
   if (typeof store.weather === 'object' && store.weather !== null) {
     return store.weather.label || store.weather.triggerLabel || store.weather.trigger_label || store.trigger || '-';
   }
-  return store.weather || store.trigger || '-';
+  return firstPresent(store, ['weather', 'weatherLabel', 'weather_label', 'triggerLabel', 'trigger_label', 'trigger', '기상']) || '-';
 }
 
 function normalizeWeatherDetail(store) {
+  store = objectFrom(store);
   if (typeof store.weather === 'object' && store.weather !== null) {
     return store.weather.summary || store.weather.detail || store.weather.peakTime || store.weather.peak_time || '';
   }
-  return store.weatherDetail || store.weather_detail || '';
+  return firstPresent(store, ['weatherDetail', 'weather_detail', 'weatherSummary', 'weather_summary', 'operationStatus', 'operation_status', '상세']) || '';
 }
 
 function ensureStoreOptions() {
@@ -176,10 +245,12 @@ function render() {
   renderRiskMatrix();
   renderRecoveryFunnel();
   renderRecoveryStageHeatmap();
+  renderProcessedBulletList();
   renderRecoveryComparison();
   renderStoreTable();
   renderTimeline();
   renderSystem();
+  renderSystemTrend();
 }
 
 function filteredStores() {
@@ -477,21 +548,61 @@ function renderRecoveryQueue() {
     $('recoveryQueue').innerHTML = '<div class="empty-state">현재 필터 기준 회복 큐가 없습니다.</div>';
     return;
   }
-  $('recoveryQueue').innerHTML = filtered.map((item) => `
-    <div class="queue-item">
-      <div class="queue-main">
-        <div class="queue-top">
-          <span class="queue-store">${escapeHtml(item.store || '-')}</span>
-          <span class="badge ${queueStatusClass(item.status)}">${escapeHtml(item.status || '-')}</span>
+  $('recoveryQueue').innerHTML = filtered.map((item) => {
+    const status = firstPresent(item, ['status', 'recoveryStatus', 'recovery_status']) || '-';
+    const processed = firstPresent(item, ['processedRecoveryRate', 'processed_recovery_rate', 'washRecoveryRate', 'wash_recovery_rate']);
+    const revenue = firstPresent(item, ['revenueRecoveryRate', 'revenue_recovery_rate', 'recoveryRate', 'recovery_rate']);
+    const revenueText = revenue !== null ? ` · 매출 회복률 ${formatPercent(revenue)}` : '';
+    return `
+      <div class="queue-item">
+        <div class="queue-main">
+          <div class="queue-top">
+            <span class="queue-store">${escapeHtml(firstPresent(item, ['store', 'storeName', 'store_name']) || '-')}</span>
+            <span class="badge ${queueStatusClass(status)}">${escapeHtml(status)}</span>
+          </div>
+          <div class="queue-body">${escapeHtml(firstPresent(item, ['stage', 'recoveryStage', 'recovery_stage']) || '-')} · 처리대수 회복률 ${formatPercent(processed)}${revenueText}</div>
         </div>
-        <div class="queue-body">${escapeHtml(item.stage || '-')} · 처리대수 회복률 ${formatPercent(item.processedRecoveryRate ?? item.processed_recovery_rate)}</div>
+        <div class="queue-side">
+          <span class="queue-chip">CRM ${escapeHtml(firstPresent(item, ['crmAllowed', 'crm_allowed', 'crm_allowed_yn']) || '-')}</span>
+          <span class="queue-next">${escapeHtml(firstPresent(item, ['next', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-')}</span>
+        </div>
       </div>
-      <div class="queue-side">
-        <span class="queue-chip">CRM ${escapeHtml(item.crmAllowed || item.crm_allowed || '-')}</span>
-        <span class="queue-next">${escapeHtml(item.next || '-')}</span>
+    `;
+  }).join('');
+}
+
+function renderProcessedBulletList() {
+  const container = $('processedBulletList');
+  if (!container) return;
+  const rows = processedBulletRows();
+  if (!rows.length) {
+    container.innerHTML = '<div class="empty-state compact">처리대수 기준/실적 비교 데이터가 없습니다.</div>';
+    return;
+  }
+  container.innerHTML = rows.map((row) => {
+    const actual = numericOrNull(firstPresent(row, ['actual', 'washCount', 'wash_count']));
+    const baseline = numericOrNull(firstPresent(row, ['baseline', 'baselineWashCount', 'baseline_wash_count']));
+    const rate = numericOrNull(firstPresent(row, ['rate', 'processedRate', 'processed_rate']));
+    const width = rate === null ? 0 : Math.max(2, Math.min(120, Math.round(rate)));
+    const storeName = firstPresent(row, ['store', 'storeName', 'store_name']) || storeNameById(row.storeId);
+    return `
+      <div class="bullet-row">
+        <div class="bullet-top">
+          <strong>${escapeHtml(storeName)}</strong>
+          <span>${escapeHtml(formatPercent(rate))}</span>
+        </div>
+        <div class="bullet-track" aria-label="${escapeAttr(storeName)} 처리대수 회복률 ${formatPercent(rate)}">
+          <span class="${recoveryRateLevel(rate)}" style="width:${width}%"></span>
+          <i style="left:${ratePosition(100)}%"></i>
+        </div>
+        <div class="bullet-foot">
+          <span>실적 ${formatCount(actual)}</span>
+          <span>기준 ${formatCount(baseline)}</span>
+          <span>${escapeHtml(firstPresent(row, ['status', 'recoveryStatus', 'recovery_status']) || '')}</span>
+        </div>
       </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
 }
 
 function renderStoreTable() {
@@ -546,6 +657,36 @@ function renderSystem() {
   ` : '');
 }
 
+function renderSystemTrend() {
+  const container = $('systemTrend');
+  if (!container) return;
+  const rows = trendRows();
+  if (!rows.length) {
+    container.innerHTML = '<div class="empty-state compact">최근 추이 데이터가 없습니다.</div>';
+    return;
+  }
+  const max = Math.max(...rows.flatMap((row) => [row.actions, row.errors, row.unresolved]), 1);
+  container.innerHTML = `
+    <div class="trend-title">최근 7일 운영 신호</div>
+    ${rows.map((row) => `
+      <div class="trend-row">
+        <div class="trend-date">${escapeHtml(shortDate(row.date))}</div>
+        <div class="trend-bars">
+          <span class="trend-bar actions" style="width:${trendWidth(row.actions, max)}%" title="오픈 액션 ${row.actions}건"></span>
+          <span class="trend-bar errors" style="width:${trendWidth(row.errors, max)}%" title="시스템 오류 ${row.errors}건"></span>
+          <span class="trend-bar unresolved" style="width:${trendWidth(row.unresolved, max)}%" title="미해결 ${row.unresolved}건"></span>
+        </div>
+        <div class="trend-count">${row.actions}/${row.errors}/${row.unresolved}</div>
+      </div>
+    `).join('')}
+    <div class="trend-legend">
+      <span><i class="actions"></i>오픈 액션</span>
+      <span><i class="errors"></i>오류</span>
+      <span><i class="unresolved"></i>미해결</span>
+    </div>
+  `;
+}
+
 function renderWeatherMetricChips(store, limit = 3) {
   const chips = weatherMetricRows(store).slice(0, limit);
   return chips.map((chip) => {
@@ -557,15 +698,16 @@ function renderWeatherMetricChips(store, limit = 3) {
 function weatherMetricRows(store) {
   const data = store.weatherData || {};
   const rows = [
-    { key: 'pop', label: '강수확률', value: firstPresent(data, ['pop', 'POP', 'rainProbability', 'rain_probability', 'precipitationProbability', 'precipitation_probability']), unit: '%' },
-    { key: 'pcp', label: '강수량', value: firstPresent(data, ['pcp', 'PCP', 'rainfall', 'rainfallMm', 'rainfall_mm', 'precipitation', 'precipitationMm']), unit: 'mm' },
+    { key: 'pop', label: '강수확률', value: firstPresent(data, ['pop', 'POP', 'weather_pop', 'rainProbability', 'rain_probability', 'precipitationProbability', 'precipitation_probability']), unit: '%' },
+    { key: 'pcp', label: '강수량', value: firstPresent(data, ['pcp', 'PCP', 'weather_pcp', 'rainfall', 'rainfallMm', 'rainfall_mm', 'precipitation', 'precipitationMm', 'precipitation_mm']), unit: 'mm' },
     { key: 'peakTime', label: '피크', value: firstPresent(data, ['peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']), unit: '' },
-    { key: 'windSpeed', label: '풍속', value: firstPresent(data, ['wsd', 'WSD', 'windSpeed', 'wind_speed']), unit: 'm/s' },
-    { key: 'tmpMax', label: '최고기온', value: firstPresent(data, ['tmpMax', 'tmp_max', 'tmx', 'TMX', 'TMP_MAX']), unit: 'C' },
-    { key: 'tmpMin', label: '최저기온', value: firstPresent(data, ['tmpMin', 'tmp_min', 'tmn', 'TMN', 'TMP_MIN']), unit: 'C' },
-    { key: 'snowfallCm', label: '적설', value: firstPresent(data, ['sno', 'SNO', 'snow', 'snowfall', 'snowfallCm']), unit: 'cm' },
-    { key: 'pm10', label: 'PM10', value: firstPresent(data, ['pm10', 'PM10']), unit: '' },
-    { key: 'pm25', label: 'PM2.5', value: firstPresent(data, ['pm25', 'pm2_5', 'PM25', 'PM2_5']), unit: '' }
+    { key: 'windSpeed', label: '풍속', value: firstPresent(data, ['wsd', 'WSD', 'weather_wsd', 'windSpeed', 'wind_speed']), unit: 'm/s' },
+    { key: 'tmpMax', label: '최고기온', value: firstPresent(data, ['tmpMax', 'tmp_max', 'weather_tmp_max', 'tmx', 'TMX', 'TMP_MAX']), unit: 'C' },
+    { key: 'tmpMin', label: '최저기온', value: firstPresent(data, ['tmpMin', 'tmp_min', 'weather_tmp_min', 'tmn', 'TMN', 'TMP_MIN']), unit: 'C' },
+    { key: 'snowfallCm', label: '적설', value: firstPresent(data, ['sno', 'SNO', 'weather_sno', 'snow', 'snowfall', 'snowfallCm', 'snowfall_cm']), unit: 'cm' },
+    { key: 'pm10', label: 'PM10', value: firstPresent(data, ['pm10', 'PM10', 'weather_pm10', 'air_pm10']), unit: '' },
+    { key: 'pm25', label: 'PM2.5', value: firstPresent(data, ['pm25', 'pm2_5', 'PM25', 'PM2_5', 'weather_pm25', 'air_pm25']), unit: '' },
+    { key: 'weatherBaseAt', label: '기준', value: formatMaybeDate(firstPresent(data, ['weatherBaseAt', 'weather_base_at', 'baseAt', 'base_at'])), unit: '' }
   ];
   return rows
     .filter((row) => row.value !== null && row.value !== undefined && row.value !== '' && row.value !== '-')
@@ -621,6 +763,19 @@ function firstPresent(source, keys) {
     if (source && source[key] !== undefined && source[key] !== null && source[key] !== '') return source[key];
   }
   return null;
+}
+
+function objectFrom(value) {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function arrayFrom(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function numberFrom(value, fallback) {
+  const number = Number(String(value ?? '').replace(/,/g, ''));
+  return Number.isFinite(number) ? number : fallback;
 }
 
 function systemFreshnessClass(value, thresholdHours) {
@@ -730,6 +885,17 @@ function recoveryGapRows() {
     .slice(0, 8);
 }
 
+function processedBulletRows() {
+  const visuals = state.data.visuals || {};
+  const recovery = state.data.recovery || {};
+  const provided = visuals.processedBulletByStore || visuals.processed_bullet_by_store || recovery.bulletByStore || recovery.bullet_by_store;
+  const visibleStoreIds = new Set(filteredStores().map((store) => store.id));
+  return arrayFrom(provided)
+    .map((row) => ({ ...row, storeId: row.storeId || row.store_id || findStoreId(row.store || row.storeName || row.store_name) }))
+    .filter((row) => state.store === 'all' || visibleStoreIds.has(row.storeId))
+    .slice(0, 8);
+}
+
 function deriveRecoveryGapRows() {
   const recovery = state.data.recovery || {};
   return state.data.stores.map((store) => {
@@ -748,7 +914,8 @@ function deriveRecoveryGapRows() {
 
 function rateSeriesForStore(storeId, recovery, allowGlobalFallback = true) {
   const series = recovery.storeSeries || recovery.store_series || {};
-  const selected = series[storeId] || {};
+  const selectedKey = Object.keys(series).find((key) => key === storeId || findStoreId(key) === storeId || slug(key) === storeId);
+  const selected = series[storeId] || series[selectedKey] || {};
   return {
     processedRate: selected.processedRate || selected.processed_rate || (allowGlobalFallback ? recovery.processedRate || recovery.processed_rate : []) || [],
     revenueRate: selected.revenueRate || selected.revenue_rate || (allowGlobalFallback ? recovery.revenueRate || recovery.revenue_rate : []) || []
@@ -859,6 +1026,8 @@ function matchesSelectedStore(item) {
     item && item.store,
     item && item.storeName,
     item && item.store_name,
+    item && item['지점명'],
+    item && item['지점'],
   ].filter((value) => value !== null && value !== undefined && value !== '');
   return candidates.some((value) => findStoreId(value) === state.store || slug(value) === state.store);
 }
@@ -882,7 +1051,44 @@ function storeNameById(storeId) {
 function getRecoverySeries(recovery) {
   if (state.store === 'all') return {};
   const series = recovery.storeSeries || recovery.store_series || {};
-  return series[state.store] || {};
+  const selectedKey = Object.keys(series).find((key) => key === state.store || findStoreId(key) === state.store || slug(key) === state.store);
+  return series[state.store] || series[selectedKey] || {};
+}
+
+function trendRows() {
+  const visuals = state.data.visuals || {};
+  const systemTrend = arrayFrom(visuals.systemTrend || visuals.system_trend);
+  const actionTrend = arrayFrom(visuals.openActionTrend || visuals.open_action_trend);
+  const byDate = new Map();
+  systemTrend.forEach((row) => {
+    const date = String(row.date || row.day || '').trim();
+    if (!date) return;
+    byDate.set(date, Object.assign(byDate.get(date) || { date, actions: 0, errors: 0, unresolved: 0 }, {
+      errors: numberFrom(row.errors, 0),
+      unresolved: numberFrom(row.unresolved, 0)
+    }));
+  });
+  actionTrend.forEach((row) => {
+    const date = String(row.date || row.day || '').trim();
+    if (!date) return;
+    byDate.set(date, Object.assign(byDate.get(date) || { date, actions: 0, errors: 0, unresolved: 0 }, {
+      actions: numberFrom(firstPresent(row, ['actions', 'openActions', 'open_actions']), 0)
+    }));
+  });
+  return [...byDate.values()].sort((a, b) => String(a.date).localeCompare(String(b.date))).slice(-7);
+}
+
+function trendWidth(value, max) {
+  if (!value) return 0;
+  return Math.max(8, Math.round(Number(value) / max * 100));
+}
+
+function shortDate(value) {
+  const date = new Date(value);
+  if (Number.isFinite(date.getTime())) {
+    return new Intl.DateTimeFormat('ko-KR', { month: '2-digit', day: '2-digit' }).format(date);
+  }
+  return String(value || '-');
 }
 
 function queueStatusClass(status) {
@@ -896,7 +1102,13 @@ function queueStatusClass(status) {
 
 function formatPercent(value) {
   if (value === null || value === undefined || value === '') return '-';
-  return `${escapeHtml(value)}%`;
+  const text = String(value).trim();
+  return text.endsWith('%') ? escapeHtml(text) : `${escapeHtml(text)}%`;
+}
+
+function formatCount(value) {
+  const number = Number(value);
+  return Number.isFinite(number) ? number.toLocaleString('ko-KR') : '-';
 }
 
 function lastNumber(values) {
