@@ -139,7 +139,8 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     "recoveryFunnel": [{ "key": "detected", "label": "하락 감지", "count": 3 }],
     "recoveryGapByStore": [{ "storeId": "hanam", "store": "하남 미사", "gap": 4 }],
     "processedBulletByStore": [],
-    "systemTrend": []
+    "systemTrend": [],
+    "openActionTrend": []
   },
   "system": {
     "lastSummaryAt": "2026-06-25T09:10:00+09:00",
@@ -178,6 +179,13 @@ autostay-weather-ops-dashboard
 8. 재배포 후 화면 상단 데이터 상태가 `실데이터 연결`인지 확인합니다.
 9. 데모/개발 확인이 필요할 때만 별도 환경에서 `WEATHER_OPS_ALLOW_SAMPLE=true`를 임시 사용합니다.
 
+## Payload 호환 메모
+
+- Apps Script 응답은 직접 dashboard payload이거나 `dashboardPayload`, `dashboard_payload`, `payload`, `data`, `dashboard` wrapper 안에 있어도 수용합니다.
+- `recovery.gapByStore` 또는 `recovery.gap_by_store`는 `visuals.recoveryGapByStore`와 동일한 회복 비교 데이터로 정규화됩니다.
+- `recovery.bulletByStore` 또는 `recovery.bullet_by_store`는 `visuals.processedBulletByStore`와 동일한 처리대수 bullet 데이터로 정규화됩니다.
+- `visuals.systemTrend`와 `visuals.openActionTrend`는 운영 추이 패널에서 함께 사용됩니다.
+
 ## 운영 화면 구성
 
 - 상단: 전체 상태, 즉시 조치, 주의 관찰, AS 차단, 회복 조치, CRM 가능, 성과 대기, 시스템 오류
@@ -189,8 +197,8 @@ autostay-weather-ops-dashboard
 - 오늘 기상 리스크: 오늘 활성화된 기상/AS/회복 리스크만 라벨이 있는 격자로 표시
 - 회복 실행 단계: 하락 감지 -> 조치 필요 -> 정상화 통과 -> CRM 후보 -> 발송/재방문 단계별 유지율과 이탈 건수
 - 지점별 회복 진행: 7개 지점의 D-day/D+1/D+2 처리대수·매출 회복률을 히트맵으로 표시
-- 이용 회복 vs 매출 회복: 처리량 회복 대비 매출 회복 지연 지점을 덤벨형 비교로 표시
-- 운영 시각화 레이아웃: `오늘 기상 리스크`, `회복 실행 단계`, `지점별 회복 진행`, `이용 회복 vs 매출 회복`을 2×2 명시 영역으로 배치
+- 처리대수 회복 vs 매출 회복: 처리대수 회복 대비 매출 회복 지연 지점을 덤벨형 비교로 표시
+- 운영 시각화 레이아웃: `오늘 기상 리스크`, `회복 실행 단계`, `지점별 회복 진행`, `처리대수 회복 vs 매출 회복`을 2×2 명시 영역으로 배치
 - 지점별 상태: 데스크톱은 표, 모바일은 카드형 목록으로 표시
 - 시스템 상태: 마지막 요약, 매출 동기화, Apps Script 버전, 데이터 상태를 신선도 색상과 주의 신호로 표시
 - 반응형 기준: 1100px 이하에서는 주요 영역을 단일 흐름으로 재배치하고, 720px 이하에서는 모바일 카드형 표와 단일 열 시각화로 전환합니다.

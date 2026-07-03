@@ -504,7 +504,7 @@ function renderRecoveryStageHeatmap() {
 function renderRecoveryComparison() {
   const rows = recoveryGapRows();
   if (!rows.length) {
-    $('recoveryComparison').innerHTML = '<div class="empty-state">현재 필터 기준 이용/매출 회복 비교 데이터가 없습니다.</div>';
+    $('recoveryComparison').innerHTML = '<div class="empty-state">현재 필터 기준 처리대수/매출 회복 비교 데이터가 없습니다.</div>';
     return;
   }
   $('recoveryComparison').innerHTML = rows.map((row) => {
@@ -521,20 +521,20 @@ function renderRecoveryComparison() {
           <strong>${escapeHtml(row.store || storeNameById(row.storeId))}</strong>
           <span>${escapeHtml(formatSignedPercentPoint(gap))} · ${escapeHtml(recoveryGapMeaning(gap))}</span>
         </div>
-        <div class="dumbbell" aria-label="${escapeAttr(row.store)} 이용 회복 ${formatPercent(processed)}, 매출 회복 ${formatPercent(revenue)}">
+        <div class="dumbbell" aria-label="${escapeAttr(row.store)} 처리대수 회복 ${formatPercent(processed)}, 매출 회복 ${formatPercent(revenue)}">
           <span class="dumbbell-range" style="left:${left}%;width:${width}%"></span>
           <span class="dumbbell-dot processed" style="left:${processedPos}%"></span>
           <span class="dumbbell-dot revenue" style="left:${revenuePos}%"></span>
         </div>
         <div class="comparison-foot">
-          <span><i class="legend-dot processed"></i>이용 ${formatPercent(processed)}</span>
+          <span><i class="legend-dot processed"></i>처리대수 ${formatPercent(processed)}</span>
           <span><i class="legend-dot revenue"></i>매출 ${formatPercent(revenue)}</span>
         </div>
       </div>
     `;
   }).join('') + `
     <div class="comparison-legend">
-      <span><i class="legend-dot processed"></i>이용 회복률</span>
+      <span><i class="legend-dot processed"></i>처리대수 회복률</span>
       <span><i class="legend-dot revenue"></i>매출 회복률</span>
       <span>갭이 클수록 결제/단가/구독 믹스 확인 필요</span>
     </div>
@@ -949,8 +949,8 @@ function formatSignedPercentPoint(value) {
 function recoveryGapMeaning(value) {
   const number = Number(value);
   if (!Number.isFinite(number)) return '비교 데이터 대기';
-  if (Math.abs(number) < 3) return '이용·매출 균형';
-  if (number > 0) return '이용 회복, 매출 지연';
+  if (Math.abs(number) < 3) return '처리대수·매출 균형';
+  if (number > 0) return '처리대수 회복, 매출 지연';
   return '매출 우위, 단가·결제 믹스 확인';
 }
 
