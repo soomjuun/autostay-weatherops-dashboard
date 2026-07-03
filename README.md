@@ -189,6 +189,8 @@ autostay-weather-ops-dashboard
 - `recovery.bulletByStore` 또는 `recovery.bullet_by_store`는 `visuals.processedBulletByStore`와 동일한 처리대수 bullet 데이터로 정규화됩니다.
 - `visuals.systemTrend`와 `visuals.openActionTrend`는 운영 추이 패널에서 함께 사용됩니다.
 - `visuals.recoveryFunnel`의 `asBlocked`/`AS 차단` 항목은 CRM·재방문 전환율 계산에서 제외하고 별도 참고 지표로 표시합니다.
+- `stores[].weatherData.peakTime`은 `HH:mm`, `HHmm`, `H시`, ISO 날짜시간, 시트 시간값을 `HH:mm`으로 정규화합니다. `1899-12-30 00:00` 계열의 시트 잔여값은 `피크 미정`으로 표시합니다.
+- `stores[].weatherData.weatherBaseAt`은 유효한 날짜시간만 `MM-DD HH:mm`으로 표시하고, 1899년 계열 sentinel 날짜는 화면에서 제외합니다.
 
 ## 운영 화면 구성
 
@@ -197,7 +199,7 @@ autostay-weather-ops-dashboard
 - 사업운영팀 액션: 안전, AS, 현장 준비, 정상화 게이트 중심
 - 마케팅팀 액션: CRM, 쿠폰, 재방문 유도, 회복 수요 흡수 중심
 - 선택 지점 회복률: 전체 보기에서는 중복 축소를 위해 숨기고, 지점 필터 선택 시 해당 지점의 처리대수/매출 회복 추이를 표시
-- 회복 큐: 전체 보기에서는 선택 지점 회복률 자리까지 넓게 사용하고, CRM 가능 여부와 다음 액션을 우측 칩으로 표시
+- 회복 큐: 전체 보기에서는 선택 지점 회복률 자리까지 넓게 사용하고, CRM 가능 여부를 `가능`/`불가`/`대기` 칩으로 정규화해 다음 액션과 함께 표시
 - 오늘 기상 리스크: 오늘 활성화된 기상/AS/회복 리스크만 라벨이 있는 격자로 표시
 - 회복 실행 단계: 하락 감지 -> 조치 필요 -> 정상화 통과 -> CRM 후보 -> 발송/재방문 단계별 유지율과 이탈 건수. AS 차단은 전환 흐름이 아닌 별도 참고 지표로 표시
 - 지점별 회복 진행: 7개 지점의 D-day/D+1/D+2 처리대수·매출 회복률을 히트맵으로 표시

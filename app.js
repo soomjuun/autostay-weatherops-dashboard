@@ -219,7 +219,10 @@ function normalizeWeatherLabel(store) {
 function normalizeWeatherDetail(store) {
   store = objectFrom(store);
   if (typeof store.weather === 'object' && store.weather !== null) {
-    return store.weather.summary || store.weather.detail || store.weather.peakTime || store.weather.peak_time || '';
+    const detail = store.weather.summary || store.weather.detail;
+    if (detail) return detail;
+    const peak = formatPeakTime(store.weather.peakTime || store.weather.peak_time);
+    return peak ? `피크 ${peak}` : '';
   }
   return firstPresent(store, ['weatherDetail', 'weather_detail', 'weatherSummary', 'weather_summary', 'operationStatus', 'operation_status', '상세']) || '';
 }
@@ -432,7 +435,7 @@ function renderRiskMatrix() {
   matrix.innerHTML = `
     <div class="matrix-row matrix-head" style="${gridStyle}">
       <div class="matrix-store">지점</div>
-      ${columns.map((column) => `<div>${escapeHtml(column.label)}</div>`).join('')}
+      ${columns.map((column) => `<div class="${isOperationalRiskColumn(column) ? 'matrix-op-head' : ''}">${escapeHtml(column.label)}</div>`).join('')}
     </div>
     ${rows.map((row) => `
       <div class="matrix-row${isNormalRiskRow(row, columns) ? ' is-muted' : ''}" style="${gridStyle}">
@@ -440,7 +443,8 @@ function renderRiskMatrix() {
         ${columns.map((column) => {
           const cell = matrixCellForColumn(row, column);
           const level = normalizeStatus(cell.level);
-          return `<div class="matrix-cell ${level}" title="${escapeAttr(row.store)} ${escapeAttr(cell.label)} ${escapeAttr(levelLabel(level))}">${escapeHtml(levelLabel(level))}</div>`;
+          const opClass = isOperationalRiskColumn(column) ? ' is-op' : '';
+          return `<div class="matrix-cell ${level}${opClass}" title="${escapeAttr(row.store)} ${escapeAttr(cell.label)} ${escapeAttr(levelLabel(level))}">${escapeHtml(levelLabel(level))}</div>`;
         }).join('')}
       </div>
     `).join('')}
@@ -571,6 +575,7 @@ function renderRecoveryQueue() {
     const processed = firstPresent(item, ['processedRecoveryRate', 'processed_recovery_rate', 'washRecoveryRate', 'wash_recovery_rate']);
     const revenue = firstPresent(item, ['revenueRecoveryRate', 'revenue_recovery_rate', 'recoveryRate', 'recovery_rate']);
     const revenueText = revenue !== null ? ` · 매출 회복률 ${formatPercent(revenue)}` : '';
+    const crm = formatCrmAllowed(firstPresent(item, ['crmAllowed', 'crm_allowed', 'crm_allowed_yn']));
     return `
       <div class="queue-item">
         <div class="queue-main">
@@ -581,7 +586,7 @@ function renderRecoveryQueue() {
           <div class="queue-body">${escapeHtml(firstPresent(item, ['stage', 'recoveryStage', 'recovery_stage']) || '-')} · 처리대수 회복률 ${formatPercent(processed)}${revenueText}</div>
         </div>
         <div class="queue-side">
-          <span class="queue-chip">CRM ${escapeHtml(firstPresent(item, ['crmAllowed', 'crm_allowed', 'crm_allowed_yn']) || '-')}</span>
+          <span class="queue-chip ${escapeAttr(crm.className)}">CRM ${escapeHtml(crm.label)}</span>
           <span class="queue-next">${escapeHtml(firstPresent(item, ['next', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-')}</span>
         </div>
       </div>
@@ -714,33 +719,35 @@ function renderWeatherMetricChips(store, limit = 3) {
   const chips = weatherMetricRows(store).slice(0, limit);
   return chips.map((chip) => {
     const level = normalizeStatus(chip.level || 'Gray');
-    return `<span class="weather-chip level-${escapeAttr(level)}">${escapeHtml(chip.label)} ${escapeHtml(chip.value)}</span>`;
+    const text = `${chip.label} ${chip.value}`;
+    return `<span class="weather-chip level-${escapeAttr(level)}" title="${escapeAttr(text)}">${escapeHtml(text)}</span>`;
   }).join('');
 }
 
 function weatherMetricRows(store) {
   const data = store.weatherData || {};
+  const peakTime = formatPeakTime(firstPresent(data, ['peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']));
   const rows = [
     { key: 'pop', label: '강수확률', value: firstPresent(data, ['pop', 'POP', 'weather_pop', 'rainProbability', 'rain_probability', 'precipitationProbability', 'precipitation_probability']), unit: '%' },
     { key: 'pcp', label: '강수량', value: firstPresent(data, ['pcp', 'PCP', 'weather_pcp', 'rainfall', 'rainfallMm', 'rainfall_mm', 'precipitation', 'precipitationMm', 'precipitation_mm']), unit: 'mm' },
-    { key: 'peakTime', label: '피크', value: firstPresent(data, ['peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']), unit: '' },
+    { key: 'peakTime', label: '피크', value: peakTime, unit: '' },
     { key: 'windSpeed', label: '풍속', value: firstPresent(data, ['wsd', 'WSD', 'weather_wsd', 'windSpeed', 'wind_speed']), unit: 'm/s' },
-    { key: 'tmpMax', label: '최고기온', value: firstPresent(data, ['tmpMax', 'tmp_max', 'weather_tmp_max', 'tmx', 'TMX', 'TMP_MAX']), unit: 'C' },
-    { key: 'tmpMin', label: '최저기온', value: firstPresent(data, ['tmpMin', 'tmp_min', 'weather_tmp_min', 'tmn', 'TMN', 'TMP_MIN']), unit: 'C' },
+    { key: 'tmpMax', label: '최고기온', value: firstPresent(data, ['tmpMax', 'tmp_max', 'weather_tmp_max', 'tmx', 'TMX', 'TMP_MAX']), unit: '℃' },
+    { key: 'tmpMin', label: '최저기온', value: firstPresent(data, ['tmpMin', 'tmp_min', 'weather_tmp_min', 'tmn', 'TMN', 'TMP_MIN']), unit: '℃' },
     { key: 'snowfallCm', label: '적설', value: firstPresent(data, ['sno', 'SNO', 'weather_sno', 'snow', 'snowfall', 'snowfallCm', 'snowfall_cm']), unit: 'cm' },
-    { key: 'pm10', label: 'PM10', value: firstPresent(data, ['pm10', 'PM10', 'weather_pm10', 'air_pm10']), unit: '' },
-    { key: 'pm25', label: 'PM2.5', value: firstPresent(data, ['pm25', 'pm2_5', 'PM25', 'PM2_5', 'weather_pm25', 'air_pm25']), unit: '' },
+    { key: 'pm10', label: 'PM10', value: firstPresent(data, ['pm10', 'PM10', 'weather_pm10', 'air_pm10']), unit: ' ㎍/㎥' },
+    { key: 'pm25', label: 'PM2.5', value: firstPresent(data, ['pm25', 'pm2_5', 'PM25', 'PM2_5', 'weather_pm25', 'air_pm25']), unit: ' ㎍/㎥' },
     { key: 'weatherBaseAt', label: '기준', value: formatMaybeDate(firstPresent(data, ['weatherBaseAt', 'weather_base_at', 'baseAt', 'base_at'])), unit: '' }
   ];
   return rows
-    .filter((row) => row.value !== null && row.value !== undefined && row.value !== '' && row.value !== '-')
     .map((row, index) => ({
       key: row.key,
       label: row.label,
-      value: `${row.value}${row.unit}`,
+      value: formatMetricValue(row.value, row.unit),
       level: weatherMetricLevel(data, row.key),
       order: index
     }))
+    .filter((row) => row.value !== null && row.value !== undefined && row.value !== '' && row.value !== '-')
     .sort((a, b) => weatherMetricPriority(store, a.key) - weatherMetricPriority(store, b.key)
       || (STATUS_ORDER[normalizeStatus(b.level)] || 0) - (STATUS_ORDER[normalizeStatus(a.level)] || 0)
       || a.order - b.order);
@@ -851,6 +858,11 @@ function matrixCellForColumn(row, column) {
   if (column.key === 'normal') return { key: 'normal', label: '정상', level: 'Green' };
   return (row.cells || []).find((cell) => (cell.key || cell.label) === column.key)
     || { key: column.key, label: column.label, level: 'Green' };
+}
+
+function isOperationalRiskColumn(column) {
+  const key = String(column.key || column.label || '').toLowerCase();
+  return key === 'as' || key === 'recovery' || key === '회복';
 }
 
 function isNormalRiskRow(row, columns) {
@@ -1129,6 +1141,80 @@ function queueStatusClass(status) {
   return 'Orange';
 }
 
+function formatCrmAllowed(value) {
+  if (value === null || value === undefined || value === '') return { label: '-', className: 'is-wait' };
+  const text = String(value).trim();
+  const normalized = text.toLowerCase();
+  if (['y', 'yes', 'true', '1', 'ok'].includes(normalized)
+    || ['가능', '허용', 'ready'].some((word) => normalized.includes(word))) {
+    return { label: '가능', className: 'is-ok' };
+  }
+  if (['n', 'no', 'false', '0'].includes(normalized)
+    || ['불가', '차단', 'blocked'].some((word) => normalized.includes(word))) {
+    return { label: '불가', className: 'is-blocked' };
+  }
+  if (['대기', '미정', '보류', 'wait', 'pending'].some((word) => normalized.includes(word))) {
+    return { label: '대기', className: 'is-wait' };
+  }
+  return { label: text, className: 'is-wait' };
+}
+
+function formatMetricValue(value, unit = '') {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim();
+  if (!text || text === '-') return text;
+  if (!unit) return text;
+  return text.endsWith(unit.trim()) ? text : `${text}${unit}`;
+}
+
+function formatPeakTime(value) {
+  return formatClockValue(value, { unknownLabel: '미정' });
+}
+
+function formatClockValue(value, options = {}) {
+  const unknownLabel = options.unknownLabel || null;
+  if (value === null || value === undefined || value === '') return null;
+
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    if (value >= 0 && value < 1) {
+      const totalMinutes = Math.round(value * 24 * 60);
+      return clockFromParts(Math.floor(totalMinutes / 60) % 24, totalMinutes % 60, unknownLabel);
+    }
+    return formatClockValue(String(value), options);
+  }
+
+  if (value instanceof Date && Number.isFinite(value.getTime())) {
+    return clockFromParts(value.getHours(), value.getMinutes(), unknownLabel);
+  }
+
+  const text = String(value).trim();
+  if (!text || text === '-') return null;
+
+  const colonTime = text.match(/\b([01]?\d|2[0-3]):([0-5]\d)(?::[0-5]\d)?\b/);
+  if (colonTime) return clockFromParts(colonTime[1], colonTime[2], unknownLabel);
+
+  const koreanHour = text.match(/\b([01]?\d|2[0-3])\s*시(?:\s*([0-5]?\d)\s*분?)?/);
+  if (koreanHour) return clockFromParts(koreanHour[1], koreanHour[2] || 0, unknownLabel);
+
+  const compactTime = text.match(/^([01]?\d|2[0-3])([0-5]\d)$/);
+  if (compactTime) return clockFromParts(compactTime[1], compactTime[2], unknownLabel);
+
+  const date = new Date(text);
+  if (Number.isFinite(date.getTime()) && isDateLikeText(text) && hasTimeSignal(text) && !isSentinelDate(date)) {
+    return formatKstTimeOnly(date);
+  }
+
+  return text;
+}
+
+function clockFromParts(hour, minute, unknownLabel = null) {
+  const h = Number(hour);
+  const m = Number(minute);
+  if (!Number.isInteger(h) || !Number.isInteger(m) || h < 0 || h > 23 || m < 0 || m > 59) return null;
+  if (h === 0 && m === 0) return unknownLabel;
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 function formatPercent(value) {
   if (value === null || value === undefined || value === '') return '-';
   const text = String(value).trim();
@@ -1208,12 +1294,15 @@ function kstDateKey(date) {
 }
 
 function formatKstTimeOnly(value) {
-  return new Intl.DateTimeFormat('ko-KR', {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul',
     hour: '2-digit',
     minute: '2-digit',
-    hour12: false
-  }).format(value);
+    hourCycle: 'h23'
+  }).formatToParts(value)
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, part.value]));
+  return `${parts.hour}:${parts.minute}`;
 }
 
 function hoursSince(value) {
@@ -1232,19 +1321,45 @@ function slug(value) {
 function formatDateTime(value) {
   const date = new Date(value);
   if (!Number.isFinite(date.getTime())) return String(value || '-');
-  return new Intl.DateTimeFormat('ko-KR', {
+  const parts = Object.fromEntries(new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Seoul',
     month: '2-digit',
     day: '2-digit',
     hour: '2-digit',
-    minute: '2-digit'
-  }).format(date);
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).formatToParts(date)
+    .filter((part) => part.type !== 'literal')
+    .map((part) => [part.type, part.value]));
+  return `${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
 }
 
 function formatMaybeDate(value) {
+  if (value === null || value === undefined || value === '') return value;
+  const text = String(value).trim();
+  if (!text || text === '-') return value;
   const date = new Date(value);
-  if (Number.isFinite(date.getTime()) && String(value).includes('T')) return formatDateTime(value);
+  if (!Number.isFinite(date.getTime())) return value;
+  if (isSentinelDate(date) || /^1899[-/]12[-/]30\b/.test(text)) return null;
+  if (isDateLikeText(text)) return formatDateTime(value);
   return value;
+}
+
+function isDateLikeText(text) {
+  return /\d{4}[-/]\d{1,2}[-/]\d{1,2}/.test(text)
+    || /\b(?:mon|tue|wed|thu|fri|sat|sun)\b/i.test(text)
+    || /\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b/i.test(text);
+}
+
+function hasTimeSignal(text) {
+  return /\b([01]?\d|2[0-3]):[0-5]\d\b/.test(text)
+    || /\b([01]?\d|2[0-3])\s*시\b/.test(text)
+    || /T[0-2]\d/.test(text)
+    || /\b(?:AM|PM|GMT|UTC)\b/i.test(text);
+}
+
+function isSentinelDate(date) {
+  return date.getFullYear() <= 1900;
 }
 
 function escapeHtml(value) {
