@@ -536,7 +536,11 @@ select { min-width: 180px; }
 .risk-matrix {
   display: grid;
   gap: 7px;
-  overflow: visible;
+  overflow-x: auto;
+  overflow-y: visible;
+  padding-bottom: 2px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
 }
 .matrix-row {
   display: grid;
@@ -603,6 +607,34 @@ select { min-width: 180px; }
   color: var(--muted);
   font-size: 11px;
   font-weight: 750;
+}
+.funnel-side-note {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 10px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px dashed #f59e0b;
+  border-radius: 6px;
+  background: #fffbeb;
+}
+.funnel-side-note span,
+.funnel-side-note small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+.funnel-side-note strong {
+  font-size: 12px;
+  color: #92400e;
+}
+.funnel-side-note b {
+  grid-row: span 2;
+  color: #9a3412;
+  font-size: 14px;
+}
+.funnel-side-note small {
+  grid-column: 1 / -1;
 }
 
 .heatmap-table {
@@ -728,6 +760,10 @@ select { min-width: 180px; }
 .bullet-track span.level-watch { background: var(--yellow); }
 .bullet-track span.level-action { background: var(--red); }
 .bullet-track span.level-wait { background: var(--gray); }
+.bullet-track span.bullet-over {
+  background: #0f6b9f;
+  border-radius: 0 999px 999px 0;
+}
 .bullet-track i {
   width: 2px;
   background: #0f172a;
@@ -1015,8 +1051,12 @@ td:last-child { min-width: 280px; }
     text-align: left;
   }
   .system-grid { grid-template-columns: 1fr; }
+  .risk-matrix {
+    overflow-x: visible;
+  }
   .matrix-row,
   .heat-row { grid-template-columns: 1fr !important; }
+  .matrix-row { min-width: 0 !important; }
   .matrix-head,
   .heat-head { display: none; }
   .matrix-store,

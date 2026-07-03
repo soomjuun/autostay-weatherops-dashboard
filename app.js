@@ -416,13 +416,20 @@ function renderRecoveryChart() {
 
 function renderRiskMatrix() {
   const rows = riskMatrixRows().filter((row) => state.store === 'all' || row.storeId === state.store);
+  const matrix = $('riskMatrix');
   if (!rows.length) {
-    $('riskMatrix').innerHTML = '<div class="empty-state">현재 필터 기준 리스크 데이터가 없습니다.</div>';
+    matrix.classList.remove('is-dense');
+    matrix.innerHTML = '<div class="empty-state">현재 필터 기준 리스크 데이터가 없습니다.</div>';
     return;
   }
   const columns = activeRiskColumns(rows);
-  const gridStyle = `grid-template-columns:minmax(112px,1.25fr) repeat(${columns.length}, minmax(64px,1fr))`;
-  $('riskMatrix').innerHTML = `
+  const dense = columns.length > 5;
+  const storeColumnWidth = dense ? 96 : 112;
+  const cellMinWidth = dense ? 46 : 64;
+  const matrixMinWidth = dense ? storeColumnWidth + (columns.length * (cellMinWidth + 6)) : 0;
+  const gridStyle = `grid-template-columns:minmax(${storeColumnWidth}px,1.25fr) repeat(${columns.length}, minmax(${cellMinWidth}px,1fr));${dense ? `min-width:${matrixMinWidth}px` : ''}`;
+  matrix.classList.toggle('is-dense', dense);
+  matrix.innerHTML = `
     <div class="matrix-row matrix-head" style="${gridStyle}">
       <div class="matrix-store">지점</div>
       ${columns.map((column) => `<div>${escapeHtml(column.label)}</div>`).join('')}
@@ -441,9 +448,11 @@ function renderRiskMatrix() {
 }
 
 function renderRecoveryFunnel() {
-  const rows = recoveryFunnelRows();
+  const allRows = recoveryFunnelRows();
+  const rows = allRows.filter((row) => !isAsBlockedFunnelRow(row));
+  const sideRows = allRows.filter(isAsBlockedFunnelRow);
   const max = Math.max(...rows.map((row) => Number(row.count || 0)), 1);
-  $('recoveryFunnel').innerHTML = rows.map((row, index) => {
+  const flowHtml = rows.map((row, index) => {
     const count = Number(row.count || 0);
     const width = Math.max(8, Math.round(count / max * 100));
     const previous = index > 0 ? Number(rows[index - 1].count || 0) : null;
@@ -457,6 +466,15 @@ function renderRecoveryFunnel() {
       </div>
     `;
   }).join('');
+  const sideHtml = sideRows.length ? `
+    <div class="funnel-side-note">
+      <span>전환 계산 제외</span>
+      <strong>AS 차단</strong>
+      <b>${sideRows.reduce((sum, row) => sum + Number(row.count || 0), 0).toLocaleString('ko-KR')}건</b>
+      <small>정상화 전 CRM·재방문 퍼널로 보지 않습니다.</small>
+    </div>
+  ` : '';
+  $('recoveryFunnel').innerHTML = flowHtml + sideHtml;
 }
 
 function renderRecoveryStageHeatmap() {
@@ -583,7 +601,11 @@ function renderProcessedBulletList() {
     const actual = numericOrNull(firstPresent(row, ['actual', 'washCount', 'wash_count']));
     const baseline = numericOrNull(firstPresent(row, ['baseline', 'baselineWashCount', 'baseline_wash_count']));
     const rate = numericOrNull(firstPresent(row, ['rate', 'processedRate', 'processed_rate']));
-    const width = rate === null ? 0 : Math.max(2, Math.min(120, Math.round(rate)));
+    const baseWidth = rate === null ? 0 : Math.max(2, ratePosition(Math.min(rate, 100)));
+    const overWidth = rate !== null && rate > 100 ? Math.max(2, ratePosition(rate) - ratePosition(100)) : 0;
+    const overLabel = rate !== null && rate > 100 ? `초과 +${Math.round(rate - 100)}%p` : '120% 스케일';
+    const statusText = firstPresent(row, ['status', 'recoveryStatus', 'recovery_status']);
+    const footNote = statusText ? `${statusText} · ${overLabel}` : overLabel;
     const storeName = firstPresent(row, ['store', 'storeName', 'store_name']) || storeNameById(row.storeId);
     return `
       <div class="bullet-row">
@@ -592,13 +614,14 @@ function renderProcessedBulletList() {
           <span>${escapeHtml(formatPercent(rate))}</span>
         </div>
         <div class="bullet-track" aria-label="${escapeAttr(storeName)} 처리대수 회복률 ${formatPercent(rate)}">
-          <span class="${recoveryRateLevel(rate)}" style="width:${width}%"></span>
+          <span class="${recoveryRateLevel(rate)}" style="width:${baseWidth}%"></span>
+          ${overWidth ? `<span class="bullet-over" style="left:${ratePosition(100)}%;width:${overWidth}%"></span>` : ''}
           <i style="left:${ratePosition(100)}%"></i>
         </div>
         <div class="bullet-foot">
           <span>실적 ${formatCount(actual)}</span>
           <span>기준 ${formatCount(baseline)}</span>
-          <span>${escapeHtml(firstPresent(row, ['status', 'recoveryStatus', 'recovery_status']) || '')}</span>
+          <span>${escapeHtml(footNote)}</span>
         </div>
       </div>
     `;
@@ -873,6 +896,12 @@ function recoveryFunnelRows() {
     { key: 'crmSent', label: '발송/실행', count: queue.filter((item) => String(item.next || '').includes('발송')).length },
     { key: 'revisited', label: '재방문 회수', count: 0 }
   ];
+}
+
+function isAsBlockedFunnelRow(row) {
+  const key = String(row.key || row.id || row.code || '').toLowerCase().replace(/[_\s-]/g, '');
+  const label = String(row.label || row.name || '').toLowerCase();
+  return key === 'asblocked' || key === 'as' || label.includes('as 차단') || label.includes('as차단');
 }
 
 function recoveryGapRows() {

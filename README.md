@@ -136,7 +136,10 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
   "visuals": {
     "statusDistribution": [{ "status": "Orange", "count": 3 }],
     "riskMatrix": [],
-    "recoveryFunnel": [{ "key": "detected", "label": "하락 감지", "count": 3 }],
+    "recoveryFunnel": [
+      { "key": "detected", "label": "하락 감지", "count": 3 },
+      { "key": "asBlocked", "label": "AS 차단", "count": 1 }
+    ],
     "recoveryGapByStore": [{ "storeId": "hanam", "store": "하남 미사", "gap": 4 }],
     "processedBulletByStore": [],
     "systemTrend": [],
@@ -185,6 +188,7 @@ autostay-weather-ops-dashboard
 - `recovery.gapByStore` 또는 `recovery.gap_by_store`는 `visuals.recoveryGapByStore`와 동일한 회복 비교 데이터로 정규화됩니다.
 - `recovery.bulletByStore` 또는 `recovery.bullet_by_store`는 `visuals.processedBulletByStore`와 동일한 처리대수 bullet 데이터로 정규화됩니다.
 - `visuals.systemTrend`와 `visuals.openActionTrend`는 운영 추이 패널에서 함께 사용됩니다.
+- `visuals.recoveryFunnel`의 `asBlocked`/`AS 차단` 항목은 CRM·재방문 전환율 계산에서 제외하고 별도 참고 지표로 표시합니다.
 
 ## 운영 화면 구성
 
@@ -195,8 +199,9 @@ autostay-weather-ops-dashboard
 - 선택 지점 회복률: 전체 보기에서는 중복 축소를 위해 숨기고, 지점 필터 선택 시 해당 지점의 처리대수/매출 회복 추이를 표시
 - 회복 큐: 전체 보기에서는 선택 지점 회복률 자리까지 넓게 사용하고, CRM 가능 여부와 다음 액션을 우측 칩으로 표시
 - 오늘 기상 리스크: 오늘 활성화된 기상/AS/회복 리스크만 라벨이 있는 격자로 표시
-- 회복 실행 단계: 하락 감지 -> 조치 필요 -> 정상화 통과 -> CRM 후보 -> 발송/재방문 단계별 유지율과 이탈 건수
+- 회복 실행 단계: 하락 감지 -> 조치 필요 -> 정상화 통과 -> CRM 후보 -> 발송/재방문 단계별 유지율과 이탈 건수. AS 차단은 전환 흐름이 아닌 별도 참고 지표로 표시
 - 지점별 회복 진행: 7개 지점의 D-day/D+1/D+2 처리대수·매출 회복률을 히트맵으로 표시
+- 처리대수 기준/실적 bullet: 100% 기준선을 고정하고 100% 초과분은 120% 스케일의 별도 구간으로 표시
 - 처리대수 회복 vs 매출 회복: 처리대수 회복 대비 매출 회복 지연 지점을 덤벨형 비교로 표시
 - 운영 시각화 레이아웃: `오늘 기상 리스크`, `회복 실행 단계`, `지점별 회복 진행`, `처리대수 회복 vs 매출 회복`을 2×2 명시 영역으로 배치
 - 지점별 상태: 데스크톱은 표, 모바일은 카드형 목록으로 표시
@@ -225,3 +230,4 @@ autostay-weather-ops-dashboard
 - `GET /api/auth?token=` 방식은 사용하지 않습니다.
 - 운영 환경에서는 샘플 데이터 fallback을 켜지 않습니다.
 - Apps Script API에 별도 토큰을 둘 경우 `WEATHER_OPS_API_TOKEN`을 사용합니다.
+- 현재 CSP는 원격 이미지를 사용하지 않는 전제로 `img-src 'self' data:`만 허용합니다. 실지도/레이더 이미지 도입 시 필요한 타일/이미지 도메인만 명시적으로 추가합니다.
