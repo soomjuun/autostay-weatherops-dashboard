@@ -232,6 +232,7 @@ select { min-width: 180px; }
   display: grid;
   grid-template-columns: minmax(0, 1.1fr) minmax(0, .9fr);
   gap: 16px;
+  align-items: start;
   margin-top: 16px;
 }
 .primary-grid {
@@ -245,7 +246,13 @@ select { min-width: 180px; }
     "queue queue";
 }
 .map-panel { grid-area: map; }
-.action-panel { grid-area: action; }
+.action-panel {
+  grid-area: action;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  max-height: min(680px, calc(100vh - 180px));
+  overflow: hidden;
+}
 .chart-panel { grid-area: chart; }
 .queue-panel { grid-area: queue; }
 .lower-grid { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
@@ -431,6 +438,11 @@ select { min-width: 180px; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
 }
 .action-list,
 .queue-list,
@@ -594,8 +606,8 @@ select { min-width: 180px; }
   line-height: 1.15;
 }
 .matrix-op-head {
-  padding-left: 6px;
-  border-left: 2px solid #cbd5e1;
+  padding-left: 0;
+  border-left: 0;
   color: #334155;
 }
 .matrix-cell.Green { background: #dcfce7; border-color: #86efac; color: #166534; }
@@ -605,7 +617,7 @@ select { min-width: 180px; }
 .matrix-cell.Error { background: #fee2e2; border-color: #fca5a5; color: #991b1b; }
 .matrix-cell.Gray { background: #e2e8f0; border-color: #cbd5e1; color: #334155; }
 .matrix-cell.is-op {
-  box-shadow: inset 2px 0 0 rgba(100, 116, 139, .52);
+  box-shadow: none;
 }
 .matrix-row.is-muted .matrix-cell.Green {
   background: #f8fafc;
@@ -1046,6 +1058,15 @@ td:last-child { min-width: 280px; }
       "map"
       "action"
       "queue";
+  }
+  .action-panel {
+    display: block;
+    max-height: none;
+    overflow: visible;
+  }
+  .action-columns {
+    overflow: visible;
+    padding-right: 0;
   }
   .visual-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
