@@ -54,55 +54,59 @@
     </section>
 
     <section class="dashboard-grid primary-grid" id="primaryDashboardGrid">
-      <article class="panel map-panel">
-        <div class="panel-head">
-          <div>
-            <h2>지점 현황</h2>
-            <p>오늘 봐야 할 지점 상태와 다음 액션을 한 줄로 확인합니다.</p>
+      <div class="dashboard-stack primary-main-stack">
+        <article class="panel map-panel">
+          <div class="panel-head">
+            <div>
+              <h2>지점 현황</h2>
+              <p>오늘 봐야 할 지점 상태와 다음 액션을 한 줄로 확인합니다.</p>
+            </div>
+            <span id="mapCount" class="tag">7개 지점</span>
           </div>
-          <span id="mapCount" class="tag">7개 지점</span>
-        </div>
-        <div class="metro-map" id="metroMap" aria-label="직영점 지점 현황"></div>
-      </article>
+          <div class="metro-map" id="metroMap" aria-label="직영점 지점 현황"></div>
+        </article>
 
-      <article class="panel action-panel">
-        <div class="panel-head">
-          <div>
-            <h2>오늘 조치할 항목</h2>
-            <p>사업운영팀 우선순위와 마케팅 실행 대기를 분리합니다.</p>
+        <article class="panel chart-panel" id="recoveryChartPanel">
+          <div class="panel-head">
+            <div>
+              <h2>선택 지점 회복률</h2>
+              <p>지점 필터 선택 시 처리대수와 매출 회복 추이를 상세로 봅니다.</p>
+            </div>
           </div>
-        </div>
-        <div class="action-columns">
-          <section>
-            <h3>사업운영팀</h3>
-            <div id="opsActions" class="action-list"></div>
-          </section>
-          <section>
-            <h3>마케팅팀</h3>
-            <div id="marketingActions" class="action-list"></div>
-          </section>
-        </div>
-      </article>
+          <div id="recoveryChartWrap" class="chart-wrap"><canvas id="recoveryChart"></canvas></div>
+        </article>
 
-      <article class="panel chart-panel" id="recoveryChartPanel">
-        <div class="panel-head">
-          <div>
-            <h2>선택 지점 회복률</h2>
-            <p>지점 필터 선택 시 처리대수와 매출 회복 추이를 상세로 봅니다.</p>
+        <article class="panel queue-panel">
+          <div class="panel-head">
+            <div>
+              <h2>회복 큐</h2>
+              <p>CRM 가능 여부와 AS 차단 상태를 함께 확인합니다.</p>
+            </div>
           </div>
-        </div>
-        <div id="recoveryChartWrap" class="chart-wrap"><canvas id="recoveryChart"></canvas></div>
-      </article>
+          <div id="recoveryQueue" class="queue-list"></div>
+        </article>
+      </div>
 
-      <article class="panel queue-panel">
-        <div class="panel-head">
-          <div>
-            <h2>회복 큐</h2>
-            <p>CRM 가능 여부와 AS 차단 상태를 함께 확인합니다.</p>
+      <div class="dashboard-stack primary-action-stack">
+        <article class="panel action-panel">
+          <div class="panel-head">
+            <div>
+              <h2>오늘 조치할 항목</h2>
+              <p>사업운영팀 우선순위와 마케팅 실행 대기를 분리합니다.</p>
+            </div>
           </div>
-        </div>
-        <div id="recoveryQueue" class="queue-list"></div>
-      </article>
+          <div class="action-columns">
+            <section>
+              <h3>사업운영팀</h3>
+              <div id="opsActions" class="action-list"></div>
+            </section>
+            <section>
+              <h3>마케팅팀</h3>
+              <div id="marketingActions" class="action-list"></div>
+            </section>
+          </div>
+        </article>
+      </div>
     </section>
 
     <section class="visual-grid" aria-label="운영 시각화">

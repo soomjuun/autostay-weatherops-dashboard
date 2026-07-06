@@ -235,27 +235,19 @@ select { min-width: 180px; }
   align-items: start;
   margin-top: 16px;
 }
-.primary-grid {
-  grid-template-areas:
-    "map action"
-    "chart queue";
-}
-.primary-grid.chart-hidden {
-  grid-template-areas:
-    "map action"
-    "queue queue";
-}
-.map-panel { grid-area: map; }
-.action-panel {
-  grid-area: action;
+.dashboard-stack {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  max-height: min(680px, calc(100vh - 180px));
-  overflow: hidden;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
 }
-.chart-panel { grid-area: chart; }
-.queue-panel { grid-area: queue; }
-.lower-grid { grid-template-columns: minmax(0, .8fr) minmax(0, 1.2fr); }
+.primary-grid .map-panel,
+.primary-grid .action-panel,
+.primary-grid .chart-panel,
+.primary-grid .queue-panel {
+  grid-area: auto;
+}
+.lower-grid { grid-template-columns: minmax(0, 1fr); }
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -438,11 +430,6 @@ select { min-width: 180px; }
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  min-height: 0;
-  overflow-y: auto;
-  padding-right: 2px;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
 }
 .action-list,
 .queue-list,
@@ -1046,28 +1033,6 @@ td:last-child { min-width: 280px; }
   .action-columns {
     grid-template-columns: 1fr;
   }
-  .primary-grid {
-    grid-template-areas:
-      "map"
-      "action"
-      "chart"
-      "queue";
-  }
-  .primary-grid.chart-hidden {
-    grid-template-areas:
-      "map"
-      "action"
-      "queue";
-  }
-  .action-panel {
-    display: block;
-    max-height: none;
-    overflow: visible;
-  }
-  .action-columns {
-    overflow: visible;
-    padding-right: 0;
-  }
   .visual-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
@@ -1079,6 +1044,13 @@ td:last-child { min-width: 280px; }
   .panel-head {
     align-items: flex-start;
   }
+  .primary-grid .dashboard-stack {
+    display: contents;
+  }
+  .primary-grid .map-panel { order: 1; }
+  .primary-grid .action-panel { order: 2; }
+  .primary-grid .chart-panel { order: 3; }
+  .primary-grid .queue-panel { order: 4; }
 }
 
 @media (max-width: 720px) {
