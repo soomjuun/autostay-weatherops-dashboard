@@ -1301,7 +1301,9 @@ function freshnessWarnings(options = {}) {
     warnings.push(versionMismatchWarning(currentVersion, expectedVersion));
   }
   if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
-  if (systemErrorCount > 0) warnings.push(`시스템 오류 ${systemErrorCount}건`);
+  if (systemErrorCount > 0 && !warnings.some((warning) => String(warning || '').includes('시스템 오류'))) {
+    warnings.push(`시스템 오류 ${systemErrorCount}건`);
+  }
   if (dataWaitCount > 0) warnings.push(`성과 확정 대기 ${dataWaitCount}건`);
   return [...new Set(warnings)];
 }
