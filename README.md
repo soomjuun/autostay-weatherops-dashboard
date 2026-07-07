@@ -51,6 +51,7 @@ weather-ops-dashboard/
 | `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | 로그인 실패 제한 횟수. 기본값은 10분당 8회 |
 | `AUTH_RATE_LIMIT_WINDOW_MS` | 로그인 실패 제한 윈도우. 기본값은 600000ms |
 | `WEATHER_OPS_API_TOKEN` | Apps Script API에 `token` 쿼리로 전달할 공유 토큰 |
+| `WEATHER_OPS_EXPECTED_VERSION` | 대시보드가 기대하는 Weather Ops Pack 버전. 기본값은 `v2.16.4` |
 | `WEATHER_OPS_ALLOW_SAMPLE` | 샘플 데이터 표시 여부. 운영 기본값은 `false`, 데모/개발 검토 때만 `true` |
 
 Apps Script 속성:
@@ -197,6 +198,7 @@ autostay-weather-ops-dashboard
 - `stores[].weatherData.weatherBaseAt`은 유효한 날짜시간만 `MM-DD HH:mm`으로 표시하고, 1899년 계열 sentinel 날짜는 화면에서 제외합니다.
 - `generatedAt`이 없으면 현재 시각으로 대체하지 않고 `-`와 경고 배너로 표시합니다.
 - 시간 포맷은 브라우저 로컬시간이 아니라 KST 기준으로 표시합니다.
+- 연결된 Apps Script Web App 버전이 기대 버전과 다르면 시스템 상태와 상단 경고에 재배포 또는 `WEATHER_OPS_API_URL` 확인 필요 메시지를 표시합니다.
 
 ## 운영 화면 구성
 

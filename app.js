@@ -4,6 +4,7 @@ const state = {
   store: 'all',
   chart: null
 };
+const EXPECTED_PACK_VERSION = 'v2.16.4';
 
 const $ = (id) => document.getElementById(id);
 
@@ -672,7 +673,7 @@ function renderSystem() {
   const items = [
     { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || systemFreshnessClass(lastSummaryAt, 8) },
     { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
-    { label: '시트/Pack', value: system.sheetVersion || system.sheet_version || system.packVersion || system.pack_version || state.data.version || system.appsScriptVersion || system.apps_script_version, className: 'ok' },
+    { label: '시트/Pack', value: formatPackVersionStatus(system), className: versionStatusClass(system) },
     { label: '데이터 상태', value: system.dataFreshness || system.data_freshness || state.data.source, className: state.data.source && state.data.source.startsWith('sample') ? 'warning' : 'ok' }
   ];
   $('systemStatus').innerHTML = items.map((item) => `
@@ -718,6 +719,19 @@ function renderSystemTrend() {
       <span><i class="unresolved"></i>미해결</span>
     </div>
   `;
+}
+
+function formatPackVersionStatus(system) {
+  const current = system.sheetVersion || system.sheet_version || system.packVersion || system.pack_version || state.data.version || system.appsScriptVersion || system.apps_script_version || '-';
+  const expected = system.expectedPackVersion || system.expected_pack_version || EXPECTED_PACK_VERSION;
+  if (expected && current && current !== '-' && current !== expected) return `${current} / 기대 ${expected}`;
+  return current;
+}
+
+function versionStatusClass(system) {
+  const current = system.sheetVersion || system.sheet_version || system.packVersion || system.pack_version || state.data.version || system.appsScriptVersion || system.apps_script_version || '';
+  const expected = system.expectedPackVersion || system.expected_pack_version || EXPECTED_PACK_VERSION;
+  return expected && current && current !== expected ? 'warning' : 'ok';
 }
 
 function renderWeatherMetricChips(store, limit = 3) {
@@ -1262,6 +1276,12 @@ function freshnessWarnings() {
   if (revenueAge !== null && revenueAge > 30) warnings.push('매출 원천 동기화 30시간 초과');
   if ((!state.data || !state.data.generatedAt) && !warnings.some((warning) => String(warning || '').includes('생성 시각'))) {
     warnings.push('대시보드 데이터 생성 시각 없음');
+  }
+  const expectedVersion = system.expectedPackVersion || system.expected_pack_version || EXPECTED_PACK_VERSION;
+  const currentVersion = system.sheetVersion || system.sheet_version || system.packVersion || system.pack_version || state.data.version || system.appsScriptVersion || system.apps_script_version || '';
+  if (expectedVersion && currentVersion && currentVersion !== expectedVersion
+    && !warnings.some((warning) => String(warning || '').includes('Web App 재배포'))) {
+    warnings.push(`연결된 Apps Script Web App 버전(${currentVersion})이 기대 버전(${expectedVersion})과 다릅니다. Web App 재배포 또는 WEATHER_OPS_API_URL 확인 필요`);
   }
   if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
   if (systemErrorCount > 0) warnings.push(`시스템 오류 ${systemErrorCount}건`);

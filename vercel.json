@@ -28,6 +28,12 @@
       "headers": [
         { "key": "Access-Control-Allow-Methods", "value": "GET, POST, OPTIONS" }
       ]
+    },
+    {
+      "source": "/(index.html|app.js|style.css)",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-store, no-cache, must-revalidate" }
+      ]
     }
   ]
 }

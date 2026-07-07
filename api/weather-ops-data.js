@@ -1,3 +1,5 @@
+const EXPECTED_PACK_VERSION = process.env.WEATHER_OPS_EXPECTED_VERSION || 'v2.16.4';
+
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -74,6 +76,7 @@ function normalizePayload(payload, source) {
   const generatedAt = data.generatedAt || data.generated_at || payload.generatedAt || payload.generated_at || '';
   const system = objectOrEmpty(data.system);
   const version = normalizeVersion(data, payload, system);
+  system.expectedPackVersion = EXPECTED_PACK_VERSION;
   if (version && version !== 'unknown') {
     system.packVersion = version;
     system.sheetVersion = version;
@@ -85,6 +88,7 @@ function normalizePayload(payload, source) {
     warnings.push('대시보드 데이터 생성 시각이 없습니다.');
     system.freshnessWarnings = [...new Set(warnings)];
   }
+  addVersionWarning(system, version);
   return {
     version,
     generatedAt,
@@ -154,9 +158,22 @@ function normalizeVersion(data, payload, system) {
     system.sheet_version,
     system.packVersion,
     system.pack_version,
+    data.appsScriptVersion,
+    data.apps_script_version,
+    payload.appsScriptVersion,
+    payload.apps_script_version,
     system.appsScriptVersion,
     system.apps_script_version
   ) || 'unknown';
+}
+
+function addVersionWarning(system, version) {
+  if (!EXPECTED_PACK_VERSION || !version || version === 'unknown' || version === EXPECTED_PACK_VERSION) return;
+  const warnings = Array.isArray(system.freshnessWarnings || system.freshness_warnings)
+    ? (system.freshnessWarnings || system.freshness_warnings).slice()
+    : [];
+  warnings.push(`연결된 Apps Script Web App 버전(${version})이 기대 버전(${EXPECTED_PACK_VERSION})과 다릅니다. Web App 재배포 또는 WEATHER_OPS_API_URL 확인 필요`);
+  system.freshnessWarnings = [...new Set(warnings)];
 }
 
 function firstNonEmpty(...values) {
