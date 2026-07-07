@@ -200,6 +200,25 @@ autostay-weather-ops-dashboard
 - 시간 포맷은 브라우저 로컬시간이 아니라 KST 기준으로 표시합니다.
 - 연결된 Apps Script Web App 버전이 기대 버전과 다르면 시스템 상태와 상단 경고에 재배포 또는 `WEATHER_OPS_API_URL` 확인 필요 메시지를 표시합니다.
 
+## 버전 불일치 경고 조치
+
+대시보드에 `연결된 Apps Script Web App 배포본이 오래되었습니다` 경고가 뜨면 시트 탭 값을 수정하는 문제가 아닙니다.
+
+우선순위는 아래 순서입니다.
+
+1. Apps Script 편집기에서 `Code.gs`의 `SCRIPT_VERSION`이 기대 버전인지 확인합니다.
+2. Apps Script `Deploy > Manage deployments`에서 현재 Web App 배포를 선택합니다.
+3. 편집 화면에서 Version을 `New version`으로 바꾼 뒤 Deploy합니다.
+4. 같은 Web App URL을 유지했다면 대시보드에서 새로고침합니다.
+5. 새 Web App URL이 만들어졌다면 Vercel 환경변수 `WEATHER_OPS_API_URL`을 새 `/exec` URL로 교체하고 Production redeploy를 실행합니다.
+6. 대시보드 `/api/weather-ops-data?fresh=1` 기준 응답의 `version`, `system.appsScriptVersion`, `system.expectedPackVersion`이 모두 같은지 확인합니다.
+
+판단 기준:
+
+- 대시보드 기대 버전만 낮음: `WEATHER_OPS_EXPECTED_VERSION` 또는 대시보드 코드 수정 대상
+- 연결된 현재 버전만 낮음: Apps Script Web App 재배포 또는 `WEATHER_OPS_API_URL` 수정 대상
+- 둘 다 최신인데 경고 유지: Vercel redeploy/cache 또는 다른 프로젝트 alias 연결 확인 대상
+
 ## 운영 화면 구성
 
 - 상단: 전체 상태, 즉시 조치, 주의 관찰, AS 차단, 회복 조치, CRM 가능, 성과 대기, 시스템 오류

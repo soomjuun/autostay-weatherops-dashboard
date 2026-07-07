@@ -1,4 +1,5 @@
 const EXPECTED_PACK_VERSION = process.env.WEATHER_OPS_EXPECTED_VERSION || 'v2.16.4';
+const VERSION_REMEDIATION = '시트 탭 수정 대상이 아닙니다. Apps Script Web App을 새 버전으로 재배포하거나 Vercel WEATHER_OPS_API_URL이 최신 Web App URL인지 확인하세요.';
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -172,8 +173,16 @@ function addVersionWarning(system, version) {
   const warnings = Array.isArray(system.freshnessWarnings || system.freshness_warnings)
     ? (system.freshnessWarnings || system.freshness_warnings).slice()
     : [];
-  warnings.push(`연결된 Apps Script Web App 버전(${version})이 기대 버전(${EXPECTED_PACK_VERSION})과 다릅니다. Web App 재배포 또는 WEATHER_OPS_API_URL 확인 필요`);
+  system.versionStatus = 'mismatch';
+  system.versionCurrent = version;
+  system.versionExpected = EXPECTED_PACK_VERSION;
+  system.versionRemediation = VERSION_REMEDIATION;
+  warnings.push(versionMismatchMessage(version, EXPECTED_PACK_VERSION));
   system.freshnessWarnings = [...new Set(warnings)];
+}
+
+function versionMismatchMessage(currentVersion, expectedVersion) {
+  return `연결된 Apps Script Web App 배포본이 오래되었습니다. 현재 ${currentVersion}, 기대 ${expectedVersion}. ${VERSION_REMEDIATION}`;
 }
 
 function firstNonEmpty(...values) {

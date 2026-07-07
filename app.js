@@ -11,7 +11,7 @@ const $ = (id) => document.getElementById(id);
 const STATUS_ORDER = { Error: 5, Red: 4, Orange: 3, Yellow: 2, Green: 1, Gray: 0 };
 const STATUS_LABELS = {
   Error: '오류',
-  Red: '중단',
+  Red: '제한확인',
   Orange: '조치',
   Yellow: '주의',
   Green: '정상',
@@ -1280,13 +1280,17 @@ function freshnessWarnings() {
   const expectedVersion = system.expectedPackVersion || system.expected_pack_version || EXPECTED_PACK_VERSION;
   const currentVersion = system.sheetVersion || system.sheet_version || system.packVersion || system.pack_version || state.data.version || system.appsScriptVersion || system.apps_script_version || '';
   if (expectedVersion && currentVersion && currentVersion !== expectedVersion
-    && !warnings.some((warning) => String(warning || '').includes('Web App 재배포'))) {
-    warnings.push(`연결된 Apps Script Web App 버전(${currentVersion})이 기대 버전(${expectedVersion})과 다릅니다. Web App 재배포 또는 WEATHER_OPS_API_URL 확인 필요`);
+    && !warnings.some((warning) => String(warning || '').includes('Web App 배포본'))) {
+    warnings.push(versionMismatchWarning(currentVersion, expectedVersion));
   }
   if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
   if (systemErrorCount > 0) warnings.push(`시스템 오류 ${systemErrorCount}건`);
   if (dataWaitCount > 0) warnings.push(`성과 확정 대기 ${dataWaitCount}건`);
   return [...new Set(warnings)];
+}
+
+function versionMismatchWarning(currentVersion, expectedVersion) {
+  return `연결된 Apps Script Web App 배포본이 오래되었습니다. 현재 ${currentVersion}, 기대 ${expectedVersion}. 시트 탭 수정 대상이 아니며 Apps Script Web App 재배포 또는 Vercel WEATHER_OPS_API_URL 확인이 필요합니다.`;
 }
 
 function summaryFreshnessWarning(system) {
