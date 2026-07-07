@@ -1,5 +1,7 @@
 const EXPECTED_PACK_VERSION = process.env.WEATHER_OPS_EXPECTED_VERSION || 'v2.16.4';
 const VERSION_REMEDIATION = '시트 탭 수정 대상이 아닙니다. Apps Script Web App을 새 버전으로 재배포하거나 Vercel WEATHER_OPS_API_URL이 최신 Web App URL인지 확인하세요.';
+const APPS_SCRIPT_TOKEN_MISSING = 'WEATHER_OPS_DASHBOARD_TOKEN is not configured';
+const APPS_SCRIPT_TOKEN_UNAUTHORIZED = 'Unauthorized dashboard token';
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -45,20 +47,66 @@ module.exports = async function handler(req, res) {
     return res.status(200).json(normalizePayload(parsed, 'apps_script'));
   } catch (error) {
     if (!allowSample) {
-      res.setHeader('X-Weather-Ops-Source', 'upstream_error');
-      return res.status(502).json({
-        error: 'Weather Ops upstream request failed.',
-        detail: error && error.message ? error.message : String(error),
-        source: 'upstream_error',
-        requiredEnv: ['WEATHER_OPS_API_URL', 'WEATHER_OPS_API_TOKEN']
-      });
+      const upstreamError = classifyUpstreamError(error);
+      res.setHeader('X-Weather-Ops-Source', upstreamError.source);
+      return res.status(upstreamError.status).json(upstreamError.body);
     }
     const payload = samplePayload('sample_upstream_error');
-    payload.system.apiWarning = error && error.message ? error.message : String(error);
+    payload.system.apiWarning = errorMessage(error);
     res.setHeader('X-Weather-Ops-Source', 'sample_upstream_error');
     return res.status(200).json(payload);
   }
 };
+
+function classifyUpstreamError(error) {
+  const detail = errorMessage(error);
+  if (detail.includes(APPS_SCRIPT_TOKEN_MISSING)) {
+    return {
+      status: 502,
+      source: 'upstream_config_error',
+      body: {
+        error: 'Weather Ops upstream configuration error.',
+        detail,
+        source: 'upstream_config_error',
+        requiredConfig: [
+          'Apps Script Script Property WEATHER_OPS_DASHBOARD_TOKEN',
+          'Vercel WEATHER_OPS_API_TOKEN 동일값 등록'
+        ],
+        nextAction: 'Apps Script 프로젝트 속성에 WEATHER_OPS_DASHBOARD_TOKEN을 등록한 뒤 Web App을 재배포하세요.'
+      }
+    };
+  }
+  if (detail.includes(APPS_SCRIPT_TOKEN_UNAUTHORIZED)) {
+    return {
+      status: 502,
+      source: 'upstream_auth_error',
+      body: {
+        error: 'Weather Ops upstream authorization failed.',
+        detail,
+        source: 'upstream_auth_error',
+        requiredConfig: [
+          'Apps Script Script Property WEATHER_OPS_DASHBOARD_TOKEN',
+          'Vercel WEATHER_OPS_API_TOKEN 동일값 등록'
+        ],
+        nextAction: 'Vercel WEATHER_OPS_API_TOKEN과 Apps Script WEATHER_OPS_DASHBOARD_TOKEN 값을 동일하게 맞춘 뒤 Production redeploy를 실행하세요.'
+      }
+    };
+  }
+  return {
+    status: 502,
+    source: 'upstream_error',
+    body: {
+      error: 'Weather Ops upstream request failed.',
+      detail,
+      source: 'upstream_error',
+      requiredEnv: ['WEATHER_OPS_API_URL', 'WEATHER_OPS_API_TOKEN']
+    }
+  };
+}
+
+function errorMessage(error) {
+  return error && error.message ? error.message : String(error);
+}
 
 function buildUpstreamUrl(rawUrl, token, req) {
   const url = new URL(rawUrl);

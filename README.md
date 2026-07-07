@@ -75,6 +75,12 @@ Apps Script 속성:
 
 운영에서는 `WEATHER_OPS_ALLOW_SAMPLE=false`를 유지해야 데이터 연결 실패가 숨겨지지 않습니다.
 
+### 연결 오류 판단
+
+- `WEATHER_OPS_DASHBOARD_TOKEN is not configured`: Vercel 환경변수 누락이 아니라 Apps Script 프로젝트 속성 `WEATHER_OPS_DASHBOARD_TOKEN` 누락입니다. Apps Script 속성을 등록한 뒤 Web App을 새 버전으로 재배포합니다.
+- `Unauthorized dashboard token`: Vercel `WEATHER_OPS_API_TOKEN`과 Apps Script `WEATHER_OPS_DASHBOARD_TOKEN` 값이 서로 다릅니다. 두 값을 동일하게 맞춘 뒤 Production redeploy를 실행합니다.
+- `WEATHER_OPS_API_URL is not configured`: Vercel `WEATHER_OPS_API_URL` 누락입니다. Apps Script Web App `/exec` URL을 Production 환경변수에 등록합니다.
+
 ## 기대 Apps Script 응답 형태
 
 Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.

@@ -98,6 +98,10 @@ function formatApiError(payload, status) {
   if (payload && Array.isArray(payload.requiredEnv) && payload.requiredEnv.length) {
     parts.push(`필수 환경변수: ${payload.requiredEnv.join(', ')}`);
   }
+  if (payload && Array.isArray(payload.requiredConfig) && payload.requiredConfig.length) {
+    parts.push(`필수 설정: ${payload.requiredConfig.join(', ')}`);
+  }
+  if (payload && payload.nextAction) parts.push(`다음 조치: ${payload.nextAction}`);
   if (payload && payload.source) parts.push(`source=${payload.source}`);
   return parts.join(' | ');
 }
