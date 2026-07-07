@@ -110,7 +110,7 @@ function normalize(payload) {
 
   return {
     version: firstPresent(data, ['version']) || firstPresent(raw, ['version']) || 'unknown',
-    generatedAt: firstPresent(data, ['generatedAt', 'generated_at']) || firstPresent(raw, ['generatedAt', 'generated_at']) || new Date().toISOString(),
+    generatedAt: firstPresent(data, ['generatedAt', 'generated_at']) || firstPresent(raw, ['generatedAt', 'generated_at']) || '',
     source: data.source || raw.source || 'unknown',
     summary: objectFrom(data.summary),
     stores,
@@ -1255,6 +1255,9 @@ function freshnessWarnings() {
   const dataWaitCount = Number(summary.dataWaitCount ?? summary.data_wait_count ?? 0);
   if (summaryWarning) warnings.push(summaryWarning);
   if (revenueAge !== null && revenueAge > 30) warnings.push('매출 원천 동기화 30시간 초과');
+  if ((!state.data || !state.data.generatedAt) && !warnings.some((warning) => String(warning || '').includes('생성 시각'))) {
+    warnings.push('대시보드 데이터 생성 시각 없음');
+  }
   if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
   if (systemErrorCount > 0) warnings.push(`시스템 오류 ${systemErrorCount}건`);
   if (dataWaitCount > 0) warnings.push(`성과 확정 대기 ${dataWaitCount}건`);

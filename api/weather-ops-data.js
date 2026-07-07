@@ -68,20 +68,28 @@ function buildUpstreamUrl(rawUrl, token, req) {
 }
 
 function normalizePayload(payload, source) {
-  const now = new Date().toISOString();
   const data = unwrapDashboardPayload(payload);
   const recovery = objectOrEmpty(data.recovery);
   const visuals = normalizeVisuals(objectOrEmpty(data.visuals), recovery);
+  const generatedAt = data.generatedAt || data.generated_at || payload.generatedAt || payload.generated_at || '';
+  const system = objectOrEmpty(data.system);
+  if (!generatedAt) {
+    const warnings = Array.isArray(system.freshnessWarnings || system.freshness_warnings)
+      ? (system.freshnessWarnings || system.freshness_warnings).slice()
+      : [];
+    warnings.push('대시보드 데이터 생성 시각이 없습니다.');
+    system.freshnessWarnings = [...new Set(warnings)];
+  }
   return {
     version: data.version || payload.version || 'unknown',
-    generatedAt: data.generatedAt || data.generated_at || payload.generatedAt || payload.generated_at || now,
+    generatedAt,
     source,
     summary: objectOrEmpty(data.summary),
     stores: arrayOrEmpty(data.stores || data.storeRows || data.store_rows),
     opsActions: arrayOrEmpty(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
     marketingActions: arrayOrEmpty(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
     recovery,
-    system: objectOrEmpty(data.system),
+    system,
     visuals,
     weatherTimeline: arrayOrEmpty(data.weatherTimeline || data.weather_timeline || data.timeline)
   };
@@ -130,10 +138,10 @@ function samplePayload(source) {
   const iso = now.toISOString();
   const stores = [
     {
-      id: 'ilsan',
-      name: '일산 풍동',
-      region: '고양/일산',
-      dri: '장한샘 매니저',
+      id: 'sample-north',
+      name: '샘플 북부점',
+      region: '샘플 북부권',
+      dri: '운영 담당 A',
       status: 'Yellow',
       weather: '비 예보',
       weatherDetail: '오후 강수 가능성 높음',
@@ -149,10 +157,10 @@ function samplePayload(source) {
       longitude: 126.766
     },
     {
-      id: 'hanam',
-      name: '하남 미사',
-      region: '하남',
-      dri: '박준영 매니저',
+      id: 'sample-east',
+      name: '샘플 동부점',
+      region: '샘플 동부권',
+      dri: '운영 담당 B',
       status: 'Orange',
       weather: '강한 비',
       weatherDetail: '피크 전 강수 집중 가능',
@@ -168,10 +176,10 @@ function samplePayload(source) {
       longitude: 127.192
     },
     {
-      id: 'goyang',
-      name: '고양 삼송',
-      region: '고양',
-      dri: '추상민 매니저',
+      id: 'sample-northwest',
+      name: '샘플 서북점',
+      region: '샘플 서북권',
+      dri: '운영 담당 C',
       status: 'Green',
       weather: '주의 낮음',
       weatherDetail: '운영 제한 요인 없음',
@@ -187,10 +195,10 @@ function samplePayload(source) {
       longitude: 126.895
     },
     {
-      id: 'jayuro',
-      name: '자유로 88',
-      region: '파주/고양',
-      dri: '정진호 매니저',
+      id: 'sample-route',
+      name: '샘플 간선점',
+      region: '샘플 간선권',
+      dri: '운영 담당 D',
       status: 'Yellow',
       weather: '비 예보',
       weatherDetail: '저녁 강수 가능',
@@ -206,10 +214,10 @@ function samplePayload(source) {
       longitude: 126.742
     },
     {
-      id: 'gwangmyeong',
-      name: '광명점',
-      region: '광명',
-      dri: '안건후 매니저',
+      id: 'sample-west',
+      name: '샘플 서부점',
+      region: '샘플 서부권',
+      dri: '운영 담당 E',
       status: 'Orange',
       weather: '비/대기질 주의',
       weatherDetail: '강수 후 미세먼지 완화 가능',
@@ -225,10 +233,10 @@ function samplePayload(source) {
       longitude: 126.864
     },
     {
-      id: 'seongsu',
-      name: '서울 성수',
-      region: '서울',
-      dri: '한석태 매니저',
+      id: 'sample-city',
+      name: '샘플 도심점',
+      region: '샘플 도심권',
+      dri: '운영 담당 F',
       status: 'Red',
       weather: '강수 집중',
       weatherDetail: '고객 동선 안전 확인 필요',
@@ -244,10 +252,10 @@ function samplePayload(source) {
       longitude: 127.055
     },
     {
-      id: 'anseong',
-      name: '안성 석정',
-      region: '안성',
-      dri: '정찬희 매니저',
+      id: 'sample-south',
+      name: '샘플 남부점',
+      region: '샘플 남부권',
+      dri: '운영 담당 G',
       status: 'Yellow',
       weather: '비 예보',
       weatherDetail: '신규점 기준 축적 중',
@@ -281,31 +289,31 @@ function samplePayload(source) {
     },
     stores,
     opsActions: [
-      { priority: 'P0', team: '사업운영팀', store: '서울 성수', action: 'AS 정상화 게이트 확인 전 고객 방문 유도 중지', owner: '사업운영팀', due: '즉시', status: '대기' },
-      { priority: 'P0', team: '사업운영팀', store: '하남 미사', action: '피크 전 배수/건조존/대기열 준비 완료 여부 확인', owner: '박준영 매니저', due: '17:00', status: '진행중' },
-      { priority: 'P1', team: '사업운영팀', store: '광명점', action: '회복 가능 시간대 처리량 확보 상태 점검', owner: '안건후 매니저', due: '17:00', status: '대기' }
+      { priority: 'P0', team: '사업운영팀', store: '샘플 도심점', action: 'AS 정상화 게이트 확인 전 고객 방문 유도 중지', owner: '사업운영팀', due: '즉시', status: '대기' },
+      { priority: 'P0', team: '사업운영팀', store: '샘플 동부점', action: '피크 전 배수/건조존/대기열 준비 완료 여부 확인', owner: '운영 담당 B', due: '17:00', status: '진행중' },
+      { priority: 'P1', team: '사업운영팀', store: '샘플 서부점', action: '회복 가능 시간대 처리량 확보 상태 점검', owner: '운영 담당 E', due: '17:00', status: '대기' }
     ],
     marketingActions: [
-      { priority: 'P1', team: '마케팅팀', store: '하남 미사', action: 'D+1 오후 재방문 유도 캠페인 승인 검토', trigger: '비 이후 회복 수요', estimatedAudience: 420, status: '승인 대기' },
-      { priority: 'P1', team: '마케팅팀', store: '광명점', action: '강수 종료 후 세차 수요 회복 메시지 준비', trigger: '강수 후 회복', estimatedAudience: 360, status: '초안 필요' }
+      { priority: 'P1', team: '마케팅팀', store: '샘플 동부점', action: 'D+1 오후 재방문 유도 캠페인 승인 검토', trigger: '비 이후 회복 수요', estimatedAudience: 420, status: '승인 대기' },
+      { priority: 'P1', team: '마케팅팀', store: '샘플 서부점', action: '강수 종료 후 세차 수요 회복 메시지 준비', trigger: '강수 후 회복', estimatedAudience: 360, status: '초안 필요' }
     ],
     recovery: {
       labels: ['D-day', 'D+1', 'D+2'],
       processedRate: [72, 86, 93],
       revenueRate: [65, 81, 89],
       storeSeries: {
-        ilsan: { processedRate: [74, 91, 102], revenueRate: [69, 88, 98] },
-        hanam: { processedRate: [68, 82, 91], revenueRate: [61, 78, 87] },
-        goyang: { processedRate: [93, 105, 111], revenueRate: [90, 101, 108] },
-        jayuro: { processedRate: [78, 92, 101], revenueRate: [73, 89, 97] },
-        gwangmyeong: { processedRate: [70, 79, 88], revenueRate: [64, 76, 86] },
-        seongsu: { processedRate: [42, 44, 55], revenueRate: [39, 41, 52] },
-        anseong: { processedRate: [66, 84, 95], revenueRate: [58, 79, 92] }
+        'sample-north': { processedRate: [74, 91, 102], revenueRate: [69, 88, 98] },
+        'sample-east': { processedRate: [68, 82, 91], revenueRate: [61, 78, 87] },
+        'sample-northwest': { processedRate: [93, 105, 111], revenueRate: [90, 101, 108] },
+        'sample-route': { processedRate: [78, 92, 101], revenueRate: [73, 89, 97] },
+        'sample-west': { processedRate: [70, 79, 88], revenueRate: [64, 76, 86] },
+        'sample-city': { processedRate: [42, 44, 55], revenueRate: [39, 41, 52] },
+        'sample-south': { processedRate: [66, 84, 95], revenueRate: [58, 79, 92] }
       },
       queue: [
-        { store: '하남 미사', stage: 'D+1', status: '회복 조치 필요', processedRecoveryRate: 82, crmAllowed: 'Y', next: 'CRM 승인' },
-        { store: '광명점', stage: 'D+1', status: '회복 조치 필요', processedRecoveryRate: 79, crmAllowed: 'Y', next: '쿠폰 금액 확정' },
-        { store: '서울 성수', stage: 'D+1', status: 'AS 차단', processedRecoveryRate: 44, crmAllowed: 'N', next: '기술요청 링크/정상화 확인' }
+        { store: '샘플 동부점', stage: 'D+1', status: '회복 조치 필요', processedRecoveryRate: 82, crmAllowed: 'Y', next: 'CRM 승인' },
+        { store: '샘플 서부점', stage: 'D+1', status: '회복 조치 필요', processedRecoveryRate: 79, crmAllowed: 'Y', next: '쿠폰 금액 확정' },
+        { store: '샘플 도심점', stage: 'D+1', status: 'AS 차단', processedRecoveryRate: 44, crmAllowed: 'N', next: '기술요청 링크/정상화 확인' }
       ]
     },
     visuals: {
@@ -318,15 +326,15 @@ function samplePayload(source) {
         { key: 'revisited', label: '재방문 회수', count: 0 }
       ],
       recoveryGapByStore: [
-        { storeId: 'hanam', store: '하남 미사', processedRate: 91, revenueRate: 87, gap: 4 },
-        { storeId: 'gwangmyeong', store: '광명점', processedRate: 88, revenueRate: 86, gap: 2 },
-        { storeId: 'seongsu', store: '서울 성수', processedRate: 55, revenueRate: 52, gap: 3 }
+        { storeId: 'sample-east', store: '샘플 동부점', processedRate: 91, revenueRate: 87, gap: 4 },
+        { storeId: 'sample-west', store: '샘플 서부점', processedRate: 88, revenueRate: 86, gap: 2 },
+        { storeId: 'sample-city', store: '샘플 도심점', processedRate: 55, revenueRate: 52, gap: 3 }
       ]
     },
     system: {
       lastSummaryAt: iso,
       lastRevenueSyncAt: iso,
-      appsScriptVersion: 'v2.15.3',
+      appsScriptVersion: 'v2.16.3',
       dataFreshness: '샘플 데이터',
       freshnessWarnings: source === 'sample_no_api_url' ? ['실데이터 API 미연결'] : [],
       apiWarning: source === 'sample_no_api_url' ? 'WEATHER_OPS_API_URL 미설정: 샘플 데이터 표시 중' : ''

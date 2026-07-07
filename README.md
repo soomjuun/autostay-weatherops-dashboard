@@ -48,6 +48,8 @@ weather-ops-dashboard/
 | --- | --- |
 | `COOKIE_KEY` | 인증 쿠키 키. 기본값은 `weather_ops_auth` |
 | `SESSION_SECRET` | 인증 세션 쿠키 HMAC 서명 키. 32자 이상 랜덤 문자열 권장 |
+| `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | 로그인 실패 제한 횟수. 기본값은 10분당 8회 |
+| `AUTH_RATE_LIMIT_WINDOW_MS` | 로그인 실패 제한 윈도우. 기본값은 600000ms |
 | `WEATHER_OPS_API_TOKEN` | Apps Script API에 `token` 쿼리로 전달할 공유 토큰 |
 | `WEATHER_OPS_ALLOW_SAMPLE` | 샘플 데이터 표시 여부. 운영 기본값은 `false`, 데모/개발 검토 때만 `true` |
 
@@ -78,7 +80,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
 
 ```json
 {
-  "version": "v2.15.3",
+  "version": "v2.16.3",
   "generatedAt": "2026-06-25T09:10:00+09:00",
   "summary": {
     "overallStatus": "Orange",
@@ -93,10 +95,10 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
   },
   "stores": [
     {
-      "id": "hanam",
-      "name": "하남 미사",
-      "region": "하남",
-      "dri": "박준영 매니저",
+      "id": "sample-east",
+      "name": "샘플 동부점",
+      "region": "샘플 동부권",
+      "dri": "운영 담당 B",
       "status": "Orange",
       "weather": "강한 비",
       "weatherDetail": "피크 전 강수 집중 가능",
@@ -126,7 +128,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     "processedRate": [72, 86, 93],
     "revenueRate": [65, 81, 89],
     "storeSeries": {
-      "hanam": {
+      "sample-east": {
         "processedRate": [68, 82, 91],
         "revenueRate": [61, 78, 87]
       }
@@ -140,7 +142,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
       { "key": "detected", "label": "하락 감지", "count": 3 },
       { "key": "asBlocked", "label": "AS 차단", "count": 1 }
     ],
-    "recoveryGapByStore": [{ "storeId": "hanam", "store": "하남 미사", "gap": 4 }],
+    "recoveryGapByStore": [{ "storeId": "sample-east", "store": "샘플 동부점", "gap": 4 }],
     "processedBulletByStore": [],
     "systemTrend": [],
     "openActionTrend": []
@@ -152,7 +154,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     "latestDueSummaryAt": "2026-06-25T09:10:00+09:00",
     "nextSummaryDueAt": "2026-06-25T16:30:00+09:00",
     "lastRevenueSyncAt": "2026-06-25T05:40:00+09:00",
-    "appsScriptVersion": "v2.15.3",
+    "appsScriptVersion": "v2.16.3",
     "dataFreshness": "실데이터",
     "freshnessWarnings": []
   },
@@ -182,6 +184,8 @@ autostay-weather-ops-dashboard
 8. 재배포 후 화면 상단 데이터 상태가 `실데이터 연결`인지 확인합니다.
 9. 데모/개발 확인이 필요할 때만 별도 환경에서 `WEATHER_OPS_ALLOW_SAMPLE=true`를 임시 사용합니다.
 
+로컬 Vercel CLI를 사용할 경우 `.vercel/project.json`이 다른 프로젝트를 가리키지 않도록 먼저 `autostay-weatherops-dashboard` 프로젝트로 다시 link한 뒤 배포합니다. 프로젝트 ID를 확인하지 못한 오래된 `.vercel/project.json`은 사용하지 않습니다.
+
 ## Payload 호환 메모
 
 - Apps Script 응답은 직접 dashboard payload이거나 `dashboardPayload`, `dashboard_payload`, `payload`, `data`, `dashboard` wrapper 안에 있어도 수용합니다.
@@ -191,6 +195,7 @@ autostay-weather-ops-dashboard
 - `visuals.recoveryFunnel`의 AS 차단 항목은 `key: "asBlocked"` 또는 라벨 `AS 차단`으로 전달합니다. 대시보드는 이 항목을 CRM·재방문 전환율 계산에서 제외하고 별도 참고 지표로 표시합니다.
 - `stores[].weatherData.peakTime`은 `HH:mm`, `HHmm`, `H시`, `시만`, ISO 날짜시간, 시트 시간값을 `HH:mm`으로 정규화합니다. `1899-12-30 00:00` 계열의 시트 잔여값은 `피크 미정`으로 표시합니다.
 - `stores[].weatherData.weatherBaseAt`은 유효한 날짜시간만 `MM-DD HH:mm`으로 표시하고, 1899년 계열 sentinel 날짜는 화면에서 제외합니다.
+- `generatedAt`이 없으면 현재 시각으로 대체하지 않고 `-`와 경고 배너로 표시합니다.
 - 시간 포맷은 브라우저 로컬시간이 아니라 KST 기준으로 표시합니다.
 
 ## 운영 화면 구성
@@ -231,6 +236,8 @@ autostay-weather-ops-dashboard
 - `DASHBOARD_TOKEN`은 Vercel 환경변수로만 관리합니다.
 - 로그인 쿠키에는 원 토큰을 저장하지 않고 HMAC 서명 세션값만 저장합니다.
 - `GET /api/auth?token=` 방식은 사용하지 않습니다.
+- `/api/auth`는 기본적으로 IP 기준 10분당 8회 실패 후 일시 제한합니다.
 - 운영 환경에서는 샘플 데이터 fallback을 켜지 않습니다.
+- 샘플 payload는 실제 지점명이나 담당자명을 포함하지 않습니다.
 - Apps Script API에 별도 토큰을 둘 경우 `WEATHER_OPS_API_TOKEN`을 사용합니다.
 - 현재 CSP는 원격 이미지를 사용하지 않는 전제로 `img-src 'self' data:`만 허용합니다. 실지도/레이더 이미지 도입 시 필요한 타일/이미지 도메인만 명시적으로 추가합니다.

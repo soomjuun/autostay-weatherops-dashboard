@@ -1,6 +1,10 @@
 const crypto = require('crypto');
 
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
+const AUTH_RATE_LIMIT_WINDOW_MS = numberFromEnv('AUTH_RATE_LIMIT_WINDOW_MS', 10 * 60 * 1000);
+const AUTH_RATE_LIMIT_MAX_ATTEMPTS = numberFromEnv('AUTH_RATE_LIMIT_MAX_ATTEMPTS', 8);
+const authAttempts = globalThis.__weatherOpsAuthAttempts || new Map();
+globalThis.__weatherOpsAuthAttempts = authAttempts;
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
@@ -13,12 +17,30 @@ module.exports = async function handler(req, res) {
   const sessionSecret = process.env.SESSION_SECRET || validToken;
 
   if (req.method === 'POST') {
+    const currentLimit = authRateStatus(req);
+    if (currentLimit.blocked) {
+      res.setHeader('Retry-After', String(currentLimit.retryAfterSeconds));
+      return res.status(429).send(loginPage(false, {
+        rateLimited: true,
+        retryAfterSeconds: currentLimit.retryAfterSeconds
+      }));
+    }
+
     const body = await readBody(req);
     const params = new URLSearchParams(body);
     const token = params.get('token') || '';
     if (secureCompare(token, validToken)) {
+      clearAuthFailures(req);
       setCookieAndRedirect(req, res, createSessionValue(sessionSecret));
     } else {
+      const nextLimit = recordAuthFailure(req);
+      if (nextLimit.blocked) {
+        res.setHeader('Retry-After', String(nextLimit.retryAfterSeconds));
+        return res.status(429).send(loginPage(false, {
+          rateLimited: true,
+          retryAfterSeconds: nextLimit.retryAfterSeconds
+        }));
+      }
       return res.status(401).send(loginPage(true));
     }
     return;
@@ -43,6 +65,43 @@ function readBody(req) {
     req.on('data', (chunk) => { body += chunk.toString(); });
     req.on('end', () => resolve(body));
   });
+}
+
+function authRateStatus(req) {
+  const now = Date.now();
+  const key = authRateKey(req);
+  const bucket = authAttempts.get(key);
+  if (!bucket || bucket.resetAt <= now) return { blocked: false, retryAfterSeconds: 0 };
+  if (bucket.count < AUTH_RATE_LIMIT_MAX_ATTEMPTS) return { blocked: false, retryAfterSeconds: 0 };
+  return { blocked: true, retryAfterSeconds: Math.ceil((bucket.resetAt - now) / 1000) };
+}
+
+function recordAuthFailure(req) {
+  const now = Date.now();
+  const key = authRateKey(req);
+  const bucket = authAttempts.get(key);
+  const nextBucket = !bucket || bucket.resetAt <= now
+    ? { count: 1, resetAt: now + AUTH_RATE_LIMIT_WINDOW_MS }
+    : { count: bucket.count + 1, resetAt: bucket.resetAt };
+  authAttempts.set(key, nextBucket);
+  return authRateStatus(req);
+}
+
+function clearAuthFailures(req) {
+  authAttempts.delete(authRateKey(req));
+}
+
+function authRateKey(req) {
+  const forwardedFor = Array.isArray(req.headers['x-forwarded-for'])
+    ? req.headers['x-forwarded-for'][0]
+    : req.headers['x-forwarded-for'];
+  const ip = String(forwardedFor || req.socket?.remoteAddress || 'unknown').split(',')[0].trim();
+  return ip || 'unknown';
+}
+
+function numberFromEnv(name, fallback) {
+  const value = Number(process.env[name]);
+  return Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function setCookieAndRedirect(req, res, sessionValue) {
@@ -92,7 +151,12 @@ function parseCookie(str) {
   return out;
 }
 
-function loginPage(failed) {
+function loginPage(failed, options = {}) {
+  const rateLimited = Boolean(options.rateLimited);
+  const waitMinutes = Math.max(1, Math.ceil(Number(options.retryAfterSeconds || 0) / 60));
+  const errorMessage = rateLimited
+    ? `시도 횟수가 많습니다. 약 ${waitMinutes}분 후 다시 시도하세요.`
+    : '토큰이 올바르지 않습니다.';
   return `<!DOCTYPE html>
 <html lang="ko">
 <head>
@@ -106,9 +170,9 @@ function loginPage(failed) {
     .title { font-size: 20px; font-weight: 800; letter-spacing: 0; margin-bottom: 6px; color: #fff; }
     .sub { font-size: 13px; color: #94a3b8; line-height: 1.6; margin-bottom: 26px; }
     label { display: block; font-size: 12px; font-weight: 700; color: #cbd5e1; margin-bottom: 8px; }
-    input { width: 100%; height: 44px; border-radius: 8px; border: 1.5px solid ${failed ? '#f87171' : 'rgba(255,255,255,.18)'}; background: #0f172a; color: #f8fafc; padding: 0 13px; outline: none; font-size: 15px; }
+    input { width: 100%; height: 44px; border-radius: 8px; border: 1.5px solid ${failed || rateLimited ? '#f87171' : 'rgba(255,255,255,.18)'}; background: #0f172a; color: #f8fafc; padding: 0 13px; outline: none; font-size: 15px; }
     input:focus { border-color: #38bdf8; }
-    .error { display: ${failed ? 'block' : 'none'}; margin-top: 8px; color: #fca5a5; font-size: 12px; }
+    .error { display: ${failed || rateLimited ? 'block' : 'none'}; margin-top: 8px; color: #fca5a5; font-size: 12px; }
     button { width: 100%; height: 44px; border: 0; border-radius: 8px; margin-top: 18px; background: #0ea5e9; color: #fff; font-weight: 800; cursor: pointer; }
     .hint { margin-top: 18px; color: #64748b; font-size: 12px; line-height: 1.6; text-align: center; }
   </style>
@@ -120,7 +184,7 @@ function loginPage(failed) {
     <form method="POST" action="/api/auth">
       <label for="token">액세스 토큰</label>
       <input id="token" name="token" type="password" placeholder="팀에서 공유된 토큰 입력" autofocus autocomplete="current-password">
-      <div class="error">토큰이 올바르지 않습니다.</div>
+      <div class="error">${escapeHtml(errorMessage)}</div>
       <button type="submit">입장하기</button>
     </form>
     <p class="hint">내부 운영 전용 화면입니다. 토큰은 Vercel 환경변수로만 관리하세요.</p>
