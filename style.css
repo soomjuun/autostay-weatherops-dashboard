@@ -135,6 +135,24 @@ h1 {
   font-size: 15px;
   line-height: 1.7;
 }
+.logout-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 30px;
+  margin-top: 12px;
+  padding: 0 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,.28);
+  color: #e6f6fb;
+  text-decoration: none;
+  font-size: 12px;
+  font-weight: 800;
+}
+.logout-link:hover,
+.logout-link:focus-visible {
+  background: rgba(255,255,255,.14);
+  outline: none;
+}
 .hero-meta {
   display: flex;
   flex-wrap: wrap;

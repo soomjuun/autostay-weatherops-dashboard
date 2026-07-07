@@ -7,7 +7,10 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
   <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script
+    src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
+    integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
+    crossorigin="anonymous"></script>
 </head>
 <body>
   <div id="loadingOverlay" class="loading-overlay" aria-live="polite" aria-busy="true">
@@ -28,6 +31,7 @@
           <div class="eyebrow">AUTOSTAY DIRECT STORES · WEATHER OPS</div>
           <h1>[OPS] Weather Ops Dashboard</h1>
           <p class="hero-copy">기상 리스크, 현장 정상화, 회복 수요, 사업운영/마케팅 액션을 하나의 운영 화면에서 확인합니다.</p>
+          <a class="logout-link" href="/api/auth?logout=1">로그아웃</a>
           <div id="heroMeta" class="hero-meta"></div>
         </div>
         <aside class="command-card">

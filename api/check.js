@@ -22,7 +22,10 @@ module.exports = function handler(req, res) {
   if (!validToken) {
     return res.status(500).json({ ok: false, error: 'DASHBOARD_TOKEN is not configured.' });
   }
-  const sessionSecret = process.env.SESSION_SECRET || validToken;
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret) {
+    return res.status(500).json({ ok: false, error: 'SESSION_SECRET is not configured.' });
+  }
 
   const cookieKey = process.env.COOKIE_KEY || 'weather_ops_auth';
   const cookie = parseCookie(req.headers.cookie || '');

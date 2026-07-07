@@ -14,7 +14,16 @@ module.exports = async function handler(req, res) {
   if (!validToken) {
     return res.status(500).send(errorPage('서버 설정 오류: DASHBOARD_TOKEN 환경변수가 설정되지 않았습니다.'));
   }
-  const sessionSecret = process.env.SESSION_SECRET || validToken;
+  const sessionSecret = process.env.SESSION_SECRET;
+  if (!sessionSecret) {
+    return res.status(500).send(errorPage('서버 설정 오류: SESSION_SECRET 환경변수가 설정되지 않았습니다.'));
+  }
+
+  if (req.method === 'GET' && isLogoutRequest(req)) {
+    clearAuthFailures(req);
+    clearCookieAndRedirect(req, res);
+    return;
+  }
 
   if (req.method === 'POST') {
     const currentLimit = authRateStatus(req);
@@ -106,13 +115,30 @@ function numberFromEnv(name, fallback) {
 
 function setCookieAndRedirect(req, res, sessionValue) {
   const cookieKey = process.env.COOKIE_KEY || 'weather_ops_auth';
-  const host = req.headers.host || '';
-  const proto = req.headers['x-forwarded-proto'] || '';
-  const isLocal = /^localhost(:|$)|^127\.0\.0\.1(:|$)/.test(host);
-  const secure = !isLocal || proto === 'https' ? '; Secure' : '';
+  const secure = cookieSecuritySuffix(req);
   res.setHeader('Set-Cookie', `${cookieKey}=${encodeURIComponent(sessionValue)}; Path=/; HttpOnly${secure}; Max-Age=${SESSION_MAX_AGE_SECONDS}; SameSite=Lax`);
   res.writeHead(302, { Location: '/' });
   res.end();
+}
+
+function clearCookieAndRedirect(req, res) {
+  const cookieKey = process.env.COOKIE_KEY || 'weather_ops_auth';
+  const secure = cookieSecuritySuffix(req);
+  res.setHeader('Set-Cookie', `${cookieKey}=; Path=/; HttpOnly${secure}; Max-Age=0; SameSite=Lax`);
+  res.writeHead(302, { Location: '/api/auth' });
+  res.end();
+}
+
+function cookieSecuritySuffix(req) {
+  const host = req.headers.host || '';
+  const proto = req.headers['x-forwarded-proto'] || '';
+  const isLocal = /^localhost(:|$)|^127\.0\.0\.1(:|$)/.test(host);
+  return !isLocal || proto === 'https' ? '; Secure' : '';
+}
+
+function isLogoutRequest(req) {
+  const url = new URL(req.url || '/api/auth', 'https://weather-ops.local');
+  return url.searchParams.get('logout') === '1';
 }
 
 function createSessionValue(secret) {

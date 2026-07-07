@@ -35,6 +35,7 @@ weather-ops-dashboard/
 | 변수 | 설명 |
 | --- | --- |
 | `DASHBOARD_TOKEN` | 대시보드 접근 토큰. 32자 이상 랜덤 문자열 권장 |
+| `SESSION_SECRET` | 인증 세션 쿠키 HMAC 서명 키. `DASHBOARD_TOKEN`과 다른 32자 이상 랜덤 문자열 권장 |
 
 실데이터 연결 시 필수:
 
@@ -47,7 +48,6 @@ weather-ops-dashboard/
 | 변수 | 설명 |
 | --- | --- |
 | `COOKIE_KEY` | 인증 쿠키 키. 기본값은 `weather_ops_auth` |
-| `SESSION_SECRET` | 인증 세션 쿠키 HMAC 서명 키. 32자 이상 랜덤 문자열 권장 |
 | `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | 로그인 실패 제한 횟수. 기본값은 10분당 8회 |
 | `AUTH_RATE_LIMIT_WINDOW_MS` | 로그인 실패 제한 윈도우. 기본값은 600000ms |
 | `WEATHER_OPS_API_TOKEN` | Apps Script API에 `token` 쿼리로 전달할 공유 토큰 |
@@ -234,9 +234,12 @@ autostay-weather-ops-dashboard
 
 - 토큰은 코드에 저장하지 않습니다.
 - `DASHBOARD_TOKEN`은 Vercel 환경변수로만 관리합니다.
+- `SESSION_SECRET`은 필수값이며 `DASHBOARD_TOKEN`으로 대체하지 않습니다.
 - 로그인 쿠키에는 원 토큰을 저장하지 않고 HMAC 서명 세션값만 저장합니다.
+- 로그아웃은 `/api/auth?logout=1`에서 인증 쿠키를 즉시 삭제합니다. 전체 세션 무효화가 필요하면 `SESSION_SECRET`을 교체하고 재배포합니다.
 - `GET /api/auth?token=` 방식은 사용하지 않습니다.
 - `/api/auth`는 기본적으로 IP 기준 10분당 8회 실패 후 일시 제한합니다.
+- Chart.js CDN 스크립트는 고정 버전과 SRI 무결성 해시로 로드합니다.
 - 운영 환경에서는 샘플 데이터 fallback을 켜지 않습니다.
 - 샘플 payload는 실제 지점명이나 담당자명을 포함하지 않습니다.
 - Apps Script API에 별도 토큰을 둘 경우 `WEATHER_OPS_API_TOKEN`을 사용합니다.
