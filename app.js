@@ -74,8 +74,8 @@ async function loadDashboard(options = {}) {
       window.location.href = '/api/auth';
       return;
     }
-    const payload = await response.json();
-    if (!response.ok) throw new Error(formatApiError(payload, response.status));
+    const payload = await parseJsonResponse(response);
+    if (!response.ok || payload.source === 'non_json_response') throw new Error(formatApiError(payload, response.status));
     state.data = normalize(payload);
     ensureStoreOptions();
     render();
@@ -104,6 +104,20 @@ function formatApiError(payload, status) {
   if (payload && payload.nextAction) parts.push(`다음 조치: ${payload.nextAction}`);
   if (payload && payload.source) parts.push(`source=${payload.source}`);
   return parts.join(' | ');
+}
+
+async function parseJsonResponse(response) {
+  const text = await response.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text.replace(/^\uFEFF/, ''));
+  } catch (error) {
+    return {
+      error: `HTTP ${response.status}`,
+      detail: `대시보드 API가 JSON이 아닌 응답을 반환했습니다: ${text.slice(0, 160)}`,
+      source: 'non_json_response'
+    };
+  }
 }
 
 function normalize(payload) {
@@ -278,7 +292,7 @@ function renderHero() {
   const { summary } = state.data;
   const status = normalizeStatus(summary.overallStatus || summary.overall_status || topStatus(state.data.stores));
   const warnings = freshnessWarnings();
-  $('overallStatus').textContent = status;
+  $('overallStatus').textContent = levelLabel(status);
   $('overallStatus').className = `status-word text-${status}`;
   $('headline').textContent = summary.headline || '오늘 운영 조치와 회복 액션을 확인하세요.';
   $('heroMeta').innerHTML = [
@@ -927,17 +941,34 @@ function deriveRiskMatrixRows() {
 
 function recoveryFunnelRows() {
   const provided = state.data.visuals && state.data.visuals.recoveryFunnel;
-  if (Array.isArray(provided) && provided.length) return provided;
+  if (Array.isArray(provided) && provided.length) return ensureAsBlockedFunnelRow(provided);
   const queue = (state.data.recovery && state.data.recovery.queue) || [];
   const crmReadyCount = state.data.stores.filter((store) => store.crmReady).length;
-  return [
+  return ensureAsBlockedFunnelRow([
     { key: 'detected', label: '하락 감지', count: queue.length },
     { key: 'action', label: '조치 필요', count: queue.filter((item) => !String(item.status || '').includes('완료')).length },
     { key: 'normalized', label: '정상화 통과', count: queue.filter((item) => !String(item.status || '').includes('차단')).length },
     { key: 'crmQueued', label: 'CRM 후보', count: crmReadyCount },
     { key: 'crmSent', label: '발송/실행', count: queue.filter((item) => String(item.next || '').includes('발송')).length },
     { key: 'revisited', label: '재방문 회수', count: 0 }
-  ];
+  ]);
+}
+
+function ensureAsBlockedFunnelRow(rows) {
+  const summary = state.data.summary || {};
+  const asBlockedCount = Number(summary.asBlockedCount ?? summary.as_blocked_count ?? 0);
+  if (!asBlockedCount || rows.some(isAsBlockedFunnelRow)) return rows;
+  const nextRows = rows.slice();
+  const normalizedIndex = nextRows.findIndex((row) => {
+    const key = String(row.key || row.id || row.code || '').toLowerCase().replace(/[_\s-]/g, '');
+    return key === 'normalized' || String(row.label || '').includes('정상화');
+  });
+  nextRows.splice(normalizedIndex >= 0 ? normalizedIndex : Math.min(2, nextRows.length), 0, {
+    key: 'asBlocked',
+    label: 'AS 차단',
+    count: asBlockedCount
+  });
+  return nextRows;
 }
 
 function isAsBlockedFunnelRow(row) {
@@ -1037,7 +1068,7 @@ function openStoreDialog(storeId) {
   if (!store) return;
   $('dialogTitle').textContent = store.name;
   $('dialogBody').innerHTML = [
-    ['상태', store.status],
+    ['상태', levelLabel(store.status)],
     ['기상/트리거', `${store.weather} · ${store.weatherDetail || store.trigger}`],
     ['기상 수치', weatherMetricText(store)],
     ['DRI', store.dri],
