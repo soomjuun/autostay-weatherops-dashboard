@@ -22,10 +22,7 @@ module.exports = function handler(req, res) {
   if (!validToken) {
     return res.status(500).json({ ok: false, error: 'DASHBOARD_TOKEN is not configured.' });
   }
-  const sessionSecret = process.env.SESSION_SECRET;
-  if (!sessionSecret) {
-    return res.status(500).json({ ok: false, error: 'SESSION_SECRET is not configured.' });
-  }
+  const sessionSecret = resolveSessionSecret(validToken);
 
   const cookieKey = process.env.COOKIE_KEY || 'weather_ops_auth';
   const cookie = parseCookie(req.headers.cookie || '');
@@ -44,6 +41,11 @@ function verifySessionValue(value, secret) {
 
 function signSession(secret, issuedAt) {
   return crypto.createHmac('sha256', secret).update(issuedAt).digest('base64url');
+}
+
+function resolveSessionSecret(validToken) {
+  return process.env.SESSION_SECRET
+    || crypto.createHash('sha256').update(`weather-ops-session:${validToken}`).digest('hex');
 }
 
 function secureCompare(a, b) {

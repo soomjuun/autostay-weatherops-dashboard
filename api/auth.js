@@ -14,10 +14,7 @@ module.exports = async function handler(req, res) {
   if (!validToken) {
     return res.status(500).send(errorPage('서버 설정 오류: DASHBOARD_TOKEN 환경변수가 설정되지 않았습니다.'));
   }
-  const sessionSecret = process.env.SESSION_SECRET;
-  if (!sessionSecret) {
-    return res.status(500).send(errorPage('서버 설정 오류: SESSION_SECRET 환경변수가 설정되지 않았습니다.'));
-  }
+  const sessionSecret = resolveSessionSecret(validToken);
 
   if (req.method === 'GET' && isLogoutRequest(req)) {
     clearAuthFailures(req);
@@ -111,6 +108,11 @@ function authRateKey(req) {
 function numberFromEnv(name, fallback) {
   const value = Number(process.env[name]);
   return Number.isFinite(value) && value > 0 ? value : fallback;
+}
+
+function resolveSessionSecret(validToken) {
+  return process.env.SESSION_SECRET
+    || crypto.createHash('sha256').update(`weather-ops-session:${validToken}`).digest('hex');
 }
 
 function setCookieAndRedirect(req, res, sessionValue) {

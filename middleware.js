@@ -8,18 +8,18 @@ const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 7;
 
 export default async function middleware(request) {
   const validToken = process.env.DASHBOARD_TOKEN;
-  const sessionSecret = process.env.SESSION_SECRET;
   const cookieKey = process.env.COOKIE_KEY || 'weather_ops_auth';
 
   const missingEnv = [];
   if (!validToken) missingEnv.push('DASHBOARD_TOKEN');
-  if (!sessionSecret) missingEnv.push('SESSION_SECRET');
   if (missingEnv.length > 0) {
     return new Response(`${missingEnv.join(', ')} is not configured.`, {
       status: 500,
       headers: { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' }
     });
   }
+
+  const sessionSecret = process.env.SESSION_SECRET || await deriveSessionSecret(validToken);
 
   const cookies = request.headers.get('cookie') || '';
   const escapedCookieKey = cookieKey.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -69,6 +69,12 @@ async function signSession(secret, issuedAt) {
   );
   const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(issuedAt));
   return base64Url(signature);
+}
+
+async function deriveSessionSecret(validToken) {
+  const encoder = new TextEncoder();
+  const digest = await crypto.subtle.digest('SHA-256', encoder.encode(`weather-ops-session:${validToken}`));
+  return base64Url(digest);
 }
 
 function base64Url(buffer) {
