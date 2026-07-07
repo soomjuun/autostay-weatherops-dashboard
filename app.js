@@ -672,13 +672,14 @@ function renderTimeline() {
 function renderSystem() {
   const system = state.data.system || {};
   const warnings = freshnessWarnings();
+  const summaryAdvisory = summaryAdvisoryMessage(system);
   const lastSummaryAt = system.lastSummaryAt || system.last_summary_at || '-';
   const summaryFreshnessLevel = system.summaryFreshnessLevel || system.summary_freshness_level;
   const items = [
     { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || systemFreshnessClass(lastSummaryAt, 8) },
     { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
     { label: '시트/Pack', value: formatPackVersionStatus(system), className: versionStatusClass(system) },
-    { label: '데이터 상태', value: system.dataFreshness || system.data_freshness || state.data.source, className: state.data.source && state.data.source.startsWith('sample') ? 'warning' : 'ok' }
+    { label: '데이터 상태', value: operationalDataStatus(system), className: operationalDataStatusClass() }
   ];
   $('systemStatus').innerHTML = items.map((item) => `
     <div class="system-item ${escapeAttr(item.className)}">
@@ -691,6 +692,12 @@ function renderSystem() {
       <span class="system-dot" aria-hidden="true"></span>
       <div class="system-label">주의 신호</div>
       <div class="system-value">${warnings.map(escapeHtml).join(' · ')}</div>
+    </div>
+  ` : '') + (summaryAdvisory ? `
+    <div class="system-item info system-wide">
+      <span class="system-dot" aria-hidden="true"></span>
+      <div class="system-label">요약 발송 이력</div>
+      <div class="system-value">${escapeHtml(summaryAdvisory)}</div>
     </div>
   ` : '');
 }
@@ -1264,19 +1271,25 @@ function lastNumber(values) {
   return null;
 }
 
-function freshnessWarnings() {
+function freshnessWarnings(options = {}) {
+  const includeSummaryAdvisory = Boolean(options.includeSummaryAdvisory);
   const system = state.data && state.data.system ? state.data.system : {};
   const summary = state.data && state.data.summary ? state.data.summary : {};
   const provided = system.freshnessWarnings || system.freshness_warnings || [];
   const warnings = Array.isArray(provided)
-    ? provided.filter((warning) => !String(warning || '').includes('마지막 요약 알림이 4시간 이상'))
+    ? provided.filter((warning) => {
+      const text = String(warning || '');
+      if (text.includes('마지막 요약 알림이 4시간 이상')) return false;
+      if (!includeSummaryAdvisory && isSummaryAdvisoryWarning(text)) return false;
+      return true;
+    })
     : [];
   const summaryWarning = summaryFreshnessWarning(system);
   const revenueAge = hoursSince(system.lastRevenueSyncAt || system.last_revenue_sync_at);
   const generatedAge = hoursSince(state.data && state.data.generatedAt);
   const systemErrorCount = Number(summary.systemError24h ?? summary.system_error_24h ?? system.systemError24h ?? system.system_error_24h ?? 0);
   const dataWaitCount = Number(summary.dataWaitCount ?? summary.data_wait_count ?? 0);
-  if (summaryWarning) warnings.push(summaryWarning);
+  if (summaryWarning && (includeSummaryAdvisory || !isSummaryAdvisoryWarning(summaryWarning))) warnings.push(summaryWarning);
   if (revenueAge !== null && revenueAge > 30) warnings.push('매출 원천 동기화 30시간 초과');
   if ((!state.data || !state.data.generatedAt) && !warnings.some((warning) => String(warning || '').includes('생성 시각'))) {
     warnings.push('대시보드 데이터 생성 시각 없음');
@@ -1291,6 +1304,37 @@ function freshnessWarnings() {
   if (systemErrorCount > 0) warnings.push(`시스템 오류 ${systemErrorCount}건`);
   if (dataWaitCount > 0) warnings.push(`성과 확정 대기 ${dataWaitCount}건`);
   return [...new Set(warnings)];
+}
+
+function isSummaryAdvisoryWarning(warning) {
+  const text = String(warning || '');
+  return text.includes('종합 요약 실행 기록')
+    || (text.includes('예정된 종합 요약') && text.includes('기록되지 않았습니다'));
+}
+
+function summaryAdvisoryMessage(system) {
+  const warning = summaryFreshnessWarning(system);
+  if (!warning) return '';
+  if (String(warning).includes('종합 요약 실행 기록')) {
+    return '종합 요약 발송 이력 없음. 기상·지점 데이터 수신과는 별도입니다.';
+  }
+  return `${warning} 데이터 수신과는 별도입니다.`;
+}
+
+function operationalDataStatus(system) {
+  if (state.data && state.data.source && state.data.source.startsWith('sample')) return '샘플 데이터';
+  if (hasLiveOperationalData()) return '실데이터 연결';
+  return system.dataFreshness || system.data_freshness || (state.data && state.data.source) || '-';
+}
+
+function operationalDataStatusClass() {
+  if (!state.data || (state.data.source && state.data.source.startsWith('sample'))) return 'warning';
+  return hasLiveOperationalData() ? 'ok' : 'warning';
+}
+
+function hasLiveOperationalData() {
+  if (!state.data || state.data.source !== 'apps_script') return false;
+  return Boolean(state.data.generatedAt) && Array.isArray(state.data.stores) && state.data.stores.length > 0;
 }
 
 function versionMismatchWarning(currentVersion, expectedVersion) {

@@ -948,6 +948,7 @@ td:last-child { min-width: 280px; }
   padding-left: 30px;
 }
 .system-item.ok { border-color: #bbf7d0; background: #f0fdf4; }
+.system-item.info { border-color: #bfdbfe; background: #eff6ff; }
 .system-item.warning { border-color: #fed7aa; background: #fff7ed; }
 .system-item.danger { border-color: #fecaca; background: #fef2f2; }
 .system-wide {
@@ -963,6 +964,7 @@ td:last-child { min-width: 280px; }
   background: var(--gray);
 }
 .system-item.ok .system-dot { background: var(--green); }
+.system-item.info .system-dot { background: var(--blue); }
 .system-item.warning .system-dot { background: var(--orange); }
 .system-item.danger .system-dot { background: var(--red); }
 .system-label { color: var(--muted); font-size: 12px; font-weight: 800; }
