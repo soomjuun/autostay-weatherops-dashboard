@@ -662,7 +662,7 @@ function renderStoreTable() {
   $('storeTable').innerHTML = rows.map((store) => `
     <tr>
       <td data-label="지점"><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
-      <td data-label="상태"><span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span><br><span class="muted">점수 ${store.riskScore}</span></td>
+      <td data-label="상태"><span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span><br><span class="muted score-line">점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span></td>
       <td data-label="기상/트리거">${escapeHtml(store.weather)}<br><span class="muted">${escapeHtml(store.weatherDetail || store.trigger)}</span>${renderWeatherMetricChips(store, 4) ? `<div class="weather-chip-row table-weather">${renderWeatherMetricChips(store, 4)}</div>` : ''}</td>
       <td data-label="AS">${escapeHtml(store.asStatus)}</td>
       <td data-label="회복">${escapeHtml(store.recoveryStatus)}<br><span class="muted">CRM ${store.crmReady ? '가능' : '대기'}</span></td>
@@ -670,6 +670,21 @@ function renderStoreTable() {
       <td data-label="다음 액션">${escapeHtml(store.nextAction)}</td>
     </tr>
   `).join('') || '<tr><td colspan="7">현재 필터 기준 지점이 없습니다.</td></tr>';
+}
+
+function renderInfoTip(message, label) {
+  const text = String(message || '').trim();
+  if (!text) return '';
+  return `<span class="info-tip" tabindex="0" role="img" aria-label="${escapeAttr(`${label}: ${text}`)}" title="${escapeAttr(text)}">ⓘ<span class="info-tip-bubble" role="tooltip" aria-hidden="true">${escapeHtml(text)}</span></span>`;
+}
+
+function riskScoreHelpText(store) {
+  const base = { Error: 95, Red: 90, Orange: 74, Yellow: 54, Green: 20, Gray: 10 }[store.status] || 20;
+  const current = Number(store.riskScore);
+  const currentMeaning = store.status === 'Green' && current === 20
+    ? '현재 20점은 정상 기본점수만 적용된 상태입니다.'
+    : `현재 ${levelLabel(store.status)} 기본점수 ${base}점에 이슈 보정이 반영된 값입니다.`;
+  return `위험 점수(0-100)는 지점 우선 확인 순서입니다. 기본점수는 정상 20, 주의 54, 조치 74, 제한확인 90, 오류 95입니다. 미해결 액션은 건당 +4(최대 +12), AS 정상화 대기는 +12, 회복 필요·대기·차단은 +6입니다. ${currentMeaning}`;
 }
 
 function renderTimeline() {
