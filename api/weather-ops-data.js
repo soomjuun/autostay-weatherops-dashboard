@@ -73,6 +73,11 @@ function normalizePayload(payload, source) {
   const visuals = normalizeVisuals(objectOrEmpty(data.visuals), recovery);
   const generatedAt = data.generatedAt || data.generated_at || payload.generatedAt || payload.generated_at || '';
   const system = objectOrEmpty(data.system);
+  const version = normalizeVersion(data, payload, system);
+  if (version && version !== 'unknown') {
+    system.packVersion = version;
+    system.sheetVersion = version;
+  }
   if (!generatedAt) {
     const warnings = Array.isArray(system.freshnessWarnings || system.freshness_warnings)
       ? (system.freshnessWarnings || system.freshness_warnings).slice()
@@ -81,7 +86,7 @@ function normalizePayload(payload, source) {
     system.freshnessWarnings = [...new Set(warnings)];
   }
   return {
-    version: data.version || payload.version || 'unknown',
+    version,
     generatedAt,
     source,
     summary: objectOrEmpty(data.summary),
@@ -127,6 +132,40 @@ function objectOrEmpty(value) {
 
 function arrayOrEmpty(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function normalizeVersion(data, payload, system) {
+  return firstNonEmpty(
+    data.version,
+    data.sheetVersion,
+    data.sheet_version,
+    data.packVersion,
+    data.pack_version,
+    data.weatherOpsVersion,
+    data.weather_ops_version,
+    payload.version,
+    payload.sheetVersion,
+    payload.sheet_version,
+    payload.packVersion,
+    payload.pack_version,
+    payload.weatherOpsVersion,
+    payload.weather_ops_version,
+    system.sheetVersion,
+    system.sheet_version,
+    system.packVersion,
+    system.pack_version,
+    system.appsScriptVersion,
+    system.apps_script_version
+  ) || 'unknown';
+}
+
+function firstNonEmpty(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined) continue;
+    const text = String(value).trim();
+    if (text) return text;
+  }
+  return '';
 }
 
 function sampleWeatherData(data, levels) {
@@ -273,7 +312,7 @@ function samplePayload(source) {
   ];
 
   return {
-    version: 'sample-v0.6',
+    version: 'v2.16.4',
     generatedAt: iso,
     source,
     summary: {
@@ -334,7 +373,9 @@ function samplePayload(source) {
     system: {
       lastSummaryAt: iso,
       lastRevenueSyncAt: iso,
-      appsScriptVersion: 'v2.16.3',
+      appsScriptVersion: 'v2.16.4',
+      packVersion: 'v2.16.4',
+      sheetVersion: 'v2.16.4',
       dataFreshness: '샘플 데이터',
       freshnessWarnings: source === 'sample_no_api_url' ? ['실데이터 API 미연결'] : [],
       apiWarning: source === 'sample_no_api_url' ? 'WEATHER_OPS_API_URL 미설정: 샘플 데이터 표시 중' : ''

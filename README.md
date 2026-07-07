@@ -80,7 +80,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
 
 ```json
 {
-  "version": "v2.16.3",
+  "version": "v2.16.4",
   "generatedAt": "2026-06-25T09:10:00+09:00",
   "summary": {
     "overallStatus": "Orange",
@@ -154,7 +154,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     "latestDueSummaryAt": "2026-06-25T09:10:00+09:00",
     "nextSummaryDueAt": "2026-06-25T16:30:00+09:00",
     "lastRevenueSyncAt": "2026-06-25T05:40:00+09:00",
-    "appsScriptVersion": "v2.16.3",
+    "appsScriptVersion": "v2.16.4",
     "dataFreshness": "실데이터",
     "freshnessWarnings": []
   },
@@ -213,7 +213,7 @@ autostay-weather-ops-dashboard
 - 처리대수 회복 vs 매출 회복: 처리대수 회복 대비 매출 회복 지연 지점을 덤벨형 비교로 표시
 - 운영 시각화 레이아웃: `오늘 기상 리스크`, `회복 실행 단계`, `지점별 회복 진행`, `처리대수 회복 vs 매출 회복`을 2×2 명시 영역으로 배치
 - 지점별 상태: 데스크톱은 표, 모바일은 카드형 목록으로 표시
-- 시스템 상태: 마지막 요약, 매출 동기화, Apps Script 버전, 데이터 상태를 신선도 색상과 주의 신호로 표시
+- 시스템 상태: 마지막 요약, 매출 동기화, 시트/Pack 버전, 데이터 상태를 신선도 색상과 주의 신호로 표시
 - 반응형 기준: 1100px 이하에서는 주요 영역을 단일 흐름으로 재배치하고, 720px 이하에서는 모바일 카드형 표와 단일 열 시각화로 전환합니다.
 - 접근성 기준: 필터, 지점 카드, 새로고침, 요약 복사, 상세 dialog는 키보드 포커스가 보이도록 유지하고 상태 알림은 `aria-live`로 전달합니다.
 

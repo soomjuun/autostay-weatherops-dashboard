@@ -105,11 +105,16 @@ function normalize(payload) {
   const raw = objectFrom(payload);
   const data = unwrapPayload(raw);
   const stores = arrayFrom(data.stores || data.storeRows || data.store_rows).map(normalizeStore);
+  const system = objectFrom(data.system);
+  const version = firstPresent(data, ['version', 'sheetVersion', 'sheet_version', 'packVersion', 'pack_version', 'weatherOpsVersion', 'weather_ops_version'])
+    || firstPresent(raw, ['version', 'sheetVersion', 'sheet_version', 'packVersion', 'pack_version', 'weatherOpsVersion', 'weather_ops_version'])
+    || firstPresent(system, ['sheetVersion', 'sheet_version', 'packVersion', 'pack_version', 'appsScriptVersion', 'apps_script_version'])
+    || 'unknown';
 
   stores.sort((a, b) => (STATUS_ORDER[b.status] || 0) - (STATUS_ORDER[a.status] || 0) || b.riskScore - a.riskScore);
 
   return {
-    version: firstPresent(data, ['version']) || firstPresent(raw, ['version']) || 'unknown',
+    version,
     generatedAt: firstPresent(data, ['generatedAt', 'generated_at']) || firstPresent(raw, ['generatedAt', 'generated_at']) || '',
     source: data.source || raw.source || 'unknown',
     summary: objectFrom(data.summary),
@@ -117,7 +122,7 @@ function normalize(payload) {
     opsActions: arrayFrom(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
     marketingActions: arrayFrom(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
     recovery: objectFrom(data.recovery),
-    system: objectFrom(data.system),
+    system,
     visuals: normalizeVisuals(objectFrom(data.visuals), objectFrom(data.recovery)),
     weatherTimeline: arrayFrom(data.weatherTimeline || data.weather_timeline || data.timeline)
   };
@@ -667,7 +672,7 @@ function renderSystem() {
   const items = [
     { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || systemFreshnessClass(lastSummaryAt, 8) },
     { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
-    { label: 'Apps Script', value: system.appsScriptVersion || system.apps_script_version || state.data.version, className: 'ok' },
+    { label: '시트/Pack', value: system.sheetVersion || system.sheet_version || system.packVersion || system.pack_version || state.data.version || system.appsScriptVersion || system.apps_script_version, className: 'ok' },
     { label: '데이터 상태', value: system.dataFreshness || system.data_freshness || state.data.source, className: state.data.source && state.data.source.startsWith('sample') ? 'warning' : 'ok' }
   ];
   $('systemStatus').innerHTML = items.map((item) => `
