@@ -74,7 +74,7 @@ async function signSession(secret, issuedAt) {
 async function deriveSessionSecret(validToken) {
   const encoder = new TextEncoder();
   const digest = await crypto.subtle.digest('SHA-256', encoder.encode(`weather-ops-session:${validToken}`));
-  return base64Url(digest);
+  return hex(digest);
 }
 
 function base64Url(buffer) {
@@ -82,6 +82,12 @@ function base64Url(buffer) {
   let binary = '';
   bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
   return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+function hex(buffer) {
+  return Array.from(new Uint8Array(buffer))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
 }
 
 function constantEqual(a, b) {
