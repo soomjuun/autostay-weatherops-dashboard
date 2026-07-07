@@ -22,10 +22,27 @@ const SUMMARY_SCHEDULES = [
   { hour: 16, minute: 30 }
 ];
 const SUMMARY_GRACE_MINUTES = 45;
+const PROD_MODE_HELP = '이 대시보드는 운영 반영 대상(prod) dashboard payload를 기준으로 집계합니다. shadow/test 실행 기록은 원장 검증에는 사용되지만 화면 집계에서는 제외됩니다.';
+const WEATHER_API_HELP = '기상 수치는 기상청 단기예보와 에어코리아 값이 Action_Log에 적재된 경우 표시됩니다. 수치가 없고 정상으로 보이면 현재 prod 기준 활성 기상 액션이 없다는 뜻입니다.';
+const WEATHER_THRESHOLD_HELP = '임계값: 강수 Yellow=POP 60% 또는 PCP 0.1mm+, Orange=POP 80% 또는 PCP 5mm+, Red=PCP 15mm+. 풍속 7/10/14m/s, 한파 0/-5/-10도, 적설 0.1/1/5cm, 폭염 30/33/35도, PM10 81/151/300, PM2.5 36/76/150 기준입니다.';
+const STATIC_HELP_ITEMS = [
+  ['.map-panel h2', '지점 현황은 prod 기준 지점별 최상위 상태, 담당자, 다음 액션을 요약합니다. 정상은 실제 API 수치가 모두 정상이라는 뜻이 아니라 활성 prod 액션이 없다는 뜻일 수 있습니다.', '지점 현황 기준'],
+  ['.queue-panel h2', '회복 큐는 기상 영향 이후 처리대수·매출 회복, AS 차단, CRM 가능 여부를 함께 보는 실행 대기열입니다.', '회복 큐 기준'],
+  ['#recoveryChartPanel h2', '지점 필터를 선택하면 D-day, D+1, D+2 처리대수·매출 회복률을 표시합니다. 100%는 기준선 회복, 90% 미만은 조치 검토 구간입니다.', '회복률 기준'],
+  ['.action-panel h2', '오늘 조치할 항목은 미완료 운영 액션을 사업운영팀과 마케팅팀으로 나눕니다. 운영 제한·AS 차단·회복 조치가 우선입니다.', '조치 항목 기준'],
+  ['.risk-panel h2', `오늘 기상 리스크는 활성 리스크 컬럼만 보여줍니다. ${PROD_MODE_HELP} ${WEATHER_THRESHOLD_HELP}`, '기상 리스크 기준'],
+  ['.funnel-panel h2', '회복 실행 단계는 하락 감지부터 CRM 후보, 발송, 재방문 회수까지 전환 흐름을 보여줍니다. AS 차단은 정상화 전 단계로 별도 표시합니다.', '회복 실행 기준'],
+  ['.small-multiple-panel h2', '지점별 회복 진행은 처리대수 회복률을 색상으로, 매출 회복률을 보조 수치로 표시합니다. 100% 이상 정상, 90~99% 관찰, 90% 미만 조치 기준입니다.', '회복 진행 기준'],
+  ['.gap-panel h2', '처리대수 회복률과 매출 회복률의 차이를 비교합니다. 처리대수만 회복된 지점은 결제, 단가, 구독·쿠폰 믹스를 추가 확인합니다.', '회복 갭 기준'],
+  ['.table-panel h2', `지점별 상태 표는 상태 점수, 기상/트리거, AS, 회복, 담당, 다음 액션을 한 줄로 비교합니다. ${WEATHER_API_HELP}`, '지점별 상태 기준'],
+  ['.timeline-panel h2', '오늘 운영 타임라인은 오픈 전, 피크 전, 마감 전 점검 시점을 전체 상태와 함께 보여주는 운영 리마인더입니다.', '타임라인 기준'],
+  ['.system-panel h2', '시스템 상태는 요약 실행, 매출 동기화, 시트 버전, 대시보드 payload 연결 상태를 표시합니다. 개별 기상 API 수치 정상 여부와는 구분해서 봅니다.', '시스템 상태 기준']
+];
 
 checkAuthSession();
 
 document.addEventListener('DOMContentLoaded', () => {
+  decorateDashboardHelp();
   bindEvents();
   loadDashboard();
 });
@@ -54,6 +71,14 @@ function bindEvents() {
   });
   $('dialogClose').addEventListener('click', () => $('storeDialog').close());
   updateRiskFilterState();
+}
+
+function decorateDashboardHelp() {
+  STATIC_HELP_ITEMS.forEach(([selector, message, label]) => {
+    const target = document.querySelector(selector);
+    if (!target || target.querySelector('.info-tip')) return;
+    target.insertAdjacentHTML('beforeend', ` ${renderInfoTip(message, label)}`);
+  });
 }
 
 function updateRiskFilterState() {
@@ -292,15 +317,18 @@ function renderHero() {
   const { summary } = state.data;
   const status = normalizeStatus(summary.overallStatus || summary.overall_status || topStatus(state.data.stores));
   const warnings = freshnessWarnings();
-  $('overallStatus').textContent = levelLabel(status);
+  $('overallStatus').innerHTML = `${escapeHtml(levelLabel(status))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
   $('overallStatus').className = `status-word text-${status}`;
   $('headline').textContent = summary.headline || '오늘 운영 조치와 회복 액션을 확인하세요.';
-  $('heroMeta').innerHTML = [
-    `업데이트 ${formatDateTime(state.data.generatedAt)}`,
-    `버전 ${state.data.version}`,
-    state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결',
-    ...warnings.map((warning) => `주의: ${warning}`)
-  ].map((text) => `<span class="meta-pill${text.startsWith('주의:') ? ' warning' : ''}">${escapeHtml(text)}</span>`).join('');
+  const sourceText = state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결';
+  const metaItems = [
+    { text: `업데이트 ${formatDateTime(state.data.generatedAt)}`, help: 'Apps Script dashboard payload가 생성된 시각입니다. 브라우저 새로고침 시 Vercel API가 이 값을 다시 조회합니다.' },
+    { text: `버전 ${state.data.version}`, help: '대시보드 payload가 보고한 Weather Ops Pack 또는 시트 버전입니다. 현재 기대 버전은 v2.16.4입니다.' },
+    { text: sourceText, help: sourceText === '샘플 데이터' ? '샘플 fallback 데이터입니다. 운영 배포에서는 실데이터 연결이어야 합니다.' : `Vercel이 Apps Script dashboard payload를 정상 수신했다는 뜻입니다. ${WEATHER_API_HELP}` }
+  ].concat(warnings.map((warning) => ({ text: `주의: ${warning}`, help: '데이터 신선도 또는 시스템 점검이 필요한 신호입니다.', warning: true })));
+  $('heroMeta').innerHTML = metaItems
+    .map((item) => `<span class="meta-pill${item.warning ? ' warning' : ''}">${escapeHtml(item.text)}${renderInfoTip(item.help, item.text)}</span>`)
+    .join('');
 }
 
 function renderKpis() {
@@ -316,7 +344,7 @@ function renderKpis() {
   ];
   $('kpiStrip').innerHTML = items.map(([label, value, note]) => `
     <div class="kpi">
-      <div class="kpi-label">${escapeHtml(label)}</div>
+      <div class="kpi-label">${escapeHtml(label)}${renderInfoTip(kpiHelpText(label), `${label} 기준`)}</div>
       <div class="kpi-value">${escapeHtml(value)}</div>
       <div class="kpi-note">${escapeHtml(note)}</div>
     </div>
@@ -468,7 +496,7 @@ function renderRiskMatrix() {
           const cell = matrixCellForColumn(row, column);
           const level = normalizeStatus(cell.level);
           const opClass = isOperationalRiskColumn(column) ? ' is-op' : '';
-          return `<div class="matrix-cell ${level}${opClass}" title="${escapeAttr(row.store)} ${escapeAttr(cell.label)} ${escapeAttr(levelLabel(level))}">${escapeHtml(levelLabel(level))}</div>`;
+          return `<div class="matrix-cell ${level}${opClass}" title="${escapeAttr(`${row.store} ${cell.label} ${levelLabel(level)} · ${PROD_MODE_HELP} ${WEATHER_THRESHOLD_HELP}`)}">${escapeHtml(levelLabel(level))}</div>`;
         }).join('')}
       </div>
     `).join('')}
@@ -605,12 +633,12 @@ function renderRecoveryQueue() {
         <div class="queue-main">
           <div class="queue-top">
             <span class="queue-store">${escapeHtml(firstPresent(item, ['store', 'storeName', 'store_name']) || '-')}</span>
-            <span class="badge ${queueStatusClass(status)}">${escapeHtml(status)}</span>
+            <span class="badge ${queueStatusClass(status)}" title="${escapeAttr('회복 큐 상태입니다. AS 차단 또는 조치 필요는 CRM·재방문 실행 전에 정상화 확인이 필요합니다.')}">${escapeHtml(status)}</span>
           </div>
           <div class="queue-body">${escapeHtml(firstPresent(item, ['stage', 'recoveryStage', 'recovery_stage']) || '-')} · 처리대수 회복률 ${formatPercent(processed)}${revenueText}</div>
         </div>
         <div class="queue-side">
-          <span class="queue-chip ${escapeAttr(crm.className)}">CRM ${escapeHtml(crm.label)}</span>
+          <span class="queue-chip ${escapeAttr(crm.className)}" title="${escapeAttr('CRM 가능은 AS 정상화와 회복 판단을 통과해 고객 유도/재방문 안내 후보가 될 수 있다는 뜻입니다.')}">CRM ${escapeHtml(crm.label)}</span>
           <span class="queue-next">${escapeHtml(firstPresent(item, ['next', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-')}</span>
         </div>
       </div>
@@ -659,17 +687,20 @@ function renderProcessedBulletList() {
 
 function renderStoreTable() {
   const rows = filteredStores();
-  $('storeTable').innerHTML = rows.map((store) => `
-    <tr>
-      <td data-label="지점"><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
-      <td data-label="상태"><span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span><br><span class="muted score-line">점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span></td>
-      <td data-label="기상/트리거">${escapeHtml(store.weather)}<br><span class="muted">${escapeHtml(store.weatherDetail || store.trigger)}</span>${renderWeatherMetricChips(store, 4) ? `<div class="weather-chip-row table-weather">${renderWeatherMetricChips(store, 4)}</div>` : ''}</td>
-      <td data-label="AS">${escapeHtml(store.asStatus)}</td>
-      <td data-label="회복">${escapeHtml(store.recoveryStatus)}<br><span class="muted">CRM ${store.crmReady ? '가능' : '대기'}</span></td>
-      <td data-label="담당">${escapeHtml(store.dri)}</td>
-      <td data-label="다음 액션">${escapeHtml(store.nextAction)}</td>
-    </tr>
-  `).join('') || '<tr><td colspan="7">현재 필터 기준 지점이 없습니다.</td></tr>';
+  $('storeTable').innerHTML = rows.map((store) => {
+    const weatherChips = renderWeatherMetricChips(store, 4);
+    return `
+      <tr>
+        <td data-label="지점"><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
+        <td data-label="상태"><span class="badge ${store.status}" title="${escapeAttr(statusHelpText(store.status))}">${escapeHtml(levelLabel(store.status))}</span><br><span class="muted score-line">점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span></td>
+        <td data-label="기상/트리거"><span class="table-main-line">${escapeHtml(store.weather)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><br><span class="muted">${escapeHtml(weatherDetailText(store))}</span>${weatherChips ? `<div class="weather-chip-row table-weather">${weatherChips}</div>` : ''}</td>
+        <td data-label="AS"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span></td>
+        <td data-label="회복"><span class="table-main-line">${escapeHtml(store.recoveryStatus)}${renderInfoTip(recoveryStatusHelpText(store), '회복 기준')}</span><br><span class="muted score-line">CRM ${store.crmReady ? '가능' : '대기'}${renderInfoTip(crmHelpText(store), 'CRM 기준')}</span></td>
+        <td data-label="담당">${escapeHtml(store.dri)}</td>
+        <td data-label="다음 액션">${escapeHtml(store.nextAction)}</td>
+      </tr>
+    `;
+  }).join('') || '<tr><td colspan="7">현재 필터 기준 지점이 없습니다.</td></tr>';
 }
 
 function renderInfoTip(message, label) {
@@ -687,13 +718,87 @@ function riskScoreHelpText(store) {
   return `위험 점수(0-100)는 지점 우선 확인 순서입니다. 기본점수는 정상 20, 주의 54, 조치 74, 제한확인 90, 오류 95입니다. 미해결 액션은 건당 +4(최대 +12), AS 정상화 대기는 +12, 회복 필요·대기·차단은 +6입니다. ${currentMeaning}`;
 }
 
+function overallStatusHelpText(status) {
+  return `전체 상태는 대시보드에 포함된 지점 중 가장 높은 prod 운영 위험도를 대표합니다. ${statusHelpText(status)} ${PROD_MODE_HELP}`;
+}
+
+function statusHelpText(status) {
+  const messages = {
+    Error: '오류는 payload, 인증, 원천 데이터 또는 자동화 처리에 점검이 필요한 상태입니다.',
+    Red: '제한확인은 안전·운영 영향 확인이 최우선인 상태입니다. 실제 제한·중단은 현장 확인 후 판단합니다.',
+    Orange: '조치는 DRI 확인, 현장 점검, 고객 안내 준비 등 당일 실행이 필요한 상태입니다.',
+    Yellow: '주의는 사전점검, 피크 전 확인, 회복 관찰이 필요한 상태입니다.',
+    Green: '정상은 현재 대시보드의 prod 운영 액션 기준 활성 위험이 없다는 뜻입니다. 원시 기상 API 수치가 모두 정상이라는 의미는 아닙니다.',
+    Gray: '대기는 데이터가 아직 확정되지 않았거나 판단 보류 상태입니다.'
+  };
+  return messages[normalizeStatus(status)] || messages.Green;
+}
+
+function kpiHelpText(label) {
+  const messages = {
+    '즉시 조치': `prod 기준 Orange/Red 미완료 운영 액션 수입니다. ${PROD_MODE_HELP}`,
+    '주의 관찰': 'Yellow 상태 또는 회복 관찰이 필요한 지점 수입니다. 피크 전 사전점검 대상입니다.',
+    'AS 차단': 'AS 정상화 전이라 고객 유도, CRM, 회복 액션을 보류해야 하는 대상입니다.',
+    '회복 조치': '기상 영향 이후 D+1/D+2 회복 또는 재방문 유도가 필요한 실행 항목입니다.',
+    'CRM 가능': 'AS 정상화와 회복 판단을 통과해 고객 안내, 재방문, 쿠폰 등 마케팅 실행 후보가 된 대상입니다.',
+    '성과 대기': '매출 또는 처리대수 데이터 확정 전이라 회복률과 액션 성과를 아직 판단하지 않는 대상입니다.',
+    '시스템 오류': '최근 24시간 시스템 오류 집계입니다. 해결 처리된 과거 인증 점검 오류는 운영 오류 판단에서 제외될 수 있습니다.'
+  };
+  return messages[label] || '운영 판단용 핵심 지표입니다.';
+}
+
+function weatherDetailText(store) {
+  if (store.weatherDetail) return store.weatherDetail;
+  if (store.trigger && store.trigger !== '-') return store.trigger;
+  return 'prod 기준 활성 기상 수치 없음';
+}
+
+function weatherCellHelpText(store) {
+  const metricCount = weatherMetricRows(store).length;
+  if (metricCount) {
+    return `현재 표시된 ${metricCount}개 기상 수치는 dashboard payload에 포함된 prod 운영 액션 수치입니다. ${WEATHER_THRESHOLD_HELP}`;
+  }
+  return `${WEATHER_API_HELP} ${PROD_MODE_HELP}`;
+}
+
+function asStatusHelpText(store) {
+  const status = String(store.asStatus || '');
+  if (status.includes('차단') || status.includes('대기') || status.includes('필요')) {
+    return 'AS 정상화 전에는 고객 유도, CRM 발송, 회복 완료 판단을 보류해야 합니다.';
+  }
+  return 'AS 정상은 현재 prod 기준으로 회복/CRM 실행을 막는 AS 게이트가 없다는 뜻입니다.';
+}
+
+function recoveryStatusHelpText(store) {
+  const status = String(store.recoveryStatus || '');
+  if (status.includes('차단')) return '회복 차단은 AS 또는 운영 정상화 전이라 회복 액션을 진행하지 않는 상태입니다.';
+  if (status.includes('대기') || status.includes('관찰') || status.includes('필요')) return '회복 대기/관찰은 처리대수·매출 회복률 또는 현장 정상화 결과를 추가 확인하는 상태입니다.';
+  return '회복 대상 없음은 현재 prod 기준 회복 큐에 들어간 미완료 대상이 없다는 뜻입니다.';
+}
+
+function crmHelpText(store) {
+  return store.crmReady
+    ? 'CRM 가능은 AS/운영 게이트를 통과해 고객 안내 또는 재방문 유도 후보가 될 수 있다는 뜻입니다.'
+    : 'CRM 대기는 AS 정상화, 안전 확인, 회복률 판단 또는 성과 데이터 확정 전이라 고객 유도를 보류하는 상태입니다.';
+}
+
+function systemItemHelpText(label) {
+  const messages = {
+    '마지막 요약': 'sendWeatherOpsSummary 또는 종합 요약 실행 기록의 최신 시각입니다. 이 기록이 없어도 dashboard payload와 기상 원장 데이터가 있으면 화면은 계속 작동합니다.',
+    '매출 동기화': '회복률, 성과 대기, 매출 회복 비교에 쓰는 원천 매출 데이터의 최신 동기화 시각입니다.',
+    '시트/Pack': `Apps Script/시트가 보고한 Weather Ops Pack 버전입니다. 현재 기대 버전은 ${EXPECTED_PACK_VERSION}입니다.`,
+    '데이터 상태': `dashboard payload 연결과 운영 데이터 상태입니다. ${WEATHER_API_HELP}`
+  };
+  return messages[label] || '시스템 운영 상태입니다.';
+}
+
 function renderTimeline() {
   const items = state.data.weatherTimeline || [];
   $('weatherTimeline').innerHTML = items.map((item) => `
     <div class="timeline-item">
       <div class="timeline-time">${escapeHtml(item.time || '-')}</div>
       <div class="timeline-label">${escapeHtml(item.label || '-')}</div>
-      <span class="badge ${normalizeStatus(item.risk || 'Green')}">${normalizeStatus(item.risk || 'Green')}</span>
+      <span class="badge ${normalizeStatus(item.risk || 'Green')}" title="${escapeAttr(statusHelpText(normalizeStatus(item.risk || 'Green')))}">${normalizeStatus(item.risk || 'Green')}</span>
     </div>
   `).join('') || '<div class="timeline-item"><div class="timeline-label">타임라인 데이터가 없습니다.</div></div>';
 }
@@ -713,19 +818,19 @@ function renderSystem() {
   $('systemStatus').innerHTML = items.map((item) => `
     <div class="system-item ${escapeAttr(item.className)}">
       <span class="system-dot" aria-hidden="true"></span>
-      <div class="system-label">${escapeHtml(item.label)}</div>
+      <div class="system-label">${escapeHtml(item.label)}${renderInfoTip(systemItemHelpText(item.label), `${item.label} 기준`)}</div>
       <div class="system-value">${escapeHtml(formatMaybeDate(item.value))}</div>
     </div>
   `).join('') + (warnings.length ? `
     <div class="system-item warning system-wide">
       <span class="system-dot" aria-hidden="true"></span>
-      <div class="system-label">주의 신호</div>
+      <div class="system-label">주의 신호${renderInfoTip('요약 실행, 매출 동기화, 시트 버전, 시스템 오류 중 사용자가 확인해야 할 신선도 경고입니다. 경고가 있어도 dashboard payload가 있으면 대시보드 표시는 계속됩니다.', '주의 신호 기준')}</div>
       <div class="system-value">${warnings.map(escapeHtml).join(' · ')}</div>
     </div>
   ` : '') + (summaryAdvisory ? `
     <div class="system-item info system-wide">
       <span class="system-dot" aria-hidden="true"></span>
-      <div class="system-label">요약 발송 이력</div>
+      <div class="system-label">요약 발송 이력${renderInfoTip('sendWeatherOpsSummary 실행 기록이 없거나 오래되었을 때의 참고 알림입니다. 기상 데이터와 dashboard payload가 있으면 대시보드 자체는 계속 작동합니다.', '요약 발송 이력 기준')}</div>
       <div class="system-value">${escapeHtml(summaryAdvisory)}</div>
     </div>
   ` : '');
@@ -779,7 +884,7 @@ function renderWeatherMetricChips(store, limit = 3) {
   return chips.map((chip) => {
     const level = normalizeStatus(chip.level || 'Gray');
     const text = `${chip.label} ${chip.value}`;
-    return `<span class="weather-chip level-${escapeAttr(level)}" title="${escapeAttr(text)}">${escapeHtml(text)}</span>`;
+    return `<span class="weather-chip level-${escapeAttr(level)}" title="${escapeAttr(`${text} · ${levelLabel(level)} · ${WEATHER_THRESHOLD_HELP}`)}">${escapeHtml(text)}</span>`;
   }).join('');
 }
 
