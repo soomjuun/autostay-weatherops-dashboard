@@ -150,6 +150,7 @@ function normalizePayload(payload, source) {
   const data = unwrapDashboardPayload(payload);
   const recovery = objectOrEmpty(data.recovery);
   const visuals = normalizeVisuals(objectOrEmpty(data.visuals), recovery);
+  const weatherSignal = objectOrEmpty(data.weatherSignal || data.latestWeatherSignal || data.weather_signal || data.latest_weather_signal);
   const generatedAt = data.generatedAt || data.generated_at || payload.generatedAt || payload.generated_at || '';
   const system = objectOrEmpty(data.system);
   const version = normalizeVersion(data, payload, system);
@@ -172,6 +173,9 @@ function normalizePayload(payload, source) {
     source,
     summary: objectOrEmpty(data.summary),
     stores: arrayOrEmpty(data.stores || data.storeRows || data.store_rows),
+    weatherSignal,
+    decisionReadiness: data.decisionReadiness || data.decision_readiness || system.decisionReadiness || system.decision_readiness || '',
+    dashboardPayloadVersion: data.dashboardPayloadVersion || data.dashboard_payload_version || '',
     opsActions: arrayOrEmpty(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
     marketingActions: arrayOrEmpty(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
     recovery,
@@ -192,7 +196,7 @@ function unwrapDashboardPayload(payload) {
   ];
   for (const candidate of candidates) {
     if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
-      if (candidate.summary || candidate.stores || candidate.recovery || candidate.system || candidate.visuals) return candidate;
+      if (candidate.summary || candidate.stores || candidate.recovery || candidate.system || candidate.visuals || candidate.weatherSignal || candidate.latestWeatherSignal) return candidate;
     }
   }
   return payload;

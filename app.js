@@ -23,20 +23,21 @@ const SUMMARY_SCHEDULES = [
 ];
 const SUMMARY_GRACE_MINUTES = 45;
 const PROD_MODE_HELP = '이 대시보드는 운영 반영 대상(prod) dashboard payload를 기준으로 집계합니다. shadow/test 실행 기록은 원장 검증에는 사용되지만 화면 집계에서는 제외됩니다.';
-const WEATHER_API_HELP = '기상 수치는 기상청 단기예보와 에어코리아 값이 Action_Log에 적재된 경우 표시됩니다. 수치가 없고 정상으로 보이면 현재 prod 기준 활성 기상 액션이 없다는 뜻입니다.';
+const WEATHER_SIGNAL_HELP = '기상 신호는 최신 Action_Log/Alert_Log 기준의 API 감지 결과입니다. shadow/test 신호는 공식 운영 액션은 아니지만 현재 판단 참고 대상으로 표시합니다.';
+const WEATHER_API_HELP = '기상 수치는 기상청 단기예보와 에어코리아 값이 Action_Log 또는 weatherSignal에 적재된 경우 표시됩니다. 운영 상태와 기상 신호는 분리해서 봐야 합니다.';
 const WEATHER_THRESHOLD_HELP = '임계값: 강수 Yellow=POP 60% 또는 PCP 0.1mm+, Orange=POP 80% 또는 PCP 5mm+, Red=PCP 15mm+. 풍속 7/10/14m/s, 한파 0/-5/-10도, 적설 0.1/1/5cm, 폭염 30/33/35도, PM10 81/151/300, PM2.5 36/76/150 기준입니다.';
 const STATIC_HELP_ITEMS = [
-  ['.map-panel h2', '지점 현황은 prod 기준 지점별 최상위 상태, 담당자, 다음 액션을 요약합니다. 정상은 실제 API 수치가 모두 정상이라는 뜻이 아니라 활성 prod 액션이 없다는 뜻일 수 있습니다.', '지점 현황 기준'],
+  ['.map-panel h2', `지점 현황은 prod 운영 상태와 최신 기상 신호 중 확인 우선순위가 높은 상태로 정렬합니다. ${WEATHER_SIGNAL_HELP}`, '지점 현황 기준'],
   ['.queue-panel h2', '회복 큐는 기상 영향 이후 처리대수·매출 회복, AS 차단, CRM 가능 여부를 함께 보는 실행 대기열입니다.', '회복 큐 기준'],
   ['#recoveryChartPanel h2', '지점 필터를 선택하면 D-day, D+1, D+2 처리대수·매출 회복률을 표시합니다. 100%는 기준선 회복, 90% 미만은 조치 검토 구간입니다.', '회복률 기준'],
   ['.action-panel h2', '오늘 조치할 항목은 미완료 운영 액션을 사업운영팀과 마케팅팀으로 나눕니다. 운영 제한·AS 차단·회복 조치가 우선입니다.', '조치 항목 기준'],
-  ['.risk-panel h2', `오늘 기상 리스크는 활성 리스크 컬럼만 보여줍니다. ${PROD_MODE_HELP} ${WEATHER_THRESHOLD_HELP}`, '기상 리스크 기준'],
+  ['.risk-panel h2', `오늘 기상 리스크는 활성 리스크 컬럼만 보여줍니다. ${WEATHER_SIGNAL_HELP} ${WEATHER_THRESHOLD_HELP}`, '기상 리스크 기준'],
   ['.funnel-panel h2', '회복 실행 단계는 하락 감지부터 CRM 후보, 발송, 재방문 회수까지 전환 흐름을 보여줍니다. AS 차단은 정상화 전 단계로 별도 표시합니다.', '회복 실행 기준'],
   ['.small-multiple-panel h2', '지점별 회복 진행은 처리대수 회복률을 색상으로, 매출 회복률을 보조 수치로 표시합니다. 100% 이상 정상, 90~99% 관찰, 90% 미만 조치 기준입니다.', '회복 진행 기준'],
   ['.gap-panel h2', '처리대수 회복률과 매출 회복률의 차이를 비교합니다. 처리대수만 회복된 지점은 결제, 단가, 구독·쿠폰 믹스를 추가 확인합니다.', '회복 갭 기준'],
-  ['.table-panel h2', `지점별 상태 표는 상태 점수, 기상/트리거, AS, 회복, 담당, 다음 액션을 한 줄로 비교합니다. ${WEATHER_API_HELP}`, '지점별 상태 기준'],
+  ['.table-panel h2', `지점별 상태 표는 운영 상태, 기상 신호, AS, 회복, 담당, 다음 액션을 한 줄로 비교합니다. ${WEATHER_API_HELP}`, '지점별 상태 기준'],
   ['.timeline-panel h2', '오늘 운영 타임라인은 오픈 전, 피크 전, 마감 전 점검 시점을 전체 상태와 함께 보여주는 운영 리마인더입니다.', '타임라인 기준'],
-  ['.system-panel h2', '시스템 상태는 요약 실행, 매출 동기화, 시트 버전, 대시보드 payload 연결 상태를 표시합니다. 개별 기상 API 수치 정상 여부와는 구분해서 봅니다.', '시스템 상태 기준']
+  ['.system-panel h2', '시스템 상태는 요약 실행, 매출 동기화, 시트 버전, 대시보드 payload 연결 상태, 판단 가능성, 최신 기상 신호를 표시합니다.', '시스템 상태 기준']
 ];
 
 checkAuthSession();
@@ -148,7 +149,10 @@ async function parseJsonResponse(response) {
 function normalize(payload) {
   const raw = objectFrom(payload);
   const data = unwrapPayload(raw);
-  const stores = arrayFrom(data.stores || data.storeRows || data.store_rows).map(normalizeStore);
+  const weatherSignal = normalizeWeatherSignal(firstPresent(data, ['weatherSignal', 'latestWeatherSignal', 'weather_signal', 'latest_weather_signal']));
+  const signalByStore = weatherSignalStoreMap(weatherSignal);
+  const stores = arrayFrom(data.stores || data.storeRows || data.store_rows)
+    .map((store) => normalizeStore(store, signalByStore));
   const system = objectFrom(data.system);
   const version = firstPresent(data, ['version', 'sheetVersion', 'sheet_version', 'packVersion', 'pack_version', 'weatherOpsVersion', 'weather_ops_version'])
     || firstPresent(raw, ['version', 'sheetVersion', 'sheet_version', 'packVersion', 'pack_version', 'weatherOpsVersion', 'weather_ops_version'])
@@ -161,8 +165,11 @@ function normalize(payload) {
     version,
     generatedAt: firstPresent(data, ['generatedAt', 'generated_at']) || firstPresent(raw, ['generatedAt', 'generated_at']) || '',
     source: data.source || raw.source || 'unknown',
+    dashboardPayloadVersion: firstPresent(data, ['dashboardPayloadVersion', 'dashboard_payload_version']) || '',
+    decisionReadiness: firstPresent(data, ['decisionReadiness', 'decision_readiness']) || firstPresent(system, ['decisionReadiness', 'decision_readiness']) || '',
     summary: objectFrom(data.summary),
     stores,
+    weatherSignal,
     opsActions: arrayFrom(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
     marketingActions: arrayFrom(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
     recovery: objectFrom(data.recovery),
@@ -183,24 +190,88 @@ function unwrapPayload(payload) {
   ];
   for (const candidate of candidates) {
     if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) {
-      if (candidate.summary || candidate.stores || candidate.recovery || candidate.system || candidate.visuals) return candidate;
+      if (candidate.summary || candidate.stores || candidate.recovery || candidate.system || candidate.visuals || candidate.weatherSignal || candidate.latestWeatherSignal) return candidate;
     }
   }
   return payload;
 }
 
-function normalizeStore(store) {
+function normalizeWeatherSignal(signal) {
+  signal = objectFrom(signal);
+  const summary = objectFrom(signal.summary);
+  const stores = arrayFrom(signal.stores).map((row) => {
+    row = objectFrom(row);
+    const status = normalizeStatus(firstPresent(row, ['status', 'overallStatus', 'level', 'riskLevel', 'risk_level']) || 'Green');
+    const weatherValues = objectFrom(firstPresent(row, ['weatherValues', 'weather_values', 'weather', 'weatherData', 'weather_data']));
+    return {
+      storeId: firstPresent(row, ['storeId', 'store_id', 'id']) || slug(firstPresent(row, ['storeName', 'store_name', 'name', 'store']) || ''),
+      storeName: firstPresent(row, ['storeName', 'store_name', 'name', 'store']) || '-',
+      status,
+      actionLevel: firstPresent(row, ['actionLevel', 'action_level']) || signalActionLevel(status),
+      riskType: firstPresent(row, ['riskType', 'risk_type', 'trigger', 'triggerType', 'trigger_type']) || '-',
+      reason: firstPresent(row, ['reason', 'message', 'operationStatus', 'operation_status']) || '',
+      mode: firstPresent(row, ['mode', 'signalMode', 'signal_mode']) || signal.mode || '',
+      observedAt: firstPresent(row, ['observedAt', 'observed_at', 'generatedAt', 'generated_at']) || signal.observedAt || signal.observed_at || signal.generatedAt || signal.generated_at || '',
+      weatherValues,
+      operationStatus: firstPresent(row, ['operationStatus', 'operation_status']) || '',
+      prodActionEventId: firstPresent(row, ['prodActionEventId', 'prod_action_event_id']) || ''
+    };
+  });
+  const overallStatus = normalizeStatus(firstPresent(signal, ['overallStatus', 'overall_status', 'status', 'level']) || topStatus(stores));
+  return {
+    mode: firstPresent(signal, ['mode', 'signalMode', 'signal_mode']) || '',
+    generatedAt: firstPresent(signal, ['generatedAt', 'generated_at']) || '',
+    observedAt: firstPresent(signal, ['observedAt', 'observed_at']) || '',
+    overallStatus,
+    status: overallStatus,
+    summary: {
+      totalStores: numberFrom(firstPresent(summary, ['totalStores', 'total_stores']), stores.length),
+      normal: numberFrom(firstPresent(summary, ['normal', 'green']), 0),
+      watch: numberFrom(firstPresent(summary, ['watch', 'yellow']), 0),
+      actionRequired: numberFrom(firstPresent(summary, ['actionRequired', 'action_required', 'immediate', 'orangeRed']), 0),
+      dataCheck: numberFrom(firstPresent(summary, ['dataCheck', 'data_check', 'error']), 0)
+    },
+    stores,
+    source: firstPresent(signal, ['source']) || '',
+    sourceLogNames: arrayFrom(signal.sourceLogNames || signal.source_log_names),
+    message: firstPresent(signal, ['message', 'headline']) || ''
+  };
+}
+
+function weatherSignalStoreMap(weatherSignal) {
+  return arrayFrom(weatherSignal && weatherSignal.stores).reduce((map, signal) => {
+    const id = slug(signal.storeId || signal.storeName);
+    if (id) map[id] = signal;
+    return map;
+  }, {});
+}
+
+function normalizeStore(store, signalByStore = {}) {
   store = objectFrom(store);
   const name = firstPresent(store, ['name', 'storeName', 'store_name', 'store', '지점명', '지점', '매장명']) || '-';
+  const id = firstPresent(store, ['id', 'storeId', 'store_id', 'storeCode', 'store_code', '지점ID']) || slug(name);
+  const signal = signalByStore[slug(id)] || signalByStore[slug(name)] || {};
+  const prodStatus = normalizeStatus(firstPresent(store, ['prodStatus', 'prod_status', 'status', 'risk', 'level', 'riskLevel', 'risk_level', '상태']) || 'Green');
+  const signalStatus = normalizeStatus(firstPresent(store, ['signalStatus', 'signal_status']) || signal.status || 'Gray');
+  const displayStatus = displayStatusFrom(prodStatus, signalStatus);
+  const weatherValues = objectFrom(firstPresent(store, ['weatherValues', 'weather_values']) || signal.weatherValues || signal.weather || {});
   return {
-    id: firstPresent(store, ['id', 'storeId', 'store_id', 'storeCode', 'store_code', '지점ID']) || slug(name),
+    id,
     name,
     region: firstPresent(store, ['region', 'area', 'address', '권역', '지역']) || '',
     dri: firstPresent(store, ['dri', 'owner', 'manager', 'storeDri', 'store_dri', '담당', '담당자']) || '-',
-    status: normalizeStatus(firstPresent(store, ['status', 'risk', 'level', 'riskLevel', 'risk_level', '상태']) || 'Green'),
+    status: displayStatus,
+    prodStatus,
+    signalStatus,
+    signalActionLevel: firstPresent(store, ['signalActionLevel', 'signal_action_level']) || signal.actionLevel || signalActionLevel(signalStatus),
+    signalMode: firstPresent(store, ['signalMode', 'signal_mode']) || signal.mode || '',
+    signalReason: firstPresent(store, ['signalReason', 'signal_reason']) || signal.reason || '',
+    signalRiskType: firstPresent(store, ['signalRiskType', 'signal_risk_type']) || signal.riskType || '',
+    signalObservedAt: firstPresent(store, ['signalObservedAt', 'signal_observed_at']) || signal.observedAt || '',
     weather: normalizeWeatherLabel(store),
     weatherDetail: normalizeWeatherDetail(store),
     weatherData: normalizeWeatherData(store),
+    weatherValues,
     trigger: firstPresent(store, ['trigger', 'triggerType', 'trigger_type', 'triggerLabel', 'trigger_label', '트리거']) || '-',
     riskScore: numberFrom(firstPresent(store, ['riskScore', 'risk_score', 'score', 'risk_point', '점수']), 0),
     openIssueCount: numberFrom(firstPresent(store, ['openIssueCount', 'open_issue_count', 'issueCount', 'issue_count']), 0),
@@ -245,6 +316,7 @@ function normalizeWeatherData(store) {
 
 function normalizeStatus(value) {
   const text = String(value || '').toLowerCase();
+  if (text.includes('no_signal') || text.includes('nosignal') || text.includes('신호 없음')) return 'Gray';
   if (text.includes('error') || text.includes('오류') || text.includes('실패') || text.includes('unauthorized') || text.includes('권한')) return 'Error';
   if (text.includes('red')) return 'Red';
   if (text.includes('제한') || text.includes('중단') || text.includes('위험')) return 'Red';
@@ -255,6 +327,21 @@ function normalizeStatus(value) {
   if (text.includes('gray') || text.includes('unknown') || text.includes('대기') || text.includes('미확정')) return 'Gray';
   if (text.includes('green') || text.includes('정상') || text.includes('완료')) return 'Green';
   return 'Green';
+}
+
+function displayStatusFrom(prodStatus, signalStatus) {
+  const prod = normalizeStatus(prodStatus);
+  const signal = normalizeStatus(signalStatus);
+  return (STATUS_ORDER[signal] || 0) > (STATUS_ORDER[prod] || 0) ? signal : prod;
+}
+
+function signalActionLevel(status) {
+  const normalized = normalizeStatus(status);
+  if (normalized === 'Red' || normalized === 'Orange') return '즉시확인';
+  if (normalized === 'Yellow') return '사전점검';
+  if (normalized === 'Error') return '데이터확인';
+  if (normalized === 'Gray') return '신호 없음';
+  return '정상';
 }
 
 function normalizeWeatherLabel(store) {
@@ -290,6 +377,7 @@ function render() {
   if (!state.data) return;
   renderHero();
   renderKpis();
+  renderDecisionBanner();
   renderMap();
   renderActions();
   renderRecoveryChart();
@@ -313,18 +401,142 @@ function filteredStores() {
   });
 }
 
+function prodOverallStatus() {
+  const summary = state.data && state.data.summary ? state.data.summary : {};
+  return normalizeStatus(summary.overallStatus || summary.overall_status || topStatus(state.data.stores.map((store) => ({ status: store.prodStatus || store.status }))));
+}
+
+function signalOverallStatus() {
+  const signal = state.data && state.data.weatherSignal ? state.data.weatherSignal : {};
+  return normalizeStatus(signal.overallStatus || signal.overall_status || signal.status || topStatus(arrayFrom(signal.stores)));
+}
+
+function decisionStatus() {
+  return displayStatusFrom(prodOverallStatus(), signalOverallStatus());
+}
+
+function weatherSignalMode() {
+  return String((state.data && state.data.weatherSignal && state.data.weatherSignal.mode)
+    || (state.data && state.data.system && (state.data.system.currentDataMode || state.data.system.current_data_mode))
+    || '').trim();
+}
+
+function weatherSignalModeLabel() {
+  const mode = weatherSignalMode();
+  return mode ? mode : '신호';
+}
+
+function weatherSignalHasRisk() {
+  const signalStatus = signalOverallStatus();
+  return ['Error', 'Red', 'Orange', 'Yellow'].includes(signalStatus);
+}
+
+function decisionReadiness() {
+  return String((state.data && (state.data.decisionReadiness || state.data.decision_readiness))
+    || (state.data && state.data.system && (state.data.system.decisionReadiness || state.data.system.decision_readiness))
+    || '').trim();
+}
+
+function decisionReadinessLabel() {
+  const labels = {
+    prod_ready: '운영 판단 가능',
+    shadow_only: '운영 반영 전 신호',
+    stale: '신호 오래됨',
+    error: '확인 필요',
+    no_signal: '신호 없음'
+  };
+  return labels[decisionReadiness()] || '확인 필요';
+}
+
+function decisionReadinessClass() {
+  const readiness = decisionReadiness();
+  if (readiness === 'prod_ready') return 'ok';
+  if (readiness === 'shadow_only' || readiness === 'stale' || readiness === 'no_signal') return 'warning';
+  return 'danger';
+}
+
+function decisionReadinessHelpText() {
+  const readiness = decisionReadiness();
+  const messages = {
+    prod_ready: '최신 기상 신호가 prod 운영 반영 기준으로 들어와 화면만으로 공식 운영 판단이 가능합니다.',
+    shadow_only: '최신 기상 신호는 있으나 공식 prod 운영 액션으로 반영되기 전입니다. 화면의 기상 신호를 확인하되 운영 반영 여부를 별도로 판단해야 합니다.',
+    stale: '기상 신호 생성 시각이 오래되어 최신 운영 판단에 제한이 있습니다.',
+    error: '시스템 오류 또는 데이터 확인 신호가 있어 원천 데이터와 자동화 상태를 점검해야 합니다.',
+    no_signal: '최신 기상 신호가 없어 prod 운영 상태만으로는 현재 기상 리스크를 판단하기 어렵습니다.'
+  };
+  return messages[readiness] || `판단 가능성은 system.decisionReadiness 기준입니다. ${WEATHER_SIGNAL_HELP}`;
+}
+
+function weatherSignalSummaryText() {
+  const signal = state.data && state.data.weatherSignal ? state.data.weatherSignal : {};
+  const summary = signal.summary || {};
+  const actionRequired = Number(summary.actionRequired ?? summary.action_required ?? 0);
+  const watch = Number(summary.watch ?? 0);
+  const dataCheck = Number(summary.dataCheck ?? summary.data_check ?? 0);
+  const normal = Number(summary.normal ?? 0);
+  const riskCount = actionRequired + watch + dataCheck;
+  if (!signal.generatedAt && !signal.observedAt && !riskCount) return '기상 신호 없음';
+  if (!riskCount) return `${weatherSignalModeLabel()} 신호 정상 ${normal}`;
+  return `${weatherSignalModeLabel()} 신호 즉시 ${actionRequired} · 주의 ${watch} · 확인 ${dataCheck}`;
+}
+
+function weatherSignalHelpText() {
+  const signal = state.data && state.data.weatherSignal ? state.data.weatherSignal : {};
+  const generated = formatDateTime(signal.generatedAt || signal.observedAt);
+  const base = signal.message || WEATHER_SIGNAL_HELP;
+  return `${base} 신호 기준시각: ${generated || '-'}. ${WEATHER_THRESHOLD_HELP}`;
+}
+
+function dashboardHeadline() {
+  const summary = state.data.summary || {};
+  const signal = state.data.weatherSignal || {};
+  if (weatherSignalHasRisk() && weatherSignalMode() !== 'prod') {
+    return signal.message || '운영 반영 전 기상 신호가 있어 지점별 신호를 확인해야 합니다.';
+  }
+  return summary.headline || signal.message || '오늘 운영 조치와 회복 액션을 확인하세요.';
+}
+
+function renderDecisionBanner() {
+  const target = $('decisionBanner');
+  if (!target) return;
+  const readinessClass = decisionReadinessClass();
+  const signal = state.data.weatherSignal || {};
+  const shouldShow = readinessClass !== 'ok' || weatherSignalHasRisk();
+  if (!shouldShow) {
+    target.hidden = true;
+    target.innerHTML = '';
+    return;
+  }
+  target.hidden = false;
+  target.className = `decision-banner ${readinessClass}`;
+  target.innerHTML = `
+    <div>
+      <strong>${escapeHtml(decisionReadinessLabel())}</strong>
+      <span>${escapeHtml(signal.message || weatherSignalSummaryText())}</span>
+    </div>
+    <div class="decision-meta">
+      <span>운영 ${escapeHtml(levelLabel(prodOverallStatus()))}</span>
+      <span>기상 신호 ${escapeHtml(levelLabel(signalOverallStatus()))}</span>
+      <span>모드 ${escapeHtml(weatherSignalModeLabel())}</span>
+      <span>신호 ${escapeHtml(formatDateTime(signal.generatedAt || signal.observedAt) || '-')}</span>
+    </div>
+  `;
+}
+
 function renderHero() {
   const { summary } = state.data;
-  const status = normalizeStatus(summary.overallStatus || summary.overall_status || topStatus(state.data.stores));
+  const status = decisionStatus();
   const warnings = freshnessWarnings();
   $('overallStatus').innerHTML = `${escapeHtml(levelLabel(status))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
   $('overallStatus').className = `status-word text-${status}`;
-  $('headline').textContent = summary.headline || '오늘 운영 조치와 회복 액션을 확인하세요.';
+  $('headline').textContent = dashboardHeadline();
   const sourceText = state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결';
   const metaItems = [
     { text: `업데이트 ${formatDateTime(state.data.generatedAt)}`, help: 'Apps Script dashboard payload가 생성된 시각입니다. 브라우저 새로고침 시 Vercel API가 이 값을 다시 조회합니다.' },
     { text: `버전 ${state.data.version}`, help: '대시보드 payload가 보고한 Weather Ops Pack 또는 시트 버전입니다. 현재 기대 버전은 v2.16.4입니다.' },
-    { text: sourceText, help: sourceText === '샘플 데이터' ? '샘플 fallback 데이터입니다. 운영 배포에서는 실데이터 연결이어야 합니다.' : `Vercel이 Apps Script dashboard payload를 정상 수신했다는 뜻입니다. ${WEATHER_API_HELP}` }
+    { text: sourceText, help: sourceText === '샘플 데이터' ? '샘플 fallback 데이터입니다. 운영 배포에서는 실데이터 연결이어야 합니다.' : `Vercel이 Apps Script dashboard payload를 정상 수신했다는 뜻입니다. ${WEATHER_API_HELP}` },
+    { text: `판단 ${decisionReadinessLabel()}`, help: decisionReadinessHelpText(), warning: decisionReadinessClass() !== 'ok' },
+    { text: weatherSignalSummaryText(), help: weatherSignalHelpText(), warning: weatherSignalHasRisk() && weatherSignalMode() !== 'prod' }
   ].concat(warnings.map((warning) => ({ text: `주의: ${warning}`, help: '데이터 신선도 또는 시스템 점검이 필요한 신호입니다.', warning: true })));
   $('heroMeta').innerHTML = metaItems
     .map((item) => `<span class="meta-pill${item.warning ? ' warning' : ''}">${escapeHtml(item.text)}${renderInfoTip(item.help, item.text)}</span>`)
@@ -333,8 +545,10 @@ function renderHero() {
 
 function renderKpis() {
   const summary = state.data.summary || {};
+  const signalSummary = (state.data.weatherSignal && state.data.weatherSignal.summary) || {};
   const items = [
-    ['즉시 조치', summary.immediateCount ?? summary.immediate_count ?? 0, 'Orange/Red 확인'],
+    ['운영 즉시', summary.immediateCount ?? summary.immediate_count ?? 0, 'prod Orange/Red'],
+    ['신호 즉시', signalSummary.actionRequired ?? 0, `${weatherSignalModeLabel()} 감지`],
     ['주의 관찰', summary.watchCount ?? summary.watch_count ?? 0, 'Yellow 및 회복 관찰'],
     ['AS 차단', summary.asBlockedCount ?? summary.as_blocked_count ?? 0, '정상화 전 유도 금지'],
     ['회복 조치', summary.recoveryActionCount ?? summary.recovery_action_count ?? 0, 'D+1/D+2 액션'],
@@ -356,14 +570,18 @@ function renderMap() {
   $('mapCount').textContent = `${stores.length}개 지점`;
   $('metroMap').innerHTML = stores.map((store, index) => {
     const weatherChips = renderWeatherMetricChips(store, 3);
+    const signalChips = renderSignalWeatherMetricChips(store, 3);
+    const signalLine = storeSignalLine(store);
     return `
       <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}" aria-label="${escapeAttr(`${store.name} ${levelLabel(store.status)}. ${store.weather}. 다음 액션: ${store.nextAction}`)}">
         <span class="pin-top">
           <strong>${escapeHtml(store.name)}</strong>
           <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
         </span>
-        <span class="pin-meta">${escapeHtml(store.weather)} · ${escapeHtml(store.dri)}</span>
+        <span class="pin-meta">운영 ${escapeHtml(levelLabel(store.prodStatus))} · ${escapeHtml(store.dri)}</span>
+        <span class="pin-meta signal-${escapeAttr(store.signalStatus)}">${escapeHtml(signalLine)}</span>
         ${weatherChips ? `<span class="weather-chip-row">${weatherChips}</span>` : ''}
+        ${signalChips ? `<span class="weather-chip-row signal-weather">${signalChips}</span>` : ''}
         <span class="pin-action">${escapeHtml(store.nextAction)}</span>
       </button>
     `;
@@ -371,6 +589,12 @@ function renderMap() {
   $('metroMap').querySelectorAll('.store-pin').forEach((button) => {
     button.addEventListener('click', () => openStoreDialog(button.dataset.store));
   });
+}
+
+function storeSignalLine(store) {
+  const mode = store.signalMode ? `${store.signalMode} · ` : '';
+  const risk = store.signalRiskType && store.signalRiskType !== '-' ? ` · ${store.signalRiskType}` : '';
+  return `기상 신호 ${mode}${levelLabel(store.signalStatus)}${risk}`;
 }
 
 function renderActions() {
@@ -496,7 +720,7 @@ function renderRiskMatrix() {
           const cell = matrixCellForColumn(row, column);
           const level = normalizeStatus(cell.level);
           const opClass = isOperationalRiskColumn(column) ? ' is-op' : '';
-          return `<div class="matrix-cell ${level}${opClass}" title="${escapeAttr(`${row.store} ${cell.label} ${levelLabel(level)} · ${PROD_MODE_HELP} ${WEATHER_THRESHOLD_HELP}`)}">${escapeHtml(levelLabel(level))}</div>`;
+          return `<div class="matrix-cell ${level}${opClass}" title="${escapeAttr(`${row.store} ${cell.label} ${levelLabel(level)} · ${WEATHER_SIGNAL_HELP} ${WEATHER_THRESHOLD_HELP}`)}">${escapeHtml(levelLabel(level))}</div>`;
         }).join('')}
       </div>
     `).join('')}
@@ -689,11 +913,21 @@ function renderStoreTable() {
   const rows = filteredStores();
   $('storeTable').innerHTML = rows.map((store) => {
     const weatherChips = renderWeatherMetricChips(store, 4);
+    const signalChips = renderSignalWeatherMetricChips(store, 4);
     return `
       <tr>
         <td data-label="지점"><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
-        <td data-label="상태"><span class="badge ${store.status}" title="${escapeAttr(statusHelpText(store.status))}">${escapeHtml(levelLabel(store.status))}</span><br><span class="muted score-line">점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span></td>
-        <td data-label="기상/트리거"><span class="table-main-line">${escapeHtml(store.weather)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><br><span class="muted">${escapeHtml(weatherDetailText(store))}</span>${weatherChips ? `<div class="weather-chip-row table-weather">${weatherChips}</div>` : ''}</td>
+        <td data-label="운영/신호">
+          <span class="status-pair"><span class="badge ${store.prodStatus}" title="${escapeAttr(statusHelpText(store.prodStatus))}">운영 ${escapeHtml(levelLabel(store.prodStatus))}</span><span class="badge ${store.signalStatus}" title="${escapeAttr(signalStatusHelpText(store))}">신호 ${escapeHtml(levelLabel(store.signalStatus))}</span></span>
+          <br><span class="muted score-line">점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span>
+        </td>
+        <td data-label="기상/트리거">
+          <span class="table-main-line">운영 ${escapeHtml(store.weather)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><br>
+          <span class="muted">${escapeHtml(weatherDetailText(store))}</span>
+          <span class="signal-line"><span class="badge ${store.signalStatus}">신호 ${escapeHtml(store.signalActionLevel)}</span> ${escapeHtml(signalWeatherText(store))}</span>
+          ${weatherChips ? `<div class="weather-chip-row table-weather">${weatherChips}</div>` : ''}
+          ${signalChips ? `<div class="weather-chip-row table-weather signal-weather">${signalChips}</div>` : ''}
+        </td>
         <td data-label="AS"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span></td>
         <td data-label="회복"><span class="table-main-line">${escapeHtml(store.recoveryStatus)}${renderInfoTip(recoveryStatusHelpText(store), '회복 기준')}</span><br><span class="muted score-line">CRM ${store.crmReady ? '가능' : '대기'}${renderInfoTip(crmHelpText(store), 'CRM 기준')}</span></td>
         <td data-label="담당">${escapeHtml(store.dri)}</td>
@@ -710,16 +944,20 @@ function renderInfoTip(message, label) {
 }
 
 function riskScoreHelpText(store) {
-  const base = { Error: 95, Red: 90, Orange: 74, Yellow: 54, Green: 20, Gray: 10 }[store.status] || 20;
+  const scoreStatus = store.prodStatus || store.status;
+  const base = { Error: 95, Red: 90, Orange: 74, Yellow: 54, Green: 20, Gray: 10 }[scoreStatus] || 20;
   const current = Number(store.riskScore);
-  const currentMeaning = store.status === 'Green' && current === 20
+  const signalNotice = (STATUS_ORDER[store.signalStatus] || 0) > (STATUS_ORDER[store.prodStatus] || 0)
+    ? ` 현재 화면 상태는 기상 신호 ${levelLabel(store.signalStatus)}가 운영 상태보다 높아 우선 표시된 것입니다. 점수는 prod 운영 액션 기준 값입니다.`
+    : '';
+  const currentMeaning = scoreStatus === 'Green' && current === 20
     ? '현재 20점은 정상 기본점수만 적용된 상태입니다.'
-    : `현재 ${levelLabel(store.status)} 기본점수 ${base}점에 이슈 보정이 반영된 값입니다.`;
-  return `위험 점수(0-100)는 지점 우선 확인 순서입니다. 기본점수는 정상 20, 주의 54, 조치 74, 제한확인 90, 오류 95입니다. 미해결 액션은 건당 +4(최대 +12), AS 정상화 대기는 +12, 회복 필요·대기·차단은 +6입니다. ${currentMeaning}`;
+    : `현재 운영 ${levelLabel(scoreStatus)} 기본점수 ${base}점에 이슈 보정이 반영된 값입니다.`;
+  return `위험 점수(0-100)는 prod 운영 액션 기준 지점 우선 확인 순서입니다. 기본점수는 정상 20, 주의 54, 조치 74, 제한확인 90, 오류 95입니다. 미해결 액션은 건당 +4(최대 +12), AS 정상화 대기는 +12, 회복 필요·대기·차단은 +6입니다. ${currentMeaning}${signalNotice}`;
 }
 
 function overallStatusHelpText(status) {
-  return `전체 상태는 대시보드에 포함된 지점 중 가장 높은 prod 운영 위험도를 대표합니다. ${statusHelpText(status)} ${PROD_MODE_HELP}`;
+  return `전체 상태는 prod 운영 상태와 최신 기상 신호 중 더 높은 확인 우선순위를 대표합니다. ${statusHelpText(status)} ${WEATHER_SIGNAL_HELP}`;
 }
 
 function statusHelpText(status) {
@@ -734,9 +972,24 @@ function statusHelpText(status) {
   return messages[normalizeStatus(status)] || messages.Green;
 }
 
+function signalStatusHelpText(store) {
+  return `${WEATHER_SIGNAL_HELP} 현재 ${store.signalMode || '미지정'} 기준 ${levelLabel(store.signalStatus)}이며, 판단 근거는 ${store.signalReason || store.signalRiskType || '제공된 신호 없음'}입니다.`;
+}
+
+function signalWeatherText(store) {
+  const pieces = [
+    store.signalMode || '',
+    store.signalRiskType || '',
+    store.signalReason || '',
+    store.signalObservedAt ? `관측 ${formatDateTime(store.signalObservedAt)}` : ''
+  ].filter(Boolean);
+  return pieces.length ? pieces.join(' · ') : '최신 기상 신호 없음';
+}
+
 function kpiHelpText(label) {
   const messages = {
-    '즉시 조치': `prod 기준 Orange/Red 미완료 운영 액션 수입니다. ${PROD_MODE_HELP}`,
+    '운영 즉시': `prod 기준 Orange/Red 미완료 운영 액션 수입니다. ${PROD_MODE_HELP}`,
+    '신호 즉시': `최신 기상 신호 기준 즉시확인 대상 지점 수입니다. ${WEATHER_SIGNAL_HELP}`,
     '주의 관찰': 'Yellow 상태 또는 회복 관찰이 필요한 지점 수입니다. 피크 전 사전점검 대상입니다.',
     'AS 차단': 'AS 정상화 전이라 고객 유도, CRM, 회복 액션을 보류해야 하는 대상입니다.',
     '회복 조치': '기상 영향 이후 D+1/D+2 회복 또는 재방문 유도가 필요한 실행 항목입니다.',
@@ -755,8 +1008,12 @@ function weatherDetailText(store) {
 
 function weatherCellHelpText(store) {
   const metricCount = weatherMetricRows(store).length;
+  const signalMetricCount = signalWeatherMetricRows(store).length;
   if (metricCount) {
-    return `현재 표시된 ${metricCount}개 기상 수치는 dashboard payload에 포함된 prod 운영 액션 수치입니다. ${WEATHER_THRESHOLD_HELP}`;
+    return `운영 수치 ${metricCount}개는 prod 운영 액션 기준입니다. 최신 기상 신호 수치는 별도 신호 줄에 ${signalMetricCount}개 표시됩니다. ${WEATHER_THRESHOLD_HELP}`;
+  }
+  if (signalMetricCount) {
+    return `prod 운영 액션 수치는 없지만 최신 기상 신호 수치 ${signalMetricCount}개가 있습니다. ${WEATHER_SIGNAL_HELP} ${WEATHER_THRESHOLD_HELP}`;
   }
   return `${WEATHER_API_HELP} ${PROD_MODE_HELP}`;
 }
@@ -787,7 +1044,9 @@ function systemItemHelpText(label) {
     '마지막 요약': 'sendWeatherOpsSummary 또는 종합 요약 실행 기록의 최신 시각입니다. 이 기록이 없어도 dashboard payload와 기상 원장 데이터가 있으면 화면은 계속 작동합니다.',
     '매출 동기화': '회복률, 성과 대기, 매출 회복 비교에 쓰는 원천 매출 데이터의 최신 동기화 시각입니다.',
     '시트/Pack': `Apps Script/시트가 보고한 Weather Ops Pack 버전입니다. 현재 기대 버전은 ${EXPECTED_PACK_VERSION}입니다.`,
-    '데이터 상태': `dashboard payload 연결과 운영 데이터 상태입니다. ${WEATHER_API_HELP}`
+    '데이터 상태': `dashboard payload 연결과 운영 데이터 상태입니다. ${WEATHER_API_HELP}`,
+    '판단 상태': decisionReadinessHelpText(),
+    '기상 신호': weatherSignalHelpText()
   };
   return messages[label] || '시스템 운영 상태입니다.';
 }
@@ -813,7 +1072,9 @@ function renderSystem() {
     { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || systemFreshnessClass(lastSummaryAt, 8) },
     { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
     { label: '시트/Pack', value: formatPackVersionStatus(system), className: versionStatusClass(system) },
-    { label: '데이터 상태', value: operationalDataStatus(system), className: operationalDataStatusClass() }
+    { label: '데이터 상태', value: operationalDataStatus(system), className: operationalDataStatusClass() },
+    { label: '판단 상태', value: decisionReadinessLabel(), className: decisionReadinessClass() },
+    { label: '기상 신호', value: weatherSignalSummaryText(), className: weatherSignalHasRisk() ? 'warning' : 'ok' }
   ];
   $('systemStatus').innerHTML = items.map((item) => `
     <div class="system-item ${escapeAttr(item.className)}">
@@ -888,6 +1149,15 @@ function renderWeatherMetricChips(store, limit = 3) {
   }).join('');
 }
 
+function renderSignalWeatherMetricChips(store, limit = 3) {
+  const chips = signalWeatherMetricRows(store).slice(0, limit);
+  return chips.map((chip) => {
+    const level = normalizeStatus(chip.level || store.signalStatus || 'Gray');
+    const text = `${chip.label} ${chip.value}`;
+    return `<span class="weather-chip signal level-${escapeAttr(level)}" title="${escapeAttr(`${text} · 기상 신호 ${levelLabel(level)} · ${WEATHER_THRESHOLD_HELP}`)}">${escapeHtml(text)}</span>`;
+  }).join('');
+}
+
 function weatherMetricRows(store) {
   const data = store.weatherData || {};
   const peakTime = formatPeakTime(firstPresent(data, ['peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']));
@@ -915,6 +1185,17 @@ function weatherMetricRows(store) {
     .sort((a, b) => weatherMetricPriority(store, a.key) - weatherMetricPriority(store, b.key)
       || (STATUS_ORDER[normalizeStatus(b.level)] || 0) - (STATUS_ORDER[normalizeStatus(a.level)] || 0)
       || a.order - b.order);
+}
+
+function signalWeatherMetricRows(store) {
+  const data = store.weatherValues || {};
+  if (!Object.keys(data).length) return [];
+  return weatherMetricRows(Object.assign({}, store, {
+    weatherData: data,
+    weather: store.signalRiskType || store.weather,
+    weatherDetail: store.signalReason || store.weatherDetail,
+    trigger: store.signalRiskType || store.trigger
+  }));
 }
 
 function weatherMetricLevel(data, key) {
@@ -949,6 +1230,11 @@ function weatherMetricPriority(store, key) {
 
 function weatherMetricText(store) {
   const rows = weatherMetricRows(store);
+  return rows.length ? rows.map((row) => `${row.label} ${row.value}`).join(' · ') : '-';
+}
+
+function signalWeatherMetricText(store) {
+  const rows = signalWeatherMetricRows(store);
   return rows.length ? rows.map((row) => `${row.label} ${row.value}`).join(' · ') : '-';
 }
 
@@ -999,9 +1285,49 @@ function levelLabel(status) {
 
 function riskMatrixRows() {
   const provided = state.data.visuals && state.data.visuals.riskMatrix;
-  const rows = Array.isArray(provided) && provided.length ? provided : deriveRiskMatrixRows();
+  const rows = applySignalToRiskRows(Array.isArray(provided) && provided.length ? provided : deriveRiskMatrixRows());
   const visibleStoreIds = new Set(filteredStores().map((store) => store.id));
   return rows.filter((row) => visibleStoreIds.has(row.storeId || findStoreId(row.store)));
+}
+
+function applySignalToRiskRows(rows) {
+  return arrayFrom(rows).map((row) => {
+    const storeId = row.storeId || row.store_id || findStoreId(row.store);
+    const store = state.data.stores.find((item) => item.id === storeId || findStoreId(item.name) === storeId);
+    if (!store) return row;
+    const cells = arrayFrom(row.cells).map((cell) => {
+      const signalLevel = signalLevelForRiskColumn(store, cell);
+      const mergedLevel = displayStatusFrom(cell.level || 'Green', signalLevel);
+      return Object.assign({}, cell, { level: mergedLevel });
+    });
+    if (!cells.some((cell) => String(cell.key || '').toLowerCase() === 'signal')) {
+      cells.unshift({
+        key: 'signal',
+        label: '기상신호',
+        level: store.signalStatus || 'Gray'
+      });
+    }
+    return Object.assign({}, row, { storeId, cells });
+  });
+}
+
+function signalLevelForRiskColumn(store, cell) {
+  const signalStatus = normalizeStatus(store.signalStatus);
+  if (!['Error', 'Red', 'Orange', 'Yellow'].includes(signalStatus)) return 'Green';
+  const key = String(cell.key || '').toLowerCase();
+  const label = String(cell.label || '').toLowerCase();
+  const text = `${store.signalRiskType || ''} ${store.signalReason || ''}`.toLowerCase();
+  const matchers = {
+    rain: ['강수', '비', '우천', 'rain', 'pcp', 'pop'],
+    wind: ['강풍', '풍속', '바람', 'wind', 'wsd'],
+    cold: ['한파', '동파', '저온', 'cold', 'tmpmin'],
+    snow: ['대설', '적설', '눈', 'snow', 'sno'],
+    dust: ['미세먼지', '황사', '대기질', 'pm10', 'pm2'],
+    heat: ['폭염', '고온', '더위', 'heat', 'tmpmax'],
+    signal: ['']
+  };
+  const words = matchers[key] || matchers[label] || [label];
+  return words.some((word) => !word || text.includes(String(word).toLowerCase())) ? signalStatus : 'Green';
 }
 
 function activeRiskColumns(rows) {
@@ -1050,8 +1376,9 @@ function deriveRiskMatrixRows() {
       cells: triggers.map(([key, label, words]) => ({
         key,
         label,
-        level: words.some((word) => text.includes(String(word).toLowerCase())) ? store.status : 'Green'
+        level: displayStatusFrom(words.some((word) => text.includes(String(word).toLowerCase())) ? store.prodStatus : 'Green', signalLevelForRiskColumn(store, { key, label }))
       })).concat([
+        { key: 'signal', label: '기상신호', level: store.signalStatus || 'Gray' },
         { key: 'as', label: 'AS', level: queueStatusClass(store.asStatus) === 'Red' ? 'Red' : 'Green' },
         { key: 'recovery', label: '회복', level: recoveryCellLevel(store.recoveryStatus) }
       ])
@@ -1188,9 +1515,13 @@ function openStoreDialog(storeId) {
   if (!store) return;
   $('dialogTitle').textContent = store.name;
   $('dialogBody').innerHTML = [
-    ['상태', levelLabel(store.status)],
-    ['기상/트리거', `${store.weather} · ${store.weatherDetail || store.trigger}`],
-    ['기상 수치', weatherMetricText(store)],
+    ['화면 상태', levelLabel(store.status)],
+    ['운영 상태', levelLabel(store.prodStatus)],
+    ['기상 신호', `${levelLabel(store.signalStatus)} · ${store.signalActionLevel} · ${store.signalMode || '-'}`],
+    ['신호 근거', signalWeatherText(store)],
+    ['운영 기상/트리거', `${store.weather} · ${store.weatherDetail || store.trigger}`],
+    ['운영 기상 수치', weatherMetricText(store)],
+    ['신호 기상 수치', signalWeatherMetricText(store)],
     ['DRI', store.dri],
     ['AS 상태', store.asStatus],
     ['회복 상태', store.recoveryStatus],
@@ -1209,12 +1540,12 @@ async function copyBrief() {
   const topStores = state.data.stores
     .filter((store) => ['Error', 'Red', 'Orange'].includes(store.status))
     .slice(0, 5)
-    .map((store) => `- ${store.name}: ${store.status} / ${store.nextAction}`)
+    .map((store) => `- ${store.name}: 운영 ${store.prodStatus}, 신호 ${store.signalStatus}(${store.signalMode || '-'}) / ${store.signalReason || store.nextAction}`)
     .join('\n') || '- 즉시 조치 지점 없음';
   const text = [
     `[OPS] Weather Ops Dashboard | ${formatDateTime(state.data.generatedAt)}`,
-    `전체 상태: ${summary.overallStatus || summary.overall_status || topStatus(state.data.stores)}`,
-    `즉시 조치: ${summary.immediateCount ?? summary.immediate_count ?? 0} / 회복 조치: ${summary.recoveryActionCount ?? summary.recovery_action_count ?? 0} / CRM 가능: ${summary.crmReadyCount ?? summary.crm_ready_count ?? 0} / 성과 대기: ${summary.dataWaitCount ?? summary.data_wait_count ?? 0}`,
+    `전체 상태: ${decisionStatus()} / 판단: ${decisionReadinessLabel()} / ${weatherSignalSummaryText()}`,
+    `운영 즉시: ${summary.immediateCount ?? summary.immediate_count ?? 0} / 회복 조치: ${summary.recoveryActionCount ?? summary.recovery_action_count ?? 0} / CRM 가능: ${summary.crmReadyCount ?? summary.crm_ready_count ?? 0} / 성과 대기: ${summary.dataWaitCount ?? summary.data_wait_count ?? 0}`,
     '',
     '우선 지점',
     topStores
@@ -1476,7 +1807,11 @@ function summaryAdvisoryMessage(system) {
 
 function operationalDataStatus(system) {
   if (state.data && state.data.source && state.data.source.startsWith('sample')) return '샘플 데이터';
-  if (hasLiveOperationalData()) return '실데이터 연결';
+  if (hasLiveOperationalData()) {
+    const dataViewMode = system.dataViewMode || system.data_view_mode || 'prod';
+    const currentMode = system.currentDataMode || system.current_data_mode || weatherSignalModeLabel();
+    return `실데이터 연결 · 운영 ${dataViewMode} · 신호 ${currentMode}`;
+  }
   return system.dataFreshness || system.data_freshness || (state.data && state.data.source) || '-';
 }
 
