@@ -233,6 +233,18 @@ h1 {
   background: rgba(255,255,255,.12);
   border: 1px solid rgba(255,255,255,.16);
 }
+.kpi.is-zero {
+  background: rgba(255,255,255,.08);
+  border-color: rgba(255,255,255,.1);
+  color: rgba(255,255,255,.68);
+}
+.kpi.is-zero .kpi-label,
+.kpi.is-zero .kpi-note {
+  color: rgba(216,238,246,.66);
+}
+.kpi.is-zero .kpi-value {
+  opacity: .72;
+}
 .kpi-label {
   display: inline-flex;
   align-items: center;
@@ -1031,6 +1043,26 @@ select { min-width: 180px; }
   text-align: center;
 }
 .empty-state.compact { min-height: 56px; }
+.empty-state.filter-empty {
+  grid-column: 1 / -1;
+  gap: 10px;
+}
+.inline-reset {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+.inline-reset:hover,
+.inline-reset:focus-visible {
+  border-color: var(--blue);
+  outline: none;
+}
 
 .table-panel { margin-top: 16px; }
 .table-wrap {

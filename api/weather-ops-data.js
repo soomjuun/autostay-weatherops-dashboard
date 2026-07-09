@@ -2,7 +2,8 @@ const EXPECTED_PACK_VERSION = process.env.WEATHER_OPS_EXPECTED_VERSION || 'v2.16
 const VERSION_REMEDIATION = '시트 탭 수정 대상이 아닙니다. Apps Script Web App을 새 버전으로 재배포하거나 Vercel WEATHER_OPS_API_URL이 최신 Web App URL인지 확인하세요.';
 const APPS_SCRIPT_TOKEN_MISSING = 'WEATHER_OPS_DASHBOARD_TOKEN is not configured';
 const APPS_SCRIPT_TOKEN_UNAUTHORIZED = 'Unauthorized dashboard token';
-const UPSTREAM_TIMEOUT_MS = Math.max(1000, Number(process.env.WEATHER_OPS_UPSTREAM_TIMEOUT_MS || 10000) || 10000);
+const UPSTREAM_TIMEOUT_MS = Math.max(1000, Number(process.env.WEATHER_OPS_UPSTREAM_TIMEOUT_MS || 15000) || 15000);
+const UPSTREAM_RETRY_COUNT = Math.max(0, Number(process.env.WEATHER_OPS_UPSTREAM_RETRY_COUNT || 1) || 0);
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -29,31 +30,12 @@ module.exports = async function handler(req, res) {
     return res.status(200).json(samplePayload('sample_no_api_url'));
   }
 
-  let upstreamTimeout = null;
   try {
     const upstreamUrl = buildUpstreamUrl(apiUrl, apiToken, req);
-    const controller = new AbortController();
-    upstreamTimeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
-    const upstream = await fetch(upstreamUrl, {
-      method: 'GET',
-      headers: { 'Accept': 'application/json' },
-      redirect: 'follow',
-      signal: controller.signal
-    });
-    const text = await upstream.text();
-    clearTimeout(upstreamTimeout);
-    upstreamTimeout = null;
-    if (!upstream.ok) {
-      throw new Error(`Apps Script HTTP ${upstream.status}: ${text.slice(0, 160)}`);
-    }
-    const parsed = parseUpstreamJson(text);
-    if (parsed && parsed.error) {
-      throw new Error(parsed.error);
-    }
+    const parsed = await fetchUpstreamPayload(upstreamUrl);
     res.setHeader('X-Weather-Ops-Source', 'apps_script');
     return res.status(200).json(normalizePayload(parsed, 'apps_script'));
   } catch (error) {
-    if (upstreamTimeout) clearTimeout(upstreamTimeout);
     if (!allowSample) {
       const upstreamError = classifyUpstreamError(error);
       res.setHeader('X-Weather-Ops-Source', upstreamError.source);
@@ -66,6 +48,54 @@ module.exports = async function handler(req, res) {
   }
 };
 
+async function fetchUpstreamPayload(upstreamUrl) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= UPSTREAM_RETRY_COUNT; attempt++) {
+    try {
+      const text = await fetchUpstreamText(upstreamUrl);
+      const parsed = parseUpstreamJson(text);
+      if (parsed && parsed.error) throw new Error(parsed.error);
+      return parsed;
+    } catch (error) {
+      lastError = error;
+      if (attempt >= UPSTREAM_RETRY_COUNT || !shouldRetryUpstream(error)) break;
+      await delay(350);
+    }
+  }
+  throw lastError;
+}
+
+async function fetchUpstreamText(upstreamUrl) {
+  const controller = new AbortController();
+  const upstreamTimeout = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
+  try {
+    const upstream = await fetch(upstreamUrl, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' },
+      redirect: 'follow',
+      signal: controller.signal
+    });
+    const text = await upstream.text();
+    if (!upstream.ok) {
+      throw new Error(`Apps Script HTTP ${upstream.status}: ${text.slice(0, 160)}`);
+    }
+    return text;
+  } finally {
+    clearTimeout(upstreamTimeout);
+  }
+}
+
+function shouldRetryUpstream(error) {
+  if (!error) return false;
+  if (error.name === 'AbortError') return true;
+  const detail = errorMessage(error).toLowerCase();
+  return detail.includes('timeout') || detail.includes('timed out') || detail.includes('network') || detail.includes('fetch failed');
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
 function classifyUpstreamError(error) {
   const detail = errorMessage(error);
   if (error && error.name === 'AbortError') {
@@ -74,9 +104,8 @@ function classifyUpstreamError(error) {
       source: 'upstream_timeout',
       body: {
         error: 'Weather Ops upstream request timed out.',
-        detail: `Apps Script 응답이 ${UPSTREAM_TIMEOUT_MS}ms 안에 완료되지 않았습니다.`,
-        source: 'upstream_timeout',
-        requiredEnv: ['WEATHER_OPS_API_URL', 'WEATHER_OPS_API_TOKEN']
+        detail: `Apps Script 응답이 ${Math.round(UPSTREAM_TIMEOUT_MS / 1000)}초 안에 완료되지 않았습니다.`,
+        source: 'upstream_timeout'
       }
     };
   }

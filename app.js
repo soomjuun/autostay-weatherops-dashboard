@@ -5,6 +5,7 @@ const state = {
   chart: null
 };
 const EXPECTED_PACK_VERSION = 'v2.16.4';
+const DASHBOARD_CACHE_KEY = 'weatherOpsDashboard:lastSuccess:v2';
 
 const $ = (id) => document.getElementById(id);
 
@@ -103,30 +104,114 @@ async function loadDashboard(options = {}) {
     const payload = await parseJsonResponse(response);
     if (!response.ok || payload.source === 'non_json_response') throw new Error(formatApiError(payload, response.status));
     state.data = normalize(payload);
+    cacheDashboardData(state.data);
     ensureStoreOptions();
     render();
     if (state.data.system.apiWarning) {
       showError(state.data.system.apiWarning);
     }
   } catch (error) {
-    showError(`데이터를 불러오지 못했습니다. ${error.message || error}`);
+    console.warn('Weather Ops dashboard load failed', error);
+    const cached = restoreCachedDashboardData();
+    const readableError = userFacingErrorMessage(error && error.message ? error.message : error);
+    if (cached) {
+      state.data = cached.data;
+      ensureStoreOptions();
+      render();
+      showError(`데이터 갱신 실패. 마지막 성공 데이터(${formatDateTime(state.data.generatedAt) || formatDateTime(cached.cachedAt) || '저장본'})를 표시합니다. ${readableError}`);
+    } else {
+      renderFatalErrorState(readableError);
+      showError(`데이터를 불러오지 못했습니다. ${readableError}`);
+    }
   } finally {
     showLoading(false);
   }
 }
 
 function formatApiError(payload, status) {
-  const parts = [payload && payload.error ? payload.error : `HTTP ${status}`];
-  if (payload && payload.detail) parts.push(payload.detail);
-  if (payload && Array.isArray(payload.requiredEnv) && payload.requiredEnv.length) {
-    parts.push(`필수 환경변수: ${payload.requiredEnv.join(', ')}`);
+  if (payload && payload.source === 'upstream_timeout') return '데이터 서버 응답 지연으로 갱신하지 못했습니다.';
+  if (payload && ['missing_config', 'upstream_config_error', 'upstream_auth_error'].includes(payload.source)) {
+    return '대시보드 API 설정 확인이 필요합니다.';
   }
-  if (payload && Array.isArray(payload.requiredConfig) && payload.requiredConfig.length) {
-    parts.push(`필수 설정: ${payload.requiredConfig.join(', ')}`);
+  return userFacingErrorMessage((payload && (payload.error || payload.detail)) || `HTTP ${status}`);
+}
+
+function cacheDashboardData(data) {
+  try {
+    if (!data || !Array.isArray(data.stores) || !data.stores.length) return;
+    sessionStorage.setItem(DASHBOARD_CACHE_KEY, JSON.stringify({
+      cachedAt: new Date().toISOString(),
+      data
+    }));
+  } catch (_) {}
+}
+
+function restoreCachedDashboardData() {
+  try {
+    const raw = sessionStorage.getItem(DASHBOARD_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || !parsed.data || !Array.isArray(parsed.data.stores) || !parsed.data.stores.length) return null;
+    return parsed;
+  } catch (_) {
+    return null;
   }
-  if (payload && payload.nextAction) parts.push(`다음 조치: ${payload.nextAction}`);
-  if (payload && payload.source) parts.push(`source=${payload.source}`);
-  return parts.join(' | ');
+}
+
+function userFacingErrorMessage(message) {
+  const text = String(message || '').trim();
+  const lower = text.toLowerCase();
+  if (!text) return '잠시 후 새로고침으로 다시 시도하세요.';
+  if (lower.includes('timeout') || text.includes('응답 지연') || text.includes('timed out')) {
+    return '데이터 서버 응답 지연입니다. 새로고침으로 다시 시도하세요.';
+  }
+  if (text.includes('WEATHER_OPS_') || text.includes('TOKEN') || text.includes('환경변수') || text.includes('Script Property')) {
+    return '대시보드 API 설정 확인이 필요합니다. 관리자 설정 확인 후 새로고침하세요.';
+  }
+  if (lower.includes('unauthorized') || lower.includes('authorization')) {
+    return '대시보드 인증 설정 확인이 필요합니다. 관리자 설정 확인 후 새로고침하세요.';
+  }
+  return text.split('|')[0].trim() || '잠시 후 새로고침으로 다시 시도하세요.';
+}
+
+function renderFatalErrorState(message) {
+  const text = message || '잠시 후 새로고침으로 다시 시도하세요.';
+  if (state.chart) {
+    state.chart.destroy();
+    state.chart = null;
+  }
+  $('overallStatus').textContent = '연결 오류';
+  $('overallStatus').className = 'status-word text-Red';
+  $('headline').textContent = '데이터를 불러오지 못했습니다.';
+  $('heroMeta').innerHTML = `<span class="meta-pill">실데이터 연결 실패${renderInfoTip(text, '연결 오류')}</span>`;
+  $('kpiStrip').innerHTML = '';
+  const decision = $('decisionBanner');
+  if (decision) {
+    decision.hidden = true;
+    decision.innerHTML = '';
+  }
+  $('mapCount').textContent = '0개 지점';
+  $('metroMap').innerHTML = `<div class="empty-state filter-empty">대시보드 데이터를 불러오지 못했습니다. 새로고침으로 다시 시도하세요.</div>`;
+  $('opsActions').innerHTML = '<div class="empty-state compact">데이터 연결 후 조치 항목을 표시합니다.</div>';
+  $('marketingActions').innerHTML = '<div class="empty-state compact">데이터 연결 후 마케팅 항목을 표시합니다.</div>';
+  $('recoveryQueue').innerHTML = '<div class="empty-state">데이터 연결 후 회복 큐를 표시합니다.</div>';
+  $('riskMatrix').innerHTML = '<div class="empty-state">데이터 연결 후 기상 리스크를 표시합니다.</div>';
+  $('recoveryFunnel').innerHTML = '<div class="empty-state">데이터 연결 후 회복 퍼널을 표시합니다.</div>';
+  $('recoveryStageHeatmap').innerHTML = '<div class="empty-state">데이터 연결 후 회복 진행을 표시합니다.</div>';
+  const bulletList = $('processedBulletList');
+  if (bulletList) bulletList.innerHTML = '';
+  $('recoveryComparison').innerHTML = '<div class="empty-state">데이터 연결 후 회복 비교를 표시합니다.</div>';
+  $('storeTable').innerHTML = '<tr><td colspan="7">데이터 연결 후 지점별 상태를 표시합니다.</td></tr>';
+  $('weatherTimeline').innerHTML = '<div class="timeline-item"><div class="timeline-label">데이터 연결 후 타임라인을 표시합니다.</div></div>';
+  $('systemStatus').innerHTML = `
+    <div class="system-item danger system-wide">
+      <span class="system-dot" aria-hidden="true"></span>
+      <div class="system-label">연결 오류</div>
+      <div class="system-value">${escapeHtml(text)}</div>
+    </div>
+  `;
+  const trend = $('systemTrend');
+  if (trend) trend.innerHTML = '';
 }
 
 async function parseJsonResponse(response) {
@@ -420,7 +505,7 @@ function weatherSignalMode() {
 
 function weatherSignalModeLabel() {
   const mode = weatherSignalMode();
-  return mode ? mode : '신호';
+  return mode ? mode : '기상';
 }
 
 function weatherSignalHasRisk() {
@@ -429,9 +514,11 @@ function weatherSignalHasRisk() {
 }
 
 function decisionReadiness() {
-  return String((state.data && (state.data.decisionReadiness || state.data.decision_readiness))
+  const explicit = String((state.data && (state.data.decisionReadiness || state.data.decision_readiness))
     || (state.data && state.data.system && (state.data.system.decisionReadiness || state.data.system.decision_readiness))
     || '').trim();
+  if (explicit) return explicit;
+  return hasWeatherSignalData() ? '' : 'no_signal';
 }
 
 function decisionReadinessLabel() {
@@ -448,7 +535,8 @@ function decisionReadinessLabel() {
 function decisionReadinessClass() {
   const readiness = decisionReadiness();
   if (readiness === 'prod_ready') return 'ok';
-  if (readiness === 'shadow_only' || readiness === 'stale' || readiness === 'no_signal') return 'warning';
+  if (readiness === 'no_signal') return 'info';
+  if (readiness === 'shadow_only' || readiness === 'stale') return 'warning';
   return 'danger';
 }
 
@@ -462,7 +550,21 @@ function decisionReadinessHelpText() {
     error: '시스템 오류 또는 데이터 확인 신호가 있어 원천 데이터와 자동화 상태를 점검해야 합니다.',
     no_signal: '최신 기상 신호가 없어 prod 운영 상태만으로는 현재 기상 리스크를 판단하기 어렵습니다.'
   };
-  return messages[readiness] || `판단 가능성은 system.decisionReadiness 기준입니다. ${WEATHER_SIGNAL_HELP}`;
+  return messages[readiness] || '운영 반영 여부와 별개로, 가장 최근에 감지된 기상 신호 기준의 판단 가능 상태입니다. shadow 신호는 참고용입니다.';
+}
+
+function hasWeatherSignalData() {
+  const signal = state.data && state.data.weatherSignal ? state.data.weatherSignal : {};
+  const summary = signal.summary || {};
+  const riskCount = Number(summary.actionRequired ?? summary.action_required ?? 0)
+    + Number(summary.watch ?? 0)
+    + Number(summary.dataCheck ?? summary.data_check ?? 0);
+  const hasStoreSignal = arrayFrom(signal.stores).some((row) => {
+    const status = normalizeStatus(firstPresent(row, ['status', 'overallStatus', 'level', 'riskLevel', 'risk_level']));
+    return ['Error', 'Red', 'Orange', 'Yellow'].includes(status)
+      || firstPresent(row, ['reason', 'message', 'riskType', 'risk_type', 'observedAt', 'observed_at']);
+  });
+  return Boolean(signal.generatedAt || signal.observedAt || riskCount || hasStoreSignal);
 }
 
 function nextSummaryDueText() {
@@ -512,16 +614,20 @@ function renderDecisionBanner() {
   }
   target.hidden = false;
   target.className = `decision-banner ${readinessClass}`;
+  const signalTime = formatDateTime(signal.generatedAt || signal.observedAt);
+  const meta = [
+    ['운영', levelLabel(prodOverallStatus())],
+    ['신호', hasWeatherSignalData() ? levelLabel(signalOverallStatus()) : '없음'],
+    ['모드', weatherSignalMode()],
+    ['관측', signalTime]
+  ].filter(([, value]) => value);
   target.innerHTML = `
     <div>
       <strong>${escapeHtml(decisionReadinessLabel())}</strong>
       <span>${escapeHtml(signal.message || weatherSignalSummaryText())}</span>
     </div>
     <div class="decision-meta">
-      <span>운영 ${escapeHtml(levelLabel(prodOverallStatus()))}</span>
-      <span>기상 신호 ${escapeHtml(levelLabel(signalOverallStatus()))}</span>
-      <span>모드 ${escapeHtml(weatherSignalModeLabel())}</span>
-      <span>신호 ${escapeHtml(formatDateTime(signal.generatedAt || signal.observedAt) || '-')}</span>
+      ${meta.map(([label, value]) => `<span>${escapeHtml(label)}: ${escapeHtml(value)}</span>`).join('')}
     </div>
   `;
 }
@@ -529,10 +635,11 @@ function renderDecisionBanner() {
 function renderHero() {
   const { summary } = state.data;
   const status = decisionStatus();
+  const prodStatus = prodOverallStatus();
   const warnings = topBannerWarnings();
   const readinessClass = decisionReadinessClass();
   const isProdSignalRisk = weatherSignalHasRisk() && weatherSignalMode() === 'prod';
-  $('overallStatus').innerHTML = `${escapeHtml(levelLabel(status))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
+  $('overallStatus').innerHTML = `운영 ${escapeHtml(levelLabel(prodStatus))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
   $('overallStatus').className = `status-word text-${status}`;
   $('headline').textContent = dashboardHeadline();
   const sourceText = state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결';
@@ -562,21 +669,41 @@ function renderKpis() {
     ['회복 조치', summary.recoveryActionCount ?? summary.recovery_action_count ?? 0, 'D+1/D+2 액션'],
     ['CRM 가능', summary.crmReadyCount ?? summary.crm_ready_count ?? 0, '마케팅 실행 후보'],
     ['성과 대기', summary.dataWaitCount ?? summary.data_wait_count ?? 0, '매출/처리대수 확정 전'],
-    ['시스템 오류', systemErrorCount, '최근 24시간'],
-    ['시스템 경고', systemWarnCount, '최근 24시간']
+    ['시스템 오류', systemErrorCount, '최근 24시간 미해결'],
+    ['시스템 경고', systemWarnCount, '최근 24시간 미해결']
   ];
-  $('kpiStrip').innerHTML = items.map(([label, value, note]) => `
-    <div class="kpi">
+  $('kpiStrip').innerHTML = items.map(([label, value, note]) => {
+    const numericValue = Number(value);
+    const zeroClass = Number.isFinite(numericValue) && numericValue === 0 ? ' is-zero' : '';
+    return `
+    <div class="kpi${zeroClass}">
       <div class="kpi-label">${escapeHtml(label)}${renderInfoTip(kpiHelpText(label), `${label} 기준`)}</div>
       <div class="kpi-value">${escapeHtml(value)}</div>
       <div class="kpi-note">${escapeHtml(note)}</div>
     </div>
-  `).join('');
+  `;
+  }).join('');
 }
 
 function renderMap() {
   const stores = filteredStores();
   $('mapCount').textContent = `${stores.length}개 지점`;
+  if (!stores.length) {
+    const label = state.risk === 'all' ? '현재 표시할 지점이 없습니다.' : `현재 ${levelLabel(state.risk)} 지점이 없습니다.`;
+    $('metroMap').innerHTML = `
+      <div class="empty-state filter-empty">
+        <span>${escapeHtml(label)}</span>
+        ${state.risk !== 'all' ? '<button class="inline-reset" type="button" data-reset-risk>전체 보기</button>' : ''}
+      </div>
+    `;
+    const reset = $('metroMap').querySelector('[data-reset-risk]');
+    if (reset) reset.addEventListener('click', () => {
+      state.risk = 'all';
+      updateRiskFilterState();
+      render();
+    });
+    return;
+  }
   $('metroMap').innerHTML = stores.map((store, index) => {
     const weatherChips = renderWeatherMetricChips(store, 3);
     const signalChips = renderSignalWeatherMetricChips(store, 3);
@@ -601,9 +728,15 @@ function renderMap() {
 }
 
 function storeSignalLine(store) {
+  if (!hasStoreSignalData(store)) return '기상 신호 없음';
   const mode = store.signalMode ? `${store.signalMode} · ` : '';
   const risk = store.signalRiskType && store.signalRiskType !== '-' ? ` · ${store.signalRiskType}` : '';
   return `기상 신호 ${mode}${levelLabel(store.signalStatus)}${risk}`;
+}
+
+function hasStoreSignalData(store) {
+  return Boolean(store.signalMode || store.signalRiskType || store.signalReason || store.signalObservedAt
+    || ['Error', 'Red', 'Orange', 'Yellow'].includes(store.signalStatus));
 }
 
 function renderActions() {
@@ -707,10 +840,16 @@ function renderRiskMatrix() {
   const matrix = $('riskMatrix');
   if (!rows.length) {
     matrix.classList.remove('is-dense');
-    matrix.innerHTML = '<div class="empty-state">현재 필터 기준 리스크 데이터가 없습니다.</div>';
+    const label = state.risk === 'all' ? '현재 필터 기준 리스크 데이터가 없습니다.' : `현재 ${levelLabel(state.risk)} 기상 리스크가 없습니다.`;
+    matrix.innerHTML = `<div class="empty-state">${escapeHtml(label)}</div>`;
     return;
   }
   const columns = activeRiskColumns(rows);
+  if (isNoActiveRiskMatrix(rows, columns)) {
+    matrix.classList.remove('is-dense');
+    matrix.innerHTML = `<div class="empty-state">기상 신호 없음${nextSummaryDueText() ? ` · 다음 기준 ${escapeHtml(nextSummaryDueText())}` : ''}</div>`;
+    return;
+  }
   const dense = columns.length > 5;
   const storeColumnWidth = dense ? 96 : 112;
   const cellMinWidth = dense ? 46 : 64;
@@ -736,10 +875,22 @@ function renderRiskMatrix() {
   `;
 }
 
+function isNoActiveRiskMatrix(rows, columns) {
+  if (columns.length === 1 && columns[0].key === 'normal') return true;
+  return rows.every((row) => columns.every((column) => {
+    const level = normalizeStatus(matrixCellForColumn(row, column).level);
+    return level === 'Green' || level === 'Gray';
+  }));
+}
+
 function renderRecoveryFunnel() {
   const allRows = recoveryFunnelRows();
   const rows = allRows.filter((row) => !isAsBlockedFunnelRow(row));
   const sideRows = allRows.filter(isAsBlockedFunnelRow);
+  if (!allRows.some((row) => Number(row.count || 0) > 0)) {
+    $('recoveryFunnel').innerHTML = '<div class="empty-state">진행 중인 회복 퍼널이 없습니다.</div>';
+    return;
+  }
   const max = Math.max(...rows.map((row) => Number(row.count || 0)), 1);
   const flowHtml = rows.map((row, index) => {
     const count = Number(row.count || 0);
@@ -773,6 +924,18 @@ function renderRecoveryStageHeatmap() {
   const gridStyle = `grid-template-columns:minmax(86px,1.05fr) repeat(${labels.length}, minmax(58px,.8fr))`;
   if (!stores.length) {
     $('recoveryStageHeatmap').innerHTML = '<div class="empty-state">현재 필터 기준 회복 데이터가 없습니다.</div>';
+    return;
+  }
+  const hasSeries = stores.some((store) => {
+    const series = rateSeriesForStore(store.id, recovery, false);
+    return arrayFrom(series.processedRate).concat(arrayFrom(series.revenueRate))
+      .some((value) => {
+        const numeric = numericOrNull(value);
+        return numeric !== null && numeric > 0;
+      });
+  });
+  if (!hasSeries) {
+    $('recoveryStageHeatmap').innerHTML = '<div class="empty-state">진행 중인 회복 이벤트가 없습니다.</div>';
     return;
   }
   $('recoveryStageHeatmap').innerHTML = `
@@ -810,7 +973,12 @@ function renderRecoveryStageHeatmap() {
 
 function renderRecoveryComparison() {
   const rows = recoveryGapRows();
-  if (!rows.length) {
+  const hasValues = rows.some((row) => {
+    const processed = numericOrNull(row.processedRate ?? row.processed_rate);
+    const revenue = numericOrNull(row.revenueRate ?? row.revenue_rate);
+    return (processed !== null && processed > 0) || (revenue !== null && revenue > 0);
+  });
+  if (!rows.length || !hasValues) {
     $('recoveryComparison').innerHTML = '<div class="empty-state">현재 필터 기준 처리대수/매출 회복 비교 데이터가 없습니다.</div>';
     return;
   }
@@ -883,7 +1051,13 @@ function renderProcessedBulletList() {
   const container = $('processedBulletList');
   if (!container) return;
   const rows = processedBulletRows();
-  if (!rows.length) {
+  const hasValues = rows.some((row) => {
+    const actual = numericOrNull(firstPresent(row, ['actual', 'washCount', 'wash_count']));
+    const baseline = numericOrNull(firstPresent(row, ['baseline', 'baselineWashCount', 'baseline_wash_count']));
+    const rate = numericOrNull(firstPresent(row, ['rate', 'processedRate', 'processed_rate']));
+    return (actual !== null && actual > 0) || (baseline !== null && baseline > 0) || (rate !== null && rate > 0);
+  });
+  if (!rows.length || !hasValues) {
     container.innerHTML = '<div class="empty-state compact">처리대수 기준/실적 비교 데이터가 없습니다.</div>';
     return;
   }
@@ -1124,13 +1298,13 @@ function renderSystemTrend() {
   }
   const max = Math.max(...rows.flatMap((row) => [row.actions, row.errors, row.unresolved]), 1);
   container.innerHTML = `
-    <div class="trend-title">최근 7일 운영 신호</div>
+    <div class="trend-title">최근 7일 운영 신호 전체 기록</div>
     ${rows.map((row) => `
       <div class="trend-row">
         <div class="trend-date">${escapeHtml(shortDate(row.date))}</div>
         <div class="trend-bars">
           <span class="trend-bar actions" style="width:${trendWidth(row.actions, max)}%" title="오픈 액션 ${row.actions}건"></span>
-          <span class="trend-bar errors" style="width:${trendWidth(row.errors, max)}%" title="시스템 오류 ${row.errors}건"></span>
+          <span class="trend-bar errors" style="width:${trendWidth(row.errors, max)}%" title="오류·경고 포함 전체 기록 ${row.errors}건"></span>
           <span class="trend-bar unresolved" style="width:${trendWidth(row.unresolved, max)}%" title="미해결 ${row.unresolved}건"></span>
         </div>
         <div class="trend-count">${row.actions}/${row.errors}/${row.unresolved}</div>
@@ -1138,7 +1312,7 @@ function renderSystemTrend() {
     `).join('')}
     <div class="trend-legend">
       <span><i class="actions"></i>오픈 액션</span>
-      <span><i class="errors"></i>오류</span>
+      <span><i class="errors"></i>오류·경고 전체</span>
       <span><i class="unresolved"></i>미해결</span>
     </div>
   `;
@@ -1840,7 +2014,7 @@ function operationalDataStatus(system) {
   if (state.data && state.data.source && state.data.source.startsWith('sample')) return '샘플 데이터';
   if (hasLiveOperationalData()) {
     const dataViewMode = system.dataViewMode || system.data_view_mode || 'prod';
-    const currentMode = system.currentDataMode || system.current_data_mode || weatherSignalModeLabel();
+    const currentMode = system.currentDataMode || system.current_data_mode || weatherSignalMode() || '없음';
     return `실데이터 연결 · 운영 ${dataViewMode} · 신호 ${currentMode}`;
   }
   return system.dataFreshness || system.data_freshness || (state.data && state.data.source) || '-';
