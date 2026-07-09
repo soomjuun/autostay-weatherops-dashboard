@@ -1188,7 +1188,7 @@ function renderStoreTable() {
         <td data-label="기상/트리거">
           <span class="table-main-line">운영 ${escapeHtml(store.weather)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><br>
           <span class="muted">${escapeHtml(weatherDetailText(store))}</span>
-          <span class="signal-line"><span class="badge ${store.signalStatus}">신호 ${escapeHtml(store.signalActionLevel)}</span> ${escapeHtml(signalWeatherText(store))}</span>
+          ${renderTableSignalLine(store)}
           ${weatherChips ? `<div class="weather-chip-row table-weather">${weatherChips}</div>` : ''}
           ${signalChips ? `<div class="weather-chip-row table-weather signal-weather">${signalChips}</div>` : ''}
         </td>
@@ -1205,6 +1205,13 @@ function renderInfoTip(message, label) {
   const text = String(message || '').trim();
   if (!text) return '';
   return `<span class="info-tip" tabindex="0" role="note" aria-label="${escapeAttr(`${label}: ${text}`)}">ⓘ<span class="info-tip-bubble" role="tooltip" aria-hidden="true">${escapeHtml(text)}</span></span>`;
+}
+
+function renderTableSignalLine(store) {
+  if (!hasStoreSignalData(store)) {
+    return '<span class="signal-line"><span class="badge Gray">기상 신호 없음</span></span>';
+  }
+  return `<span class="signal-line"><span class="badge ${store.signalStatus}">신호 ${escapeHtml(store.signalActionLevel)}</span> ${escapeHtml(signalWeatherText(store))}</span>`;
 }
 
 function riskScoreHelpText(store) {

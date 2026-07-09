@@ -1166,6 +1166,7 @@ td:last-child { min-width: 280px; }
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .18);
 }
 .info-tip-bubble {
+  display: none;
   position: absolute;
   top: calc(100% + 8px);
   left: 0;
@@ -1187,12 +1188,13 @@ td:last-child { min-width: 280px; }
   opacity: 0;
   visibility: hidden;
   transform: translateY(-2px);
-  transition: opacity .14s ease, transform .14s ease, visibility .14s ease;
+  transition: opacity .14s ease, transform .14s ease;
   pointer-events: none;
 }
 .info-tip:hover .info-tip-bubble,
 .info-tip:focus .info-tip-bubble,
 .info-tip:focus-visible .info-tip-bubble {
+  display: block;
   opacity: 1;
   visibility: visible;
   transform: translateY(0);
