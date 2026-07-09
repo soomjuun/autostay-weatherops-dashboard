@@ -950,7 +950,7 @@ function renderStoreTable() {
 function renderInfoTip(message, label) {
   const text = String(message || '').trim();
   if (!text) return '';
-  return `<span class="info-tip" tabindex="0" role="img" aria-label="${escapeAttr(`${label}: ${text}`)}" title="${escapeAttr(text)}">ⓘ<span class="info-tip-bubble" role="tooltip" aria-hidden="true">${escapeHtml(text)}</span></span>`;
+  return `<span class="info-tip" tabindex="0" role="img" aria-label="${escapeAttr(`${label}: ${text}`)}">ⓘ<span class="info-tip-bubble" role="tooltip" aria-hidden="true">${escapeHtml(text)}</span></span>`;
 }
 
 function riskScoreHelpText(store) {
@@ -1053,7 +1053,7 @@ function crmHelpText(store) {
 function systemItemHelpText(label) {
   const messages = {
     '마지막 요약': 'sendWeatherOpsSummary 또는 종합 요약 실행 기록의 최신 시각입니다. 이 기록이 없어도 dashboard payload와 기상 원장 데이터가 있으면 화면은 계속 작동합니다.',
-    '매출 동기화': '회복률, 성과 대기, 매출 회복 비교에 쓰는 원천 매출 데이터의 최신 동기화 시각입니다.',
+    '매출 동기화': '회복률, 성과 대기, 매출 회복 비교에 쓰는 원천 매출 데이터의 최신 동기화 시각입니다. 오래된 경우에도 기상 신호와 지점 운영 상태 표시는 계속됩니다.',
     '시트/Pack': `Apps Script/시트가 보고한 Weather Ops Pack 버전입니다. 현재 기대 버전은 ${EXPECTED_PACK_VERSION}입니다.`,
     '데이터 상태': `dashboard payload 연결과 운영 데이터 상태입니다. ${WEATHER_API_HELP}`,
     '판단 상태': decisionReadinessHelpText(),
@@ -1103,7 +1103,7 @@ function renderSystem() {
   `).join('') + (warnings.length ? `
     <div class="system-item warning system-wide">
       <span class="system-dot" aria-hidden="true"></span>
-      <div class="system-label">주의 신호${renderInfoTip('요약 실행, 매출 동기화, 시트 버전, 시스템 오류 중 사용자가 확인해야 할 신선도 경고입니다. 경고가 있어도 dashboard payload가 있으면 대시보드 표시는 계속됩니다.', '주의 신호 기준')}</div>
+      <div class="system-label">주의 신호${renderInfoTip('요약 실행, 시트 버전, 시스템 오류 중 사용자가 확인해야 할 신선도 경고입니다. 매출 동기화 지연은 매출 동기화 카드에서만 별도 확인합니다.', '주의 신호 기준')}</div>
       <div class="system-value">${warnings.map(escapeHtml).join(' · ')}</div>
     </div>
   ` : '') + (summaryAdvisory ? `
@@ -1787,12 +1787,10 @@ function freshnessWarnings(options = {}) {
     })
     : [];
   const summaryWarning = summaryFreshnessWarning(system);
-  const revenueAge = hoursSince(system.lastRevenueSyncAt || system.last_revenue_sync_at);
   const generatedAge = hoursSince(state.data && state.data.generatedAt);
   const systemErrorCount = Number(summary.systemError24h ?? summary.system_error_24h ?? system.systemError24h ?? system.system_error_24h ?? 0);
   const dataWaitCount = Number(summary.dataWaitCount ?? summary.data_wait_count ?? 0);
   if (summaryWarning && (includeSummaryAdvisory || !isSummaryAdvisoryWarning(summaryWarning))) warnings.push(summaryWarning);
-  if (revenueAge !== null && revenueAge > 30) warnings.push('매출 원천 동기화 30시간 초과');
   if ((!state.data || !state.data.generatedAt) && !warnings.some((warning) => String(warning || '').includes('생성 시각'))) {
     warnings.push('대시보드 데이터 생성 시각 없음');
   }
@@ -1819,7 +1817,9 @@ function isOperationalAdvisoryWarning(warning) {
   return text.includes('시스템 오류')
     || text.includes('시스템 경고')
     || text.includes('성과 확정 대기')
-    || text.includes('회복 성과 확정 대기');
+    || text.includes('회복 성과 확정 대기')
+    || text.includes('매출 원천 동기화')
+    || text.includes('매출 동기화');
 }
 
 function isSummaryAdvisoryWarning(warning) {

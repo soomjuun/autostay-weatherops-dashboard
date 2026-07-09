@@ -1119,12 +1119,15 @@ td:last-child { min-width: 280px; }
   max-width: min(300px, calc(100vw - 48px));
   padding: 10px 12px;
   border-radius: 8px;
-  background: #0f172a;
-  color: #f8fafc;
-  box-shadow: 0 14px 30px rgba(15, 23, 42, .24);
+  background: #020617;
+  color: #fff;
+  border: 0;
+  box-shadow: 0 14px 30px rgba(2, 6, 23, .28);
   font-size: 12px;
   font-weight: 750;
   line-height: 1.5;
+  letter-spacing: 0;
+  text-align: left;
   white-space: normal;
   opacity: 0;
   visibility: hidden;
