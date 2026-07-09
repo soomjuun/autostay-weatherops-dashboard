@@ -199,8 +199,8 @@ h1 {
   font-weight: 700;
 }
 .meta-pill.warning {
-  background: #fff7ed;
-  color: #9a3412;
+  background: rgba(255,255,255,.12);
+  color: #e6f6fb;
 }
 .command-card {
   background: rgba(255,255,255,.1);
@@ -270,9 +270,9 @@ h1 {
   line-height: 1.45;
 }
 .decision-banner.warning {
-  border-color: #fed7aa;
-  background: #fff7ed;
-  color: #9a3412;
+  border-color: rgba(255,255,255,.24);
+  background: rgba(255,255,255,.14);
+  color: #fff;
 }
 .decision-banner.danger {
   border-color: #fecaca;
@@ -685,17 +685,16 @@ select { min-width: 180px; }
 
 .visual-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  grid-template-areas:
-    "risk funnel"
-    "spark gap";
+  grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr);
   gap: 16px;
+  align-items: start;
   margin-top: 16px;
 }
-.risk-panel { grid-area: risk; }
-.funnel-panel { grid-area: funnel; }
-.small-multiple-panel { grid-area: spark; }
-.gap-panel { grid-area: gap; }
+.visual-column {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
 .risk-matrix {
   display: grid;
   gap: 7px;
@@ -1034,7 +1033,10 @@ select { min-width: 180px; }
 .empty-state.compact { min-height: 56px; }
 
 .table-panel { margin-top: 16px; }
-.table-wrap { overflow: auto; }
+.table-wrap {
+  overflow-x: auto;
+  overflow-y: visible;
+}
 table { width: 100%; border-collapse: collapse; min-width: 980px; }
 th, td {
   border-bottom: 1px solid var(--line);
@@ -1091,7 +1093,7 @@ td:last-child { min-width: 280px; }
   color: #d8eef6;
 }
 .meta-pill.warning .info-tip {
-  color: #9a3412;
+  color: #d8eef6;
 }
 .status-word .info-tip {
   margin-top: 3px;
@@ -1275,9 +1277,6 @@ td:last-child { min-width: 280px; }
   }
   .visual-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-    grid-template-areas:
-      "risk funnel"
-      "spark gap";
   }
   .kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .metro-map { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1304,11 +1303,6 @@ td:last-child { min-width: 280px; }
   .metro-map { grid-template-columns: 1fr; }
   .visual-grid {
     grid-template-columns: 1fr;
-    grid-template-areas:
-      "risk"
-      "funnel"
-      "spark"
-      "gap";
   }
   .queue-item {
     grid-template-columns: 1fr;

@@ -105,11 +105,8 @@ async function loadDashboard(options = {}) {
     state.data = normalize(payload);
     ensureStoreOptions();
     render();
-    const warnings = topBannerWarnings();
     if (state.data.system.apiWarning) {
       showError(state.data.system.apiWarning);
-    } else if (warnings.length) {
-      showWarning(warnings);
     }
   } catch (error) {
     showError(`데이터를 불러오지 못했습니다. ${error.message || error}`);
@@ -533,6 +530,8 @@ function renderHero() {
   const { summary } = state.data;
   const status = decisionStatus();
   const warnings = topBannerWarnings();
+  const readinessClass = decisionReadinessClass();
+  const isProdSignalRisk = weatherSignalHasRisk() && weatherSignalMode() === 'prod';
   $('overallStatus').innerHTML = `${escapeHtml(levelLabel(status))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
   $('overallStatus').className = `status-word text-${status}`;
   $('headline').textContent = dashboardHeadline();
@@ -541,8 +540,8 @@ function renderHero() {
     { text: `업데이트 ${formatDateTime(state.data.generatedAt)}`, help: 'Apps Script dashboard payload가 생성된 시각입니다. 브라우저 새로고침 시 Vercel API가 이 값을 다시 조회합니다.' },
     { text: `버전 ${state.data.version}`, help: '대시보드 payload가 보고한 Weather Ops Pack 또는 시트 버전입니다. 현재 기대 버전은 v2.16.4입니다.' },
     { text: sourceText, help: sourceText === '샘플 데이터' ? '샘플 fallback 데이터입니다. 운영 배포에서는 실데이터 연결이어야 합니다.' : `Vercel이 Apps Script dashboard payload를 정상 수신했다는 뜻입니다. ${WEATHER_API_HELP}` },
-    { text: `판단 ${decisionReadinessLabel()}`, help: decisionReadinessHelpText(), warning: decisionReadinessClass() !== 'ok' },
-    { text: weatherSignalSummaryText(), help: weatherSignalHelpText(), warning: weatherSignalHasRisk() && weatherSignalMode() !== 'prod' }
+    { text: `판단 ${decisionReadinessLabel()}`, help: decisionReadinessHelpText(), warning: readinessClass === 'danger' },
+    { text: weatherSignalSummaryText(), help: weatherSignalHelpText(), warning: isProdSignalRisk }
   ].concat(warnings.map((warning) => ({ text: `주의: ${warning}`, help: '데이터 신선도 또는 시스템 점검이 필요한 신호입니다.', warning: true })));
   $('heroMeta').innerHTML = metaItems
     .map((item) => `<span class="meta-pill${item.warning ? ' warning' : ''}">${escapeHtml(item.text)}${renderInfoTip(item.help, item.text)}</span>`)
