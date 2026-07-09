@@ -507,7 +507,7 @@ function renderDecisionBanner() {
   if (!target) return;
   const readinessClass = decisionReadinessClass();
   const signal = state.data.weatherSignal || {};
-  const shouldShow = readinessClass !== 'ok' || weatherSignalHasRisk();
+  const shouldShow = readinessClass === 'danger';
   if (!shouldShow) {
     target.hidden = true;
     target.innerHTML = '';
