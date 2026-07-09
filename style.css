@@ -79,13 +79,19 @@ button:disabled {
   font-weight: 700;
   line-height: 1.45;
 }
+.global-banner[hidden],
+.global-banner:empty {
+  display: none !important;
+  padding: 0;
+  border: 0;
+}
 .global-banner.error {
   background: #fef2f2;
   border-bottom-color: #fecaca;
   color: #991b1b;
 }
 .global-banner.warning {
-  display: none;
+  display: none !important;
 }
 .global-banner-title {
   flex: 0 0 auto;
@@ -696,14 +702,23 @@ select { min-width: 180px; }
 .visual-grid {
   display: grid;
   grid-template-columns: minmax(0, .96fr) minmax(0, 1.04fr);
+  grid-template-areas:
+    "risk stages"
+    "funnel gap";
   gap: 16px;
-  align-items: start;
+  align-items: stretch;
   margin-top: 16px;
 }
 .visual-column {
-  display: grid;
-  gap: 16px;
-  align-content: start;
+  display: contents;
+}
+.risk-panel { grid-area: risk; }
+.funnel-panel { grid-area: funnel; }
+.small-multiple-panel { grid-area: stages; }
+.gap-panel { grid-area: gap; }
+.visual-grid > .panel,
+.visual-column > .panel {
+  min-height: 0;
 }
 .risk-matrix {
   display: grid;
@@ -1062,10 +1077,15 @@ select { min-width: 180px; }
   outline: none;
 }
 
-.table-panel { margin-top: 16px; }
+.table-panel {
+  margin-top: 16px;
+  max-height: none;
+  overflow: visible;
+}
 .table-wrap {
   overflow-x: auto;
   overflow-y: visible;
+  max-height: none;
 }
 table { width: 100%; border-collapse: collapse; min-width: 980px; }
 th, td {
@@ -1077,9 +1097,7 @@ th, td {
   line-height: 1.45;
 }
 th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
+  position: static;
   background: #f8fafc;
   color: #475569;
   font-size: 12px;
@@ -1307,6 +1325,9 @@ td:last-child { min-width: 280px; }
   }
   .visual-grid {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "risk stages"
+      "funnel gap";
   }
   .kpi-strip { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .metro-map { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -1333,6 +1354,11 @@ td:last-child { min-width: 280px; }
   .metro-map { grid-template-columns: 1fr; }
   .visual-grid {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "risk"
+      "stages"
+      "funnel"
+      "gap";
   }
   .queue-item {
     grid-template-columns: 1fr;
