@@ -194,6 +194,8 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
 
 `summary.systemError24h`와 `system.systemError24h`는 운영 판단을 막을 수 있는 미해결 오류입니다. `systemWarn24h`는 비차단 경고이며, 지점 알림 일부 실패나 원천 위생 경고처럼 추적은 필요하지만 `decisionReadiness=error`로 올리지는 않는 신호입니다.
 
+대시보드의 대표 위험도는 `weatherSignal`을 우선 사용합니다. `weatherSignal.mode=shadow`는 샘플이나 가짜 데이터가 아니라 실제 기상 API 기반 신호가 공식 prod 운영 액션 원장에 반영되기 전이라는 뜻입니다. 따라서 상단 상태와 지점별 기상 위험은 `weatherSignal.overallStatus`와 `stores[].signalStatus`를 우선 표시하고, 완료보고·AS 정상화·매출회복·CRM 실행 상태는 계속 `mode=prod` 운영 원장을 기준으로 표시합니다.
+
 `decisionReadiness=stale`은 단순 4시간 경과가 아니라 예정된 다음 종합 신호 시각을 넘겼는지 기준으로 판단해야 합니다. 평온한 날의 09:10 신호는 16:30 다음 종합 신호 전까지 stale로 보지 않습니다.
 
 ## GitHub 업로드

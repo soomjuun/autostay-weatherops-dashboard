@@ -24,7 +24,7 @@ const SUMMARY_SCHEDULES = [
 ];
 const SUMMARY_GRACE_MINUTES = 45;
 const PROD_MODE_HELP = '이 대시보드는 운영 반영 대상(prod) dashboard payload를 기준으로 집계합니다. shadow/test 실행 기록은 원장 검증에는 사용되지만 화면 집계에서는 제외됩니다.';
-const WEATHER_SIGNAL_HELP = '기상 신호는 최신 Action_Log/Alert_Log 기준의 API 감지 결과입니다. shadow/test 신호는 공식 운영 액션은 아니지만 현재 판단 참고 대상으로 표시합니다.';
+const WEATHER_SIGNAL_HELP = '기상 신호는 최신 Action_Log/Alert_Log 기준의 API 감지 결과입니다. shadow 신호도 실제 API 기반일 수 있으며, 공식 운영 액션 원장 반영 전 상태로 분리 표시합니다.';
 const WEATHER_API_HELP = '기상 수치는 기상청 단기예보와 에어코리아 값이 Action_Log 또는 weatherSignal에 적재된 경우 표시됩니다. 운영 상태와 기상 신호는 분리해서 봐야 합니다.';
 const WEATHER_THRESHOLD_HELP = '임계값: 강수 Yellow=POP 60% 또는 PCP 0.1mm+, Orange=POP 80% 또는 PCP 5mm+, Red=PCP 15mm+. 풍속 7/10/14m/s, 한파 0/-5/-10도, 적설 0.1/1/5cm, 폭염 30/33/35도, PM10 81/151/300, PM2.5 36/76/150 기준입니다.';
 const STATIC_HELP_ITEMS = [
@@ -497,6 +497,14 @@ function decisionStatus() {
   return displayStatusFrom(prodOverallStatus(), signalOverallStatus());
 }
 
+function primaryDashboardStatus() {
+  return hasWeatherSignalData() ? signalOverallStatus() : prodOverallStatus();
+}
+
+function primaryDashboardStatusLabel() {
+  return hasWeatherSignalData() ? '기상 신호' : '운영';
+}
+
 function weatherSignalMode() {
   return String((state.data && state.data.weatherSignal && state.data.weatherSignal.mode)
     || (state.data && state.data.system && (state.data.system.currentDataMode || state.data.system.current_data_mode))
@@ -505,7 +513,12 @@ function weatherSignalMode() {
 
 function weatherSignalModeLabel() {
   const mode = weatherSignalMode();
-  return mode ? mode : '기상';
+  const labels = {
+    prod: '공식 운영',
+    shadow: '실제 기상',
+    test: '테스트'
+  };
+  return labels[mode] || (mode ? mode : '기상');
 }
 
 function weatherSignalHasRisk() {
@@ -524,7 +537,7 @@ function decisionReadiness() {
 function decisionReadinessLabel() {
   const labels = {
     prod_ready: '운영 판단 가능',
-    shadow_only: '운영 반영 전 신호',
+    shadow_only: '실제 신호 · 운영 반영 전',
     stale: '신호 오래됨',
     error: '확인 필요',
     no_signal: '신호 없음'
@@ -545,12 +558,12 @@ function decisionReadinessHelpText() {
   const nextDue = nextSummaryDueText();
   const messages = {
     prod_ready: '최신 기상 신호가 prod 운영 반영 기준으로 들어와 화면만으로 공식 운영 판단이 가능합니다.',
-    shadow_only: '최신 기상 신호는 있으나 공식 prod 운영 액션으로 반영되기 전입니다. 화면의 기상 신호를 확인하되 운영 반영 여부를 별도로 판단해야 합니다.',
+    shadow_only: '최신 기상 신호는 실제 API 기반으로 확인되었습니다. 다만 공식 prod 운영 액션 원장에는 아직 반영되기 전이므로, 대시보드는 기상 위험 판단에 쓰고 완료보고·AS·매출회복 실행 상태는 prod 원장 기준으로 확인합니다.',
     stale: `기상 신호 생성 시각이 오래되어 최신 운영 판단에 제한이 있습니다.${nextDue ? ` 다음 종합 신호 예정 또는 기준 시각은 ${nextDue}입니다.` : ''}`,
     error: '시스템 오류 또는 데이터 확인 신호가 있어 원천 데이터와 자동화 상태를 점검해야 합니다.',
     no_signal: '최신 기상 신호가 없어 prod 운영 상태만으로는 현재 기상 리스크를 판단하기 어렵습니다.'
   };
-  return messages[readiness] || '운영 반영 여부와 별개로, 가장 최근에 감지된 기상 신호 기준의 판단 가능 상태입니다. shadow 신호는 참고용입니다.';
+  return messages[readiness] || '운영 반영 여부와 별개로, 가장 최근에 감지된 실제 기상 신호 기준의 판단 가능 상태입니다.';
 }
 
 function hasWeatherSignalData() {
@@ -581,8 +594,8 @@ function weatherSignalSummaryText() {
   const normal = Number(summary.normal ?? 0);
   const riskCount = actionRequired + watch + dataCheck;
   if (!signal.generatedAt && !signal.observedAt && !riskCount) return '기상 신호 없음';
-  if (!riskCount) return `${weatherSignalModeLabel()} 신호 정상 ${normal}`;
-  return `${weatherSignalModeLabel()} 신호 즉시 ${actionRequired} · 주의 ${watch} · 확인 ${dataCheck}`;
+  if (!riskCount) return `${weatherSignalModeLabel()} 기준 정상 ${normal}`;
+  return `${weatherSignalModeLabel()} 기준 즉시 ${actionRequired} · 주의 ${watch} · 확인 ${dataCheck}`;
 }
 
 function weatherSignalHelpText() {
@@ -595,8 +608,11 @@ function weatherSignalHelpText() {
 function dashboardHeadline() {
   const summary = state.data.summary || {};
   const signal = state.data.weatherSignal || {};
-  if (weatherSignalHasRisk() && weatherSignalMode() !== 'prod') {
-    return signal.message || '운영 반영 전 기상 신호가 있어 지점별 신호를 확인해야 합니다.';
+  if (weatherSignalHasRisk()) {
+    return signal.message || '실제 기상 API 기준 위험 신호가 있어 지점별 기상 신호를 먼저 확인해야 합니다.';
+  }
+  if (hasWeatherSignalData()) {
+    return signal.message || '실제 기상 API 기준 특이 위험 신호 없이 운영 상태를 확인 중입니다.';
   }
   return summary.headline || signal.message || '오늘 운영 조치와 회복 액션을 확인하세요.';
 }
@@ -606,7 +622,7 @@ function renderDecisionBanner() {
   if (!target) return;
   const readinessClass = decisionReadinessClass();
   const signal = state.data.weatherSignal || {};
-  const shouldShow = readinessClass === 'danger';
+  const shouldShow = readinessClass === 'danger' || (weatherSignalHasRisk() && weatherSignalMode() !== 'prod');
   if (!shouldShow) {
     target.hidden = true;
     target.innerHTML = '';
@@ -634,12 +650,13 @@ function renderDecisionBanner() {
 
 function renderHero() {
   const { summary } = state.data;
-  const status = decisionStatus();
+  const status = primaryDashboardStatus();
   const prodStatus = prodOverallStatus();
+  const signalStatus = signalOverallStatus();
   const warnings = topBannerWarnings();
   const readinessClass = decisionReadinessClass();
-  const isProdSignalRisk = weatherSignalHasRisk() && weatherSignalMode() === 'prod';
-  $('overallStatus').innerHTML = `운영 ${escapeHtml(levelLabel(prodStatus))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
+  const hasRiskSignal = weatherSignalHasRisk();
+  $('overallStatus').innerHTML = `${escapeHtml(primaryDashboardStatusLabel())} ${escapeHtml(levelLabel(status))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
   $('overallStatus').className = `status-word text-${status}`;
   $('headline').textContent = dashboardHeadline();
   const sourceText = state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결';
@@ -647,8 +664,10 @@ function renderHero() {
     { text: `업데이트 ${formatDateTime(state.data.generatedAt)}`, help: 'Apps Script dashboard payload가 생성된 시각입니다. 브라우저 새로고침 시 Vercel API가 이 값을 다시 조회합니다.' },
     { text: `버전 ${state.data.version}`, help: '대시보드 payload가 보고한 Weather Ops Pack 또는 시트 버전입니다. 현재 기대 버전은 v2.16.4입니다.' },
     { text: sourceText, help: sourceText === '샘플 데이터' ? '샘플 fallback 데이터입니다. 운영 배포에서는 실데이터 연결이어야 합니다.' : `Vercel이 Apps Script dashboard payload를 정상 수신했다는 뜻입니다. ${WEATHER_API_HELP}` },
+    { text: `운영 원장 ${levelLabel(prodStatus)}`, help: '공식 완료보고, AS 정상화, 매출회복, CRM 실행 상태는 prod 운영 원장 기준으로 봅니다.' },
+    { text: `기상 신호 ${levelLabel(signalStatus)}`, help: weatherSignalHelpText(), warning: hasRiskSignal },
     { text: `판단 ${decisionReadinessLabel()}`, help: decisionReadinessHelpText(), warning: readinessClass === 'danger' },
-    { text: weatherSignalSummaryText(), help: weatherSignalHelpText(), warning: isProdSignalRisk }
+    { text: weatherSignalSummaryText(), help: weatherSignalHelpText(), warning: hasRiskSignal }
   ].concat(warnings.map((warning) => ({ text: `주의: ${warning}`, help: '데이터 신선도 또는 시스템 점검이 필요한 신호입니다.', warning: true })));
   $('heroMeta').innerHTML = metaItems
     .map((item) => `<span class="meta-pill${item.warning ? ' warning' : ''}">${escapeHtml(item.text)}${renderInfoTip(item.help, item.text)}</span>`)
@@ -1140,7 +1159,7 @@ function riskScoreHelpText(store) {
 }
 
 function overallStatusHelpText(status) {
-  return `전체 상태는 prod 운영 상태와 최신 기상 신호 중 더 높은 확인 우선순위를 대표합니다. ${statusHelpText(status)} ${WEATHER_SIGNAL_HELP}`;
+  return `상단 대표 상태는 실제 API 기반 최신 기상 신호를 우선 표시합니다. 완료보고, AS, 매출회복, CRM 실행 여부는 별도 prod 운영 원장 기준으로 확인합니다. ${statusHelpText(status)} ${WEATHER_SIGNAL_HELP}`;
 }
 
 function statusHelpText(status) {
