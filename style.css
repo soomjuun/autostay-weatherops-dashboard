@@ -237,16 +237,20 @@ h1 {
   background: rgba(255,255,255,.12);
   border: 1px solid rgba(255,255,255,.16);
 }
-.kpi.is-zero {
+.kpi.is-zero,
+.kpi.is-missing {
   background: rgba(255,255,255,.08);
   border-color: rgba(255,255,255,.1);
   color: rgba(255,255,255,.68);
 }
 .kpi.is-zero .kpi-label,
-.kpi.is-zero .kpi-note {
+.kpi.is-zero .kpi-note,
+.kpi.is-missing .kpi-label,
+.kpi.is-missing .kpi-note {
   color: rgba(216,238,246,.66);
 }
-.kpi.is-zero .kpi-value {
+.kpi.is-zero .kpi-value,
+.kpi.is-missing .kpi-value {
   opacity: .72;
 }
 .kpi-label {
@@ -1156,6 +1160,7 @@ td:last-child { min-width: 280px; }
   left: auto;
   right: 0;
 }
+.info-tip:focus,
 .info-tip:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(37, 99, 235, .18);
@@ -1186,6 +1191,7 @@ td:last-child { min-width: 280px; }
   pointer-events: none;
 }
 .info-tip:hover .info-tip-bubble,
+.info-tip:focus .info-tip-bubble,
 .info-tip:focus-visible .info-tip-bubble {
   opacity: 1;
   visibility: visible;
@@ -1405,6 +1411,7 @@ td:last-child { min-width: 280px; }
     transform: translateY(8px);
   }
   .info-tip:hover .info-tip-bubble,
+  .info-tip:focus .info-tip-bubble,
   .info-tip:focus-visible .info-tip-bubble {
     transform: translateY(0);
   }
