@@ -105,11 +105,11 @@ async function loadDashboard(options = {}) {
     state.data = normalize(payload);
     ensureStoreOptions();
     render();
-    const warnings = freshnessWarnings();
+    const warnings = topBannerWarnings();
     if (state.data.system.apiWarning) {
       showError(state.data.system.apiWarning);
     } else if (warnings.length) {
-      showWarning(warnings.join(' · '));
+      showWarning(warnings);
     }
   } catch (error) {
     showError(`데이터를 불러오지 못했습니다. ${error.message || error}`);
@@ -532,7 +532,7 @@ function renderDecisionBanner() {
 function renderHero() {
   const { summary } = state.data;
   const status = decisionStatus();
-  const warnings = freshnessWarnings();
+  const warnings = topBannerWarnings();
   $('overallStatus').innerHTML = `${escapeHtml(levelLabel(status))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
   $('overallStatus').className = `status-word text-${status}`;
   $('headline').textContent = dashboardHeadline();
@@ -1058,7 +1058,8 @@ function systemItemHelpText(label) {
     '데이터 상태': `dashboard payload 연결과 운영 데이터 상태입니다. ${WEATHER_API_HELP}`,
     '판단 상태': decisionReadinessHelpText(),
     '기상 신호': weatherSignalHelpText(),
-    '시스템 경고': '최근 24시간 비차단 경고입니다. 오류와 달리 dashboard 판단 상태를 error로 만들지는 않지만, 반복되면 자동화 또는 원천 상태를 점검해야 합니다.'
+    '시스템 오류': '최근 24시간 미해결 ERROR/CRITICAL/FATAL급 시스템 오류입니다. 해결 처리된 dashboard 인증 오류와 lock 경고는 Apps Script payload에서 제외됩니다.',
+    '시스템 경고': '최근 24시간 미해결 WARN/WARNING급 비차단 경고입니다. 운영 판단을 막지는 않지만 반복되면 자동화 또는 원천 상태를 점검해야 합니다.'
   };
   return messages[label] || '시스템 운영 상태입니다.';
 }
@@ -1076,11 +1077,12 @@ function renderTimeline() {
 
 function renderSystem() {
   const system = state.data.system || {};
-  const warnings = freshnessWarnings();
+  const warnings = topBannerWarnings();
   const summaryAdvisory = summaryAdvisoryMessage(system);
   const lastSummaryAt = system.lastSummaryAt || system.last_summary_at || '-';
   const summaryFreshnessLevel = system.summaryFreshnessLevel || system.summary_freshness_level;
   const summary = state.data.summary || {};
+  const systemErrorCount = Number(summary.systemError24h ?? summary.system_error_24h ?? system.systemError24h ?? system.system_error_24h ?? 0);
   const systemWarnCount = Number(summary.systemWarn24h ?? summary.system_warn_24h ?? system.systemWarn24h ?? system.system_warn_24h ?? 0);
   const items = [
     { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || systemFreshnessClass(lastSummaryAt, 8) },
@@ -1089,6 +1091,7 @@ function renderSystem() {
     { label: '데이터 상태', value: operationalDataStatus(system), className: operationalDataStatusClass() },
     { label: '판단 상태', value: decisionReadinessLabel(), className: decisionReadinessClass() },
     { label: '기상 신호', value: weatherSignalSummaryText(), className: weatherSignalHasRisk() ? 'warning' : 'ok' },
+    { label: '시스템 오류', value: `${systemErrorCount}건`, className: systemErrorCount > 0 ? 'danger' : 'ok' },
     { label: '시스템 경고', value: `${systemWarnCount}건`, className: systemWarnCount > 0 ? 'warning' : 'ok' }
   ];
   $('systemStatus').innerHTML = items.map((item) => `
@@ -1770,6 +1773,7 @@ function lastNumber(values) {
 
 function freshnessWarnings(options = {}) {
   const includeSummaryAdvisory = Boolean(options.includeSummaryAdvisory);
+  const includeOperationalAdvisory = options.includeOperationalAdvisory !== false;
   const system = state.data && state.data.system ? state.data.system : {};
   const summary = state.data && state.data.summary ? state.data.summary : {};
   const provided = system.freshnessWarnings || system.freshness_warnings || [];
@@ -1778,6 +1782,7 @@ function freshnessWarnings(options = {}) {
       const text = String(warning || '');
       if (text.includes('마지막 요약 알림이 4시간 이상')) return false;
       if (!includeSummaryAdvisory && isSummaryAdvisoryWarning(text)) return false;
+      if (!includeOperationalAdvisory && isOperationalAdvisoryWarning(text)) return false;
       return true;
     })
     : [];
@@ -1798,11 +1803,23 @@ function freshnessWarnings(options = {}) {
     warnings.push(versionMismatchWarning(currentVersion, expectedVersion));
   }
   if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
-  if (systemErrorCount > 0 && !warnings.some((warning) => String(warning || '').includes('시스템 오류'))) {
+  if (includeOperationalAdvisory && systemErrorCount > 0 && !warnings.some((warning) => String(warning || '').includes('시스템 오류'))) {
     warnings.push(`시스템 오류 ${systemErrorCount}건`);
   }
-  if (dataWaitCount > 0) warnings.push(`성과 확정 대기 ${dataWaitCount}건`);
+  if (includeOperationalAdvisory && dataWaitCount > 0) warnings.push(`성과 확정 대기 ${dataWaitCount}건`);
   return [...new Set(warnings)];
+}
+
+function topBannerWarnings() {
+  return freshnessWarnings({ includeOperationalAdvisory: false });
+}
+
+function isOperationalAdvisoryWarning(warning) {
+  const text = String(warning || '');
+  return text.includes('시스템 오류')
+    || text.includes('시스템 경고')
+    || text.includes('성과 확정 대기')
+    || text.includes('회복 성과 확정 대기');
 }
 
 function isSummaryAdvisoryWarning(warning) {
@@ -1979,8 +1996,15 @@ function showWarning(message) {
 
 function showBanner(message, type) {
   const banner = $('errorBanner');
-  banner.textContent = message;
   banner.className = `global-banner ${type || 'error'}`;
+  if (type === 'warning' && Array.isArray(message)) {
+    banner.innerHTML = `
+      <span class="global-banner-title">주의</span>
+      <span class="global-banner-list">${message.map((item) => `<span class="global-banner-chip">${escapeHtml(item)}</span>`).join('')}</span>
+    `;
+  } else {
+    banner.textContent = Array.isArray(message) ? message.join(' · ') : message;
+  }
   banner.hidden = false;
 }
 

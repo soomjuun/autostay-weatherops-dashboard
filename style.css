@@ -67,12 +67,17 @@ button:disabled {
   position: sticky;
   top: 0;
   z-index: 20;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
   padding: 10px 18px;
   background: #fff7ed;
   border-bottom: 1px solid #fed7aa;
   color: #9a3412;
   font-size: 13px;
   font-weight: 700;
+  line-height: 1.45;
 }
 .global-banner.error {
   background: #fef2f2;
@@ -83,6 +88,28 @@ button:disabled {
   background: #fff7ed;
   border-bottom-color: #fed7aa;
   color: #9a3412;
+}
+.global-banner-title {
+  flex: 0 0 auto;
+  font-weight: 900;
+}
+.global-banner-list {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+.global-banner-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.62);
+  border: 1px solid rgba(154,52,18,.16);
+  color: inherit;
+  white-space: normal;
 }
 .toast {
   position: fixed;
@@ -195,7 +222,7 @@ h1 {
 
 .kpi-strip {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 10px;
   margin-top: 22px;
 }
