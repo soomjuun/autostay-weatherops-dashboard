@@ -85,9 +85,7 @@ button:disabled {
   color: #991b1b;
 }
 .global-banner.warning {
-  background: #fff7ed;
-  border-bottom-color: #fed7aa;
-  color: #9a3412;
+  display: none;
 }
 .global-banner-title {
   flex: 0 0 auto;

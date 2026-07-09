@@ -622,14 +622,8 @@ function renderDecisionBanner() {
   if (!target) return;
   const readinessClass = decisionReadinessClass();
   const signal = state.data.weatherSignal || {};
-  const shouldShow = readinessClass === 'danger' || (weatherSignalHasRisk() && weatherSignalMode() !== 'prod');
-  if (!shouldShow) {
-    target.hidden = true;
-    target.innerHTML = '';
-    return;
-  }
-  target.hidden = false;
-  target.className = `decision-banner ${readinessClass}`;
+  const title = decisionReadinessLabel();
+  const message = String(signal.message || '').trim();
   const signalTime = formatDateTime(signal.generatedAt || signal.observedAt);
   const meta = [
     ['운영', levelLabel(prodOverallStatus())],
@@ -637,10 +631,21 @@ function renderDecisionBanner() {
     ['모드', weatherSignalMode()],
     ['관측', signalTime]
   ].filter(([, value]) => value);
+  const hasContent = Boolean(message || weatherSignalHasRisk());
+  const shouldShow = readinessClass === 'danger' && hasContent;
+  if (!shouldShow) {
+    target.hidden = true;
+    target.innerHTML = '';
+    target.removeAttribute('class');
+    target.className = 'decision-banner';
+    return;
+  }
+  target.hidden = false;
+  target.className = `decision-banner ${readinessClass}`;
   target.innerHTML = `
     <div>
-      <strong>${escapeHtml(decisionReadinessLabel())}</strong>
-      <span>${escapeHtml(signal.message || weatherSignalSummaryText())}</span>
+      <strong>${escapeHtml(title)}</strong>
+      <span>${escapeHtml(message || weatherSignalSummaryText())}</span>
     </div>
     <div class="decision-meta">
       ${meta.map(([label, value]) => `<span>${escapeHtml(label)}: ${escapeHtml(value)}</span>`).join('')}
@@ -2183,7 +2188,8 @@ function showError(message) {
 }
 
 function showWarning(message) {
-  showBanner(message, 'warning');
+  hideError();
+  console.warn('Weather Ops dashboard warning', message);
 }
 
 function showBanner(message, type) {
