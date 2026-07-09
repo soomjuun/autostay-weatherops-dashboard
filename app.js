@@ -457,14 +457,20 @@ function decisionReadinessClass() {
 
 function decisionReadinessHelpText() {
   const readiness = decisionReadiness();
+  const nextDue = nextSummaryDueText();
   const messages = {
     prod_ready: '최신 기상 신호가 prod 운영 반영 기준으로 들어와 화면만으로 공식 운영 판단이 가능합니다.',
     shadow_only: '최신 기상 신호는 있으나 공식 prod 운영 액션으로 반영되기 전입니다. 화면의 기상 신호를 확인하되 운영 반영 여부를 별도로 판단해야 합니다.',
-    stale: '기상 신호 생성 시각이 오래되어 최신 운영 판단에 제한이 있습니다.',
+    stale: `기상 신호 생성 시각이 오래되어 최신 운영 판단에 제한이 있습니다.${nextDue ? ` 다음 종합 신호 예정 또는 기준 시각은 ${nextDue}입니다.` : ''}`,
     error: '시스템 오류 또는 데이터 확인 신호가 있어 원천 데이터와 자동화 상태를 점검해야 합니다.',
     no_signal: '최신 기상 신호가 없어 prod 운영 상태만으로는 현재 기상 리스크를 판단하기 어렵습니다.'
   };
   return messages[readiness] || `판단 가능성은 system.decisionReadiness 기준입니다. ${WEATHER_SIGNAL_HELP}`;
+}
+
+function nextSummaryDueText() {
+  const system = state.data && state.data.system ? state.data.system : {};
+  return formatDateTime(system.nextSummaryDueAt || system.next_summary_due_at) || '';
 }
 
 function weatherSignalSummaryText() {
@@ -546,6 +552,9 @@ function renderHero() {
 function renderKpis() {
   const summary = state.data.summary || {};
   const signalSummary = (state.data.weatherSignal && state.data.weatherSignal.summary) || {};
+  const system = state.data.system || {};
+  const systemErrorCount = summary.systemError24h ?? summary.system_error_24h ?? system.systemError24h ?? system.system_error_24h ?? 0;
+  const systemWarnCount = summary.systemWarn24h ?? summary.system_warn_24h ?? system.systemWarn24h ?? system.system_warn_24h ?? 0;
   const items = [
     ['운영 즉시', summary.immediateCount ?? summary.immediate_count ?? 0, 'prod Orange/Red'],
     ['신호 즉시', signalSummary.actionRequired ?? 0, `${weatherSignalModeLabel()} 감지`],
@@ -554,7 +563,8 @@ function renderKpis() {
     ['회복 조치', summary.recoveryActionCount ?? summary.recovery_action_count ?? 0, 'D+1/D+2 액션'],
     ['CRM 가능', summary.crmReadyCount ?? summary.crm_ready_count ?? 0, '마케팅 실행 후보'],
     ['성과 대기', summary.dataWaitCount ?? summary.data_wait_count ?? 0, '매출/처리대수 확정 전'],
-    ['시스템 오류', summary.systemError24h ?? summary.system_error_24h ?? 0, '최근 24시간']
+    ['시스템 오류', systemErrorCount, '최근 24시간'],
+    ['시스템 경고', systemWarnCount, '최근 24시간']
   ];
   $('kpiStrip').innerHTML = items.map(([label, value, note]) => `
     <div class="kpi">
@@ -995,7 +1005,8 @@ function kpiHelpText(label) {
     '회복 조치': '기상 영향 이후 D+1/D+2 회복 또는 재방문 유도가 필요한 실행 항목입니다.',
     'CRM 가능': 'AS 정상화와 회복 판단을 통과해 고객 안내, 재방문, 쿠폰 등 마케팅 실행 후보가 된 대상입니다.',
     '성과 대기': '매출 또는 처리대수 데이터 확정 전이라 회복률과 액션 성과를 아직 판단하지 않는 대상입니다.',
-    '시스템 오류': '최근 24시간 시스템 오류 집계입니다. 해결 처리된 과거 인증 점검 오류는 운영 오류 판단에서 제외될 수 있습니다.'
+    '시스템 오류': '최근 24시간 시스템 오류 집계입니다. 해결 처리된 과거 인증 점검 오류는 운영 오류 판단에서 제외될 수 있습니다.',
+    '시스템 경고': '최근 24시간 비차단 경고 집계입니다. 자동화 중단은 아니지만 지점 알림 일부 실패, 원천 위생 경고처럼 운영자가 추적하면 좋은 신호입니다.'
   };
   return messages[label] || '운영 판단용 핵심 지표입니다.';
 }
@@ -1046,7 +1057,8 @@ function systemItemHelpText(label) {
     '시트/Pack': `Apps Script/시트가 보고한 Weather Ops Pack 버전입니다. 현재 기대 버전은 ${EXPECTED_PACK_VERSION}입니다.`,
     '데이터 상태': `dashboard payload 연결과 운영 데이터 상태입니다. ${WEATHER_API_HELP}`,
     '판단 상태': decisionReadinessHelpText(),
-    '기상 신호': weatherSignalHelpText()
+    '기상 신호': weatherSignalHelpText(),
+    '시스템 경고': '최근 24시간 비차단 경고입니다. 오류와 달리 dashboard 판단 상태를 error로 만들지는 않지만, 반복되면 자동화 또는 원천 상태를 점검해야 합니다.'
   };
   return messages[label] || '시스템 운영 상태입니다.';
 }
@@ -1068,13 +1080,16 @@ function renderSystem() {
   const summaryAdvisory = summaryAdvisoryMessage(system);
   const lastSummaryAt = system.lastSummaryAt || system.last_summary_at || '-';
   const summaryFreshnessLevel = system.summaryFreshnessLevel || system.summary_freshness_level;
+  const summary = state.data.summary || {};
+  const systemWarnCount = Number(summary.systemWarn24h ?? summary.system_warn_24h ?? system.systemWarn24h ?? system.system_warn_24h ?? 0);
   const items = [
     { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || systemFreshnessClass(lastSummaryAt, 8) },
     { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
     { label: '시트/Pack', value: formatPackVersionStatus(system), className: versionStatusClass(system) },
     { label: '데이터 상태', value: operationalDataStatus(system), className: operationalDataStatusClass() },
     { label: '판단 상태', value: decisionReadinessLabel(), className: decisionReadinessClass() },
-    { label: '기상 신호', value: weatherSignalSummaryText(), className: weatherSignalHasRisk() ? 'warning' : 'ok' }
+    { label: '기상 신호', value: weatherSignalSummaryText(), className: weatherSignalHasRisk() ? 'warning' : 'ok' },
+    { label: '시스템 경고', value: `${systemWarnCount}건`, className: systemWarnCount > 0 ? 'warning' : 'ok' }
   ];
   $('systemStatus').innerHTML = items.map((item) => `
     <div class="system-item ${escapeAttr(item.className)}">

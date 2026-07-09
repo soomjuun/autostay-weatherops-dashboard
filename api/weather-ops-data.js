@@ -419,6 +419,7 @@ function samplePayload(source) {
 
   return {
     version: 'v2.16.4',
+    dashboardPayloadVersion: 'v2.16.4-weather-signal.1',
     generatedAt: iso,
     source,
     summary: {
@@ -430,9 +431,34 @@ function samplePayload(source) {
       crmReadyCount: 2,
       dataWaitCount: 1,
       systemError24h: 0,
+      systemWarn24h: 0,
       headline: '강수 리스크로 3개 지점 즉시 확인, 2개 지점은 회복 수요 흡수 가능'
     },
     stores,
+    weatherSignal: {
+      mode: 'shadow',
+      generatedAt: iso,
+      overallStatus: 'Orange',
+      summary: {
+        totalStores: stores.length,
+        normal: 1,
+        watch: 4,
+        actionRequired: 3,
+        dataCheck: 0
+      },
+      stores: stores.map((store) => ({
+        storeId: store.id,
+        storeName: store.name,
+        status: store.status,
+        actionLevel: store.status === 'Orange' || store.status === 'Red' ? '즉시확인' : (store.status === 'Yellow' ? '사전점검' : '정상'),
+        riskType: store.trigger,
+        reason: store.weatherDetail,
+        weather: store.weatherData,
+        mode: 'shadow',
+        observedAt: iso
+      }))
+    },
+    decisionReadiness: 'shadow_only',
     opsActions: [
       { priority: 'P0', team: '사업운영팀', store: '샘플 도심점', action: 'AS 정상화 게이트 확인 전 고객 방문 유도 중지', owner: '사업운영팀', due: '즉시', status: '대기' },
       { priority: 'P0', team: '사업운영팀', store: '샘플 동부점', action: '피크 전 배수/건조존/대기열 준비 완료 여부 확인', owner: '운영 담당 B', due: '17:00', status: '진행중' },
@@ -482,6 +508,11 @@ function samplePayload(source) {
       appsScriptVersion: 'v2.16.4',
       packVersion: 'v2.16.4',
       sheetVersion: 'v2.16.4',
+      dashboardPayloadVersion: 'v2.16.4-weather-signal.1',
+      decisionReadiness: 'shadow_only',
+      nextSummaryDueAt: iso,
+      systemError24h: 0,
+      systemWarn24h: 0,
       dataFreshness: '샘플 데이터',
       freshnessWarnings: source === 'sample_no_api_url' ? ['실데이터 API 미연결'] : [],
       apiWarning: source === 'sample_no_api_url' ? 'WEATHER_OPS_API_URL 미설정: 샘플 데이터 표시 중' : ''

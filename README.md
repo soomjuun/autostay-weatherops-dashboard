@@ -100,6 +100,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     "crmReadyCount": 2,
     "dataWaitCount": 1,
     "systemError24h": 0,
+    "systemWarn24h": 1,
     "headline": "강수 리스크로 3개 지점 즉시 확인"
   },
   "stores": [
@@ -109,6 +110,10 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
       "region": "샘플 동부권",
       "dri": "운영 담당 B",
       "status": "Orange",
+      "prodStatus": "Green",
+      "signalStatus": "Orange",
+      "signalMode": "shadow",
+      "signalReason": "강수확률 80%, 예상 강수량 4mm",
       "weather": "강한 비",
       "weatherDetail": "피크 전 강수 집중 가능",
       "trigger": "강수",
@@ -130,6 +135,19 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
       "nextAction": "17시 전 현장 준비 완료 후 D+1 재방문 유도 검토"
     }
   ],
+  "weatherSignal": {
+    "mode": "shadow",
+    "generatedAt": "2026-06-25T09:10:00+09:00",
+    "overallStatus": "Orange",
+    "summary": {
+      "totalStores": 7,
+      "normal": 4,
+      "watch": 0,
+      "actionRequired": 3,
+      "dataCheck": 0
+    },
+    "stores": []
+  },
   "opsActions": [],
   "marketingActions": [],
   "recovery": {
@@ -164,12 +182,19 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
     "nextSummaryDueAt": "2026-06-25T16:30:00+09:00",
     "lastRevenueSyncAt": "2026-06-25T05:40:00+09:00",
     "appsScriptVersion": "v2.16.4",
+    "decisionReadiness": "shadow_only",
+    "systemError24h": 0,
+    "systemWarn24h": 1,
     "dataFreshness": "실데이터",
     "freshnessWarnings": []
   },
   "weatherTimeline": []
 }
 ```
+
+`summary.systemError24h`와 `system.systemError24h`는 운영 판단을 막을 수 있는 미해결 오류입니다. `systemWarn24h`는 비차단 경고이며, 지점 알림 일부 실패나 원천 위생 경고처럼 추적은 필요하지만 `decisionReadiness=error`로 올리지는 않는 신호입니다.
+
+`decisionReadiness=stale`은 단순 4시간 경과가 아니라 예정된 다음 종합 신호 시각을 넘겼는지 기준으로 판단해야 합니다. 평온한 날의 09:10 신호는 16:30 다음 종합 신호 전까지 stale로 보지 않습니다.
 
 ## GitHub 업로드
 
