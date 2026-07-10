@@ -2,10 +2,14 @@ const state = {
   data: null,
   risk: 'all',
   store: 'all',
-  chart: null
+  chart: null,
+  loading: false,
+  lastLoadedAt: 0,
+  refreshTimer: null
 };
 const EXPECTED_PACK_VERSION = 'v2.16.4';
 const DASHBOARD_CACHE_KEY = 'weatherOpsDashboard:lastSuccess:v2';
+const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 const $ = (id) => document.getElementById(id);
 
@@ -47,6 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
   decorateDashboardHelp();
   bindEvents();
   loadDashboard();
+  startAutoRefresh();
 });
 
 function checkAuthSession() {
@@ -71,8 +76,22 @@ function bindEvents() {
       render();
     });
   });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') return;
+    if (!state.lastLoadedAt || Date.now() - state.lastLoadedAt >= AUTO_REFRESH_INTERVAL_MS) {
+      loadDashboard({ fresh: true, silent: true });
+    }
+  });
+  window.addEventListener('online', () => loadDashboard({ fresh: true, silent: true }));
   $('dialogClose').addEventListener('click', () => $('storeDialog').close());
   updateRiskFilterState();
+}
+
+function startAutoRefresh() {
+  if (state.refreshTimer) window.clearInterval(state.refreshTimer);
+  state.refreshTimer = window.setInterval(() => {
+    if (document.visibilityState === 'visible') loadDashboard({ silent: true });
+  }, AUTO_REFRESH_INTERVAL_MS);
 }
 
 function decorateDashboardHelp() {
@@ -92,7 +111,9 @@ function updateRiskFilterState() {
 }
 
 async function loadDashboard(options = {}) {
-  showLoading(true);
+  if (state.loading) return;
+  state.loading = true;
+  if (!options.silent) showLoading(true);
   hideError();
   try {
     const url = options.fresh ? '/api/weather-ops-data?fresh=1' : '/api/weather-ops-data';
@@ -104,6 +125,7 @@ async function loadDashboard(options = {}) {
     const payload = await parseJsonResponse(response);
     if (!response.ok || payload.source === 'non_json_response') throw new Error(formatApiError(payload, response.status));
     state.data = normalize(payload);
+    state.lastLoadedAt = Date.now();
     cacheDashboardData(state.data);
     ensureStoreOptions();
     render();
@@ -124,7 +146,8 @@ async function loadDashboard(options = {}) {
       showError(`데이터를 불러오지 못했습니다. ${readableError}`);
     }
   } finally {
-    showLoading(false);
+    state.loading = false;
+    if (!options.silent) showLoading(false);
   }
 }
 
@@ -664,6 +687,13 @@ function weatherSignalHelpText() {
 function dashboardHeadline() {
   const summary = state.data.summary || {};
   const signal = state.data.weatherSignal || {};
+  if (!hasWeatherSignalData()) {
+    const prodStatus = prodOverallStatus();
+    if (['Error', 'Red', 'Orange', 'Yellow'].includes(prodStatus)) {
+      return summary.headline || '운영 원장 기준 확인이 필요한 항목이 있습니다. 최신 기상 신호는 아직 수신되지 않았습니다.';
+    }
+    return '운영 원장 기준 즉시 조치는 없습니다. 최신 기상 신호 수신 전이므로 기상 판단은 대기입니다.';
+  }
   if (weatherSignalHasRisk()) {
     return signal.message || '실제 기상 API 기준 위험 신호가 있어 지점별 기상 신호를 먼저 확인해야 합니다.';
   }
@@ -722,7 +752,7 @@ function renderHero() {
   $('headline').textContent = dashboardHeadline();
   const sourceText = state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결';
   const metaItems = [
-    { text: `업데이트 ${formatDateTime(state.data.generatedAt)}`, help: 'Apps Script dashboard payload가 생성된 시각입니다. 브라우저 새로고침 시 Vercel API가 이 값을 다시 조회합니다.' },
+    { text: `업데이트 ${formatDateTime(state.data.generatedAt)}`, help: 'Apps Script dashboard payload가 생성된 시각입니다. 화면은 5분마다 자동 갱신되며, 오래 비활성화한 탭으로 돌아오면 최신 데이터를 즉시 다시 조회합니다.' },
     { text: `버전 ${state.data.version}`, help: '대시보드 payload가 보고한 Weather Ops Pack 또는 시트 버전입니다. 현재 기대 버전은 v2.16.4입니다.' },
     { text: sourceText, help: sourceText === '샘플 데이터' ? '샘플 fallback 데이터입니다. 운영 배포에서는 실데이터 연결이어야 합니다.' : `Vercel이 Apps Script dashboard payload를 정상 수신했다는 뜻입니다. ${WEATHER_API_HELP}` },
     { text: `운영 원장 ${levelLabel(prodStatus)}`, help: '공식 완료보고, AS 정상화, 매출회복, CRM 실행 상태는 prod 운영 원장 기준으로 봅니다.' },

@@ -8,6 +8,8 @@
   },
   "scripts": {
     "dev": "vercel dev",
-    "start": "vercel dev"
+    "start": "vercel dev",
+    "test": "node --test tests/dashboard.test.js",
+    "check": "node --check app.js && node --check api/auth.js && node --check api/check.js && node --check api/weather-ops-data.js && node --test tests/dashboard.test.js"
   }
 }
