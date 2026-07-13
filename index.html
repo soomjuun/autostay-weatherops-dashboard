@@ -6,7 +6,7 @@
   <title>[OPS] Weather Ops Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
-  <link rel="stylesheet" href="style.css?v=2026-07-10-1">
+  <link rel="stylesheet" href="style.css?v=2026-07-13-1">
   <script
     src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
     integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
@@ -30,7 +30,7 @@
         <div>
           <div class="eyebrow">AUTOSTAY DIRECT STORES · WEATHER OPS</div>
           <h1>[OPS] Weather Ops Dashboard</h1>
-          <p class="hero-copy">기상 리스크, 현장 정상화, 회복 수요, 사업운영/마케팅 액션을 하나의 운영 화면에서 확인합니다.</p>
+          <p class="hero-copy">안전을 먼저 확보하고 다운타임과 고객 불편을 줄인 뒤, 기상 악화 이후 수요와 매출 회복 시점을 판단합니다.</p>
           <a class="logout-link" href="/api/auth?logout=1">로그아웃</a>
           <div id="heroMeta" class="hero-meta"></div>
         </div>
@@ -40,7 +40,7 @@
           <div id="headline" class="command-body">데이터 로딩 중</div>
         </aside>
       </div>
-      <section id="kpiStrip" class="kpi-strip" aria-label="핵심 지표"></section>
+      <section id="kpiStrip" class="kpi-strip mission-strip" aria-label="운영 목적 상태"></section>
       <section id="decisionBanner" class="decision-banner" aria-label="운영 판단 상태" hidden></section>
     </header>
 
@@ -70,7 +70,7 @@
         <div class="metro-map" id="metroMap" aria-label="직영점 지점 현황"></div>
       </article>
 
-      <article class="panel queue-panel">
+      <article id="recoveryQueuePanel" class="panel queue-panel">
         <div class="panel-head">
           <div>
             <h2>회복 큐</h2>
@@ -91,7 +91,7 @@
       </article>
     </section>
 
-    <section class="action-section" aria-label="오늘 조치할 항목">
+    <section id="actionSection" class="action-section" aria-label="오늘 조치할 항목">
       <article class="panel action-panel">
         <div class="panel-head">
           <div>
@@ -112,9 +112,9 @@
       </article>
     </section>
 
-    <section class="visual-grid" aria-label="운영 시각화">
+    <section id="visualGrid" class="visual-grid" aria-label="운영 시각화">
       <div class="visual-column">
-      <article class="panel risk-panel">
+      <article id="riskPanel" class="panel risk-panel">
         <div class="panel-head">
           <div>
             <h2>오늘 기상 리스크</h2>
@@ -124,7 +124,7 @@
         <div id="riskMatrix" class="risk-matrix"></div>
       </article>
 
-      <article class="panel funnel-panel">
+      <article id="recoveryFunnelPanel" class="panel funnel-panel">
         <div class="panel-head">
           <div>
             <h2>회복 실행 단계</h2>
@@ -137,7 +137,7 @@
       </div>
 
       <div class="visual-column">
-      <article class="panel small-multiple-panel">
+      <article id="recoveryStagePanel" class="panel small-multiple-panel">
         <div class="panel-head">
           <div>
             <h2>지점별 회복 진행</h2>
@@ -148,7 +148,7 @@
         <div id="processedBulletList" class="bullet-list"></div>
       </article>
 
-      <article class="panel gap-panel">
+      <article id="recoveryGapPanel" class="panel gap-panel">
         <div class="panel-head">
           <div>
             <h2>처리대수 회복 vs 매출 회복</h2>
@@ -175,6 +175,7 @@
               <th>운영/신호</th>
               <th>기상/트리거</th>
               <th>AS</th>
+              <th>CS/고객</th>
               <th>회복</th>
               <th>담당</th>
               <th>다음 액션</th>
@@ -217,6 +218,6 @@
     <div id="dialogBody" class="dialog-body"></div>
   </dialog>
 
-  <script src="app.js?v=2026-07-10-1"></script>
+  <script src="app.js?v=2026-07-13-1"></script>
 </body>
 </html>

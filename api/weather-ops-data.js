@@ -1,4 +1,4 @@
-const EXPECTED_PACK_VERSION = process.env.WEATHER_OPS_EXPECTED_VERSION || 'v2.16.4';
+const EXPECTED_PACK_VERSION = String(process.env.WEATHER_OPS_EXPECTED_VERSION || '').trim();
 const VERSION_REMEDIATION = '시트 탭 수정 대상이 아닙니다. Apps Script Web App을 새 버전으로 재배포하거나 Vercel WEATHER_OPS_API_URL이 최신 Web App URL인지 확인하세요.';
 const APPS_SCRIPT_TOKEN_MISSING = 'WEATHER_OPS_DASHBOARD_TOKEN is not configured';
 const APPS_SCRIPT_TOKEN_UNAUTHORIZED = 'Unauthorized dashboard token';
@@ -183,7 +183,7 @@ function normalizePayload(payload, source) {
   const generatedAt = data.generatedAt || data.generated_at || payload.generatedAt || payload.generated_at || '';
   const system = objectOrEmpty(data.system);
   const version = normalizeVersion(data, payload, system);
-  system.expectedPackVersion = EXPECTED_PACK_VERSION;
+  if (EXPECTED_PACK_VERSION) system.expectedPackVersion = EXPECTED_PACK_VERSION;
   if (version && version !== 'unknown') {
     system.packVersion = version;
     system.sheetVersion = version;

@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, formatPeakTime, startAutoRefresh };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, hasActiveRecoveryData };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -102,6 +102,55 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Orange">조치<\/button>/);
   assert.match(html, /data-risk="Yellow">주의<\/button>/);
   assert.match(html, /data-risk="Green">정상<\/button>/);
-  assert.match(html, /app\.js\?v=2026-07-10-1/);
-  assert.match(html, /style\.css\?v=2026-07-10-1/);
+  assert.match(html, /CS\/고객/);
+  assert.match(html, /app\.js\?v=2026-07-13-1/);
+  assert.match(html, /style\.css\?v=2026-07-13-1/);
+});
+
+test('운영 목적 카드는 기상 신호와 CS 지표 부재를 정상 0건으로 오인하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.data = {
+    summary: {
+      immediateCount: 0,
+      asBlockedCount: 0,
+      recoveryActionCount: 0,
+      dataWaitCount: 0,
+      crmReadyCount: 0
+    },
+    stores: [{ status: 'Green', prodStatus: 'Green', asStatus: '정상', recoveryStatus: '대상 없음' }],
+    weatherSignal: {},
+    recovery: {},
+    system: {}
+  };
+  const cards = api.missionCards();
+  assert.equal(cards[0].value, '판단 대기');
+  assert.equal(cards[2].value, '확인 전');
+  assert.match(cards[2].note, /고객 안내 지표 없음/);
+});
+
+test('최신 시트의 AS ETA와 고객 안내 필드를 지점 상태로 정규화한다', () => {
+  const { api } = loadDashboardLogic();
+  const store = api.normalizeStore({
+    store_id: 'goyang',
+    store_name: '고양 삼송',
+    normalization_gate: '정상화 대기',
+    normalization_blocker: '부품 수급 대기',
+    vendor_eta: '2026-07-13T18:00:00+09:00',
+    downtime_minutes: 95,
+    customer_notice_status: '승인 대기',
+    customer_impact: '부분 운영 안내 필요'
+  });
+  assert.equal(store.normalizationBlocker, '부품 수급 대기');
+  assert.equal(store.vendorEta, '2026-07-13T18:00:00+09:00');
+  assert.equal(store.downtimeMinutes, 95);
+  assert.equal(store.customerNoticeStatus, '승인 대기');
+  assert.equal(store.customerImpact, '부분 운영 안내 필요');
+  api.state.data = { summary: {}, stores: [store], weatherSignal: {}, recovery: {}, system: {} };
+  assert.equal(api.missionCards()[1].value, '1개점');
+});
+
+test('기대 버전은 환경변수 설정 시에만 고정 비교한다', () => {
+  const proxySource = fs.readFileSync(path.join(ROOT, 'api', 'weather-ops-data.js'), 'utf8');
+  assert.match(proxySource, /WEATHER_OPS_EXPECTED_VERSION \|\| ''/);
+  assert.doesNotMatch(proxySource, /WEATHER_OPS_EXPECTED_VERSION \|\| 'v2\.16\.4'/);
 });

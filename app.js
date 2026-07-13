@@ -7,7 +7,7 @@ const state = {
   lastLoadedAt: 0,
   refreshTimer: null
 };
-const EXPECTED_PACK_VERSION = 'v2.16.4';
+const EXPECTED_PACK_VERSION = '';
 const DASHBOARD_CACHE_KEY = 'weatherOpsDashboard:lastSuccess:v2';
 const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
@@ -40,7 +40,7 @@ const STATIC_HELP_ITEMS = [
   ['.funnel-panel h2', '회복 실행 단계는 하락 감지부터 CRM 후보, 발송, 재방문 회수까지 전환 흐름을 보여줍니다. AS 차단은 정상화 전 단계로 별도 표시합니다.', '회복 실행 기준'],
   ['.small-multiple-panel h2', '지점별 회복 진행은 처리대수 회복률을 색상으로, 매출 회복률을 보조 수치로 표시합니다. 100% 이상 정상, 90~99% 관찰, 90% 미만 조치 기준입니다.', '회복 진행 기준'],
   ['.gap-panel h2', '처리대수 회복률과 매출 회복률의 차이를 비교합니다. 처리대수만 회복된 지점은 결제, 단가, 구독·쿠폰 믹스를 추가 확인합니다.', '회복 갭 기준'],
-  ['.table-panel h2', `지점별 상태 표는 운영 상태, 기상 신호, AS, 회복, 담당, 다음 액션을 한 줄로 비교합니다. ${WEATHER_API_HELP}`, '지점별 상태 기준'],
+  ['.table-panel h2', `지점별 상태 표는 운영 상태, 기상 신호, AS·다운타임, CS·고객 안내, 회복, 담당, 다음 액션을 한 줄로 비교합니다. ${WEATHER_API_HELP}`, '지점별 상태 기준'],
   ['.timeline-panel h2', '오늘 운영 타임라인은 오픈 전, 피크 전, 마감 전 점검 시점을 전체 상태와 함께 보여주는 운영 리마인더입니다.', '타임라인 기준'],
   ['.system-panel h2', '시스템 상태는 요약 실행, 매출 동기화, 시트 버전, 대시보드 payload 연결 상태, 판단 가능성, 최신 기상 신호를 표시합니다.', '시스템 상태 기준']
 ];
@@ -381,6 +381,14 @@ function normalizeStore(store, signalByStore = {}) {
     riskScore: numberFrom(firstPresent(store, ['riskScore', 'risk_score', 'score', 'risk_point', '점수']), 0),
     openIssueCount: numberFrom(firstPresent(store, ['openIssueCount', 'open_issue_count', 'issueCount', 'issue_count']), 0),
     asStatus: firstPresent(store, ['asStatus', 'as_status', 'normalizationGate', 'normalization_gate', 'AS상태']) || '-',
+    normalizationBlocker: firstPresent(store, ['normalizationBlocker', 'normalization_blocker', 'capacityBlocker', 'capacity_blocker', 'AS차단사유']) || '',
+    vendorStatus: firstPresent(store, ['vendorStatus', 'vendor_status', 'asVendorStatus', 'as_vendor_status']) || '',
+    vendorEta: firstPresent(store, ['vendorEta', 'vendor_eta', 'asEta', 'as_eta', 'repairEta', 'repair_eta']) || '',
+    downtimeStartedAt: firstPresent(store, ['downtimeStartedAt', 'downtime_started_at', 'outageStartedAt', 'outage_started_at']) || '',
+    downtimeMinutes: numericOrNull(firstPresent(store, ['downtimeMinutes', 'downtime_minutes', 'outageMinutes', 'outage_minutes'])),
+    customerNoticeStatus: firstPresent(store, ['customerNoticeStatus', 'customer_notice_status', 'customerActionStatus', 'customer_action_status', 'noticeStatus', 'notice_status']) || '',
+    customerImpact: firstPresent(store, ['customerImpact', 'customer_impact', 'customerImpactStatus', 'customer_impact_status', 'customerIssue', 'customer_issue']) || '',
+    nextUpdateDue: firstPresent(store, ['nextUpdateDue', 'next_update_due', 'dueAt', 'due_at']) || '',
     recoveryStatus: firstPresent(store, ['recoveryStatus', 'recovery_status', 'recoveryState', 'recovery_state', '회복상태']) || '-',
     crmReady: normalizeBoolean(firstPresent(store, ['crmReady', 'crm_ready', 'crmReadyYn', 'crm_ready_yn', 'crmAllowed', 'crm_allowed', 'crm_allowed_yn'])),
     nextAction: firstPresent(store, ['nextAction', 'next_action', 'recommendedAction', 'recommended_action', 'action', '다음액션']) || '-'
@@ -496,6 +504,50 @@ function render() {
   renderTimeline();
   renderSystem();
   renderSystemTrend();
+  updateSectionVisibility();
+}
+
+function updateSectionVisibility() {
+  const queueRows = arrayFrom(state.data.recovery && state.data.recovery.queue).filter(matchesSelectedStore);
+  const opsRows = arrayFrom(state.data.opsActions).filter(matchesSelectedStore);
+  const marketingRows = arrayFrom(state.data.marketingActions).filter(matchesSelectedStore);
+  const recoveryActive = hasActiveRecoveryData();
+  const actionSection = $('actionSection');
+  const queuePanel = $('recoveryQueuePanel');
+  const visualGrid = $('visualGrid');
+  const primaryGrid = $('primaryDashboardGrid');
+
+  if (actionSection) actionSection.hidden = opsRows.length + marketingRows.length === 0;
+  if (queuePanel) queuePanel.hidden = queueRows.length === 0;
+  if ($('recoveryFunnelPanel')) $('recoveryFunnelPanel').hidden = !recoveryActive;
+  if ($('recoveryStagePanel')) $('recoveryStagePanel').hidden = !recoveryActive;
+  if ($('recoveryGapPanel')) $('recoveryGapPanel').hidden = !recoveryActive;
+  if (visualGrid) visualGrid.classList.toggle('single-panel', !recoveryActive);
+  if (primaryGrid) primaryGrid.classList.toggle('queue-hidden', queueRows.length === 0);
+}
+
+function hasActiveRecoveryData() {
+  const summary = state.data.summary || {};
+  const recoveryAction = metricFromKeysNumber(summary, ['recoveryActionCount', 'recovery_action_count']) || 0;
+  const dataWait = metricFromKeysNumber(summary, ['dataWaitCount', 'data_wait_count']) || 0;
+  if (recoveryAction + dataWait > 0) return true;
+
+  const queue = arrayFrom(state.data.recovery && state.data.recovery.queue).filter(matchesSelectedStore);
+  if (queue.length) return true;
+
+  const hasStoreRecovery = filteredStores().some((store) => {
+    const text = String(store.recoveryStatus || '').trim();
+    return text && text !== '-' && !/(대상 없음|대기 없음|해당 없음|정상|완료|none|not applicable)/i.test(text);
+  });
+  if (hasStoreRecovery) return true;
+
+  const recovery = state.data.recovery || {};
+  const series = state.store === 'all' ? recovery : getRecoverySeries(recovery);
+  const values = [series.processedRate, series.processed_rate, series.revenueRate, series.revenue_rate]
+    .flatMap((value) => arrayFrom(value))
+    .map(numericOrNull)
+    .filter((value) => value !== null);
+  return values.length > 0;
 }
 
 function filteredStores() {
@@ -753,7 +805,7 @@ function renderHero() {
   const sourceText = state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결';
   const metaItems = [
     { text: `업데이트 ${formatDateTime(state.data.generatedAt)}`, help: 'Apps Script dashboard payload가 생성된 시각입니다. 화면은 5분마다 자동 갱신되며, 오래 비활성화한 탭으로 돌아오면 최신 데이터를 즉시 다시 조회합니다.' },
-    { text: `버전 ${state.data.version}`, help: '대시보드 payload가 보고한 Weather Ops Pack 또는 시트 버전입니다. 현재 기대 버전은 v2.16.4입니다.' },
+    { text: `버전 ${state.data.version}`, help: 'Apps Script dashboard payload가 보고한 현재 Weather Ops Pack 또는 시트 버전입니다. 대시보드는 이 값을 자동 표시하며, 별도 기대 버전이 설정된 경우에만 불일치를 경고합니다.' },
     { text: sourceText, help: sourceText === '샘플 데이터' ? '샘플 fallback 데이터입니다. 운영 배포에서는 실데이터 연결이어야 합니다.' : `Vercel이 Apps Script dashboard payload를 정상 수신했다는 뜻입니다. ${WEATHER_API_HELP}` },
     { text: `운영 원장 ${levelLabel(prodStatus)}`, help: '공식 완료보고, AS 정상화, 매출회복, CRM 실행 상태는 prod 운영 원장 기준으로 봅니다.' },
     { text: weatherSignalStatusText(), help: weatherSignalHelpText(), warning: hasRiskSignal },
@@ -766,34 +818,111 @@ function renderHero() {
 }
 
 function renderKpis() {
-  const summary = state.data.summary || {};
-  const signalSummary = (state.data.weatherSignal && state.data.weatherSignal.summary) || {};
-  const system = state.data.system || {};
-  const systemErrorCount = firstMetricValue(summary.systemError24h, summary.system_error_24h, system.systemError24h, system.system_error_24h);
-  const systemWarnCount = firstMetricValue(summary.systemWarn24h, summary.system_warn_24h, system.systemWarn24h, system.system_warn_24h);
-  const items = [
-    ['운영 즉시', metricFrom(summary, ['immediateCount', 'immediate_count']), 'prod Orange/Red'],
-    ['신호 즉시', metricFrom(signalSummary, ['actionRequired', 'action_required']), hasWeatherSignalData() ? `${weatherSignalModeLabel()} 감지` : '신호 없음'],
-    ['주의 관찰', metricFrom(summary, ['watchCount', 'watch_count']), 'Yellow 및 회복 관찰'],
-    ['AS 차단', metricFrom(summary, ['asBlockedCount', 'as_blocked_count']), '정상화 전 유도 금지'],
-    ['회복 조치', metricFrom(summary, ['recoveryActionCount', 'recovery_action_count']), 'D+1/D+2 액션'],
-    ['CRM 가능', metricFrom(summary, ['crmReadyCount', 'crm_ready_count']), '마케팅 실행 후보'],
-    ['성과 대기', metricFrom(summary, ['dataWaitCount', 'data_wait_count']), '매출/처리대수 확정 전'],
-    ['시스템 오류', systemErrorCount, '최근 24시간 미해결'],
-    ['시스템 경고', systemWarnCount, '최근 24시간 미해결']
-  ];
-  $('kpiStrip').innerHTML = items.map(([label, value, note]) => {
-    const numericValue = Number(value);
-    const zeroClass = Number.isFinite(numericValue) && numericValue === 0 ? ' is-zero' : '';
-    const missingClass = value === '-' ? ' is-missing' : '';
+  $('kpiStrip').innerHTML = missionCards().map(({ label, value, note, level }) => {
     return `
-    <div class="kpi${zeroClass}${missingClass}">
+    <div class="kpi mission-card mission-${escapeAttr(level)}">
       <div class="kpi-label">${escapeHtml(label)}${renderInfoTip(kpiHelpText(label), `${label} 기준`)}</div>
       <div class="kpi-value">${escapeHtml(value)}</div>
       <div class="kpi-note">${escapeHtml(note)}</div>
     </div>
   `;
   }).join('');
+}
+
+function missionCards() {
+  const summary = state.data.summary || {};
+  const stores = state.data.stores || [];
+  const safetyStores = stores.filter((store) => ['Error', 'Red', 'Orange'].includes(store.status));
+  const prodImmediate = metricFromKeysNumber(summary, ['immediateCount', 'immediate_count']);
+  const signalImmediate = metricFromKeysNumber((state.data.weatherSignal && state.data.weatherSignal.summary) || {}, ['actionRequired', 'action_required']);
+  const safetyCount = safetyStores.length || Math.max(prodImmediate || 0, signalImmediate || 0);
+  const safetyWaiting = !hasWeatherSignalData() && safetyCount === 0;
+
+  const asBlocked = metricFromKeysNumber(summary, ['asBlockedCount', 'as_blocked_count']);
+  const derivedAsBlocked = stores.filter((store) => isBlockingAsStatus(store)).length;
+  const downtimeCount = asBlocked === null ? derivedAsBlocked : asBlocked;
+  const longestDowntime = missionLongestDowntime(stores);
+
+  const csMetric = firstMetricNumber(summary, [
+    'csActionCount', 'cs_action_count', 'csRiskCount', 'cs_risk_count',
+    'csPendingCount', 'cs_pending_count',
+    'customerNoticePendingCount', 'customer_notice_pending_count',
+    'customerNoticeRequiredCount', 'customer_notice_required_count',
+    'customerNoticeOpenCount', 'customer_notice_open_count',
+    'customerCommunicationPendingCount', 'customer_communication_pending_count',
+    'customerImpactCount', 'customer_impact_count', 'customerActionCount', 'customer_action_count'
+  ]);
+  const customerRows = stores.filter(hasCustomerStatusData);
+  const derivedCsCount = customerRows.filter(isCustomerActionPending).length;
+  const hasCsCoverage = csMetric !== null || customerRows.length > 0;
+  const csCount = csMetric === null ? derivedCsCount : csMetric;
+
+  const recoveryAction = metricFromKeysNumber(summary, ['recoveryActionCount', 'recovery_action_count']);
+  const dataWait = metricFromKeysNumber(summary, ['dataWaitCount', 'data_wait_count']);
+  const crmReady = metricFromKeysNumber(summary, ['crmReadyCount', 'crm_ready_count']);
+  const recoveryCount = (recoveryAction || 0) + (dataWait || 0);
+
+  return [
+    {
+      label: '안전 확보',
+      value: safetyWaiting ? '판단 대기' : `${safetyCount}개점`,
+      note: safetyWaiting ? '운영 위험 0 · 최신 API 신호 없음' : `운영 ${prodImmediate ?? 0} · 기상 신호 ${signalImmediate ?? 0}`,
+      level: safetyWaiting ? 'wait' : (safetyCount > 0 ? 'action' : 'ok')
+    },
+    {
+      label: '다운타임 축소',
+      value: `${downtimeCount}개점`,
+      note: longestDowntime ? `최장 ${longestDowntime}` : (downtimeCount > 0 ? 'AS 정상화·ETA 확인' : '현재 AS 차단 없음'),
+      level: downtimeCount > 0 ? 'action' : 'ok'
+    },
+    {
+      label: 'CS 안정화',
+      value: hasCsCoverage ? `${csCount}건` : '확인 전',
+      note: hasCsCoverage ? (csCount > 0 ? '고객 영향·안내 승인 확인' : '고객 안내 대기 없음') : 'payload에 고객 안내 지표 없음',
+      level: !hasCsCoverage ? 'wait' : (csCount > 0 ? 'watch' : 'ok')
+    },
+    {
+      label: '수요·매출 회복',
+      value: `${recoveryCount}건`,
+      note: `회복 조치 ${recoveryAction ?? 0} · 성과 대기 ${dataWait ?? 0} · CRM 가능 ${crmReady ?? 0}`,
+      level: recoveryCount > 0 ? 'watch' : 'ok'
+    }
+  ];
+}
+
+function metricFromKeysNumber(source, keys) {
+  const value = firstPresent(source || {}, keys);
+  return numericOrNull(value);
+}
+
+function firstMetricNumber(source, keys) {
+  return metricFromKeysNumber(source, keys);
+}
+
+function isBlockingAsStatus(store) {
+  const text = [store.asStatus, store.normalizationBlocker, store.vendorStatus].filter(Boolean).join(' ');
+  if (/(대상 없음|해당 없음|not required|not applicable)/i.test(text)) return false;
+  const blocking = /(차단|불가|중단|대기|필요|진행|미해결|blocked|pending|required|outage)/i.test(text);
+  if (!blocking) return false;
+  return !/(완료|해결|closed|resolved)/i.test(text) || /(대기|차단|불가|중단|미해결|blocked|pending|outage)/i.test(text);
+}
+
+function missionLongestDowntime(stores) {
+  const minutes = stores.map((store) => numericOrNull(store.downtimeMinutes)).filter((value) => value !== null);
+  if (!minutes.length) return '';
+  const longest = Math.max(...minutes);
+  if (longest < 60) return `${Math.round(longest)}분`;
+  return `${(longest / 60).toFixed(longest % 60 ? 1 : 0)}시간`;
+}
+
+function hasCustomerStatusData(store) {
+  return Boolean(String(store.customerNoticeStatus || '').trim() || String(store.customerImpact || '').trim());
+}
+
+function isCustomerActionPending(store) {
+  const text = [store.customerNoticeStatus, store.customerImpact].filter(Boolean).join(' ');
+  return /(필요|대기|미완료|초안|승인|영향|불편|민원|pending|required|draft|impact)/i.test(text)
+    && !/(불필요|해당 없음|완료|발송 완료|영향 없음|not required|none)/i.test(text);
 }
 
 function renderMap() {
@@ -858,26 +987,43 @@ function renderActions() {
 function renderActionList(items, fallbackTeam) {
   const filtered = (items || []).filter(matchesSelectedStore);
   if (!filtered.length) return '<div class="empty-state compact">현재 필터 기준 조치 항목이 없습니다.</div>';
-  return filtered.map((item) => `
-    <div class="action-item">
-      <div class="action-top">
-        <span class="priority">${escapeHtml(item.priority || 'P1')}</span>
-        <span class="action-store">${escapeHtml(item.store || fallbackTeam)}</span>
+  return filtered.map((item) => {
+    const priority = firstPresent(item, ['priority', 'level', 'actionLevel', 'action_level']) || 'P1';
+    const store = firstPresent(item, ['store', 'storeName', 'store_name', 'name']) || fallbackTeam;
+    const action = firstPresent(item, ['action', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action', 'customerAction', 'customer_action', 'revenueAction', 'revenue_action']) || '-';
+    const owner = firstPresent(item, ['owner', 'dri', 'team', 'opsLead', 'ops_lead']) || fallbackTeam;
+    const due = firstPresent(item, ['due', 'dueAt', 'due_at', 'nextUpdateDue', 'next_update_due', 'vendorEta', 'vendor_eta', 'status']) || '-';
+    const audience = firstPresent(item, ['estimatedAudience', 'estimated_audience', 'audienceCount', 'audience_count']);
+    return `
+      <div class="action-item">
+        <div class="action-top">
+          <span class="priority">${escapeHtml(priority)}</span>
+          <span class="action-store">${escapeHtml(store)}</span>
+        </div>
+        <div class="action-body">${escapeHtml(action)}</div>
+        <div class="action-foot">
+          <span>담당 ${escapeHtml(owner)}</span>
+          <span>기한 ${escapeHtml(formatActionDue(due))}</span>
+          ${audience !== null && Number.isFinite(Number(audience)) ? `<span>대상 ${Number(audience).toLocaleString('ko-KR')}명</span>` : ''}
+        </div>
       </div>
-      <div class="action-body">${escapeHtml(item.action || '-')}</div>
-      <div class="action-foot">
-        <span>담당 ${escapeHtml(item.owner || item.team || fallbackTeam)}</span>
-        <span>기한 ${escapeHtml(item.due || item.status || '-')}</span>
-        ${item.estimatedAudience ? `<span>대상 ${Number(item.estimatedAudience).toLocaleString('ko-KR')}명</span>` : ''}
-      </div>
-    </div>
-  `).join('');
+    `;
+  }).join('');
+}
+
+function formatActionDue(value) {
+  const formatted = formatDateTime(value);
+  return formatted || String(value || '-');
 }
 
 function renderRecoveryChart() {
   const panel = $('recoveryChartPanel');
   const grid = $('primaryDashboardGrid');
-  if (state.store === 'all') {
+  const recovery = state.data.recovery || {};
+  const selectedSeries = getRecoverySeries(recovery);
+  const hasSeries = [selectedSeries.processedRate, selectedSeries.processed_rate, selectedSeries.revenueRate, selectedSeries.revenue_rate]
+    .some((values) => arrayFrom(values).some((value) => numericOrNull(value) !== null));
+  if (state.store === 'all' || !hasSeries) {
     if (state.chart) {
       state.chart.destroy();
       state.chart = null;
@@ -895,8 +1041,6 @@ function renderRecoveryChart() {
   if (!$('recoveryChart')) {
     $('recoveryChartWrap').innerHTML = '<canvas id="recoveryChart"></canvas>';
   }
-  const recovery = state.data.recovery || {};
-  const selectedSeries = getRecoverySeries(recovery);
   const labels = selectedSeries.labels || recovery.labels || ['D-day', 'D+1', 'D+2'];
   const processedRate = selectedSeries.processedRate || selectedSeries.processed_rate || recovery.processedRate || recovery.processed_rate || [];
   const revenueRate = selectedSeries.revenueRate || selectedSeries.revenue_rate || recovery.revenueRate || recovery.revenue_rate || [];
@@ -1222,13 +1366,35 @@ function renderStoreTable() {
           ${weatherChips ? `<div class="weather-chip-row table-weather">${weatherChips}</div>` : ''}
           ${signalChips ? `<div class="weather-chip-row table-weather signal-weather">${signalChips}</div>` : ''}
         </td>
-        <td data-label="AS"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span></td>
+        <td data-label="AS"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span>${renderDowntimeDetail(store)}</td>
+        <td data-label="CS/고객"><span class="table-main-line">${escapeHtml(customerStatusText(store))}${renderInfoTip(customerStatusHelpText(store), 'CS/고객 기준')}</span>${store.customerImpact ? `<br><span class="muted">${escapeHtml(store.customerImpact)}</span>` : ''}</td>
         <td data-label="회복"><span class="table-main-line">${escapeHtml(store.recoveryStatus)}${renderInfoTip(recoveryStatusHelpText(store), '회복 기준')}</span><br><span class="muted score-line">CRM ${store.crmReady ? '가능' : '대기'}${renderInfoTip(crmHelpText(store), 'CRM 기준')}</span></td>
         <td data-label="담당">${escapeHtml(store.dri)}</td>
         <td data-label="다음 액션">${escapeHtml(store.nextAction)}</td>
       </tr>
     `;
-  }).join('') || '<tr><td colspan="7">현재 필터 기준 지점이 없습니다.</td></tr>';
+  }).join('') || '<tr><td colspan="8">현재 필터 기준 지점이 없습니다.</td></tr>';
+}
+
+function renderDowntimeDetail(store) {
+  const details = [];
+  if (store.downtimeMinutes !== null) details.push(`다운타임 ${missionLongestDowntime([store])}`);
+  if (store.vendorStatus) details.push(store.vendorStatus);
+  if (store.vendorEta) details.push(`ETA ${formatActionDue(store.vendorEta)}`);
+  if (store.normalizationBlocker) details.push(store.normalizationBlocker);
+  return details.length ? `<br><span class="muted">${escapeHtml(details.join(' · '))}</span>` : '';
+}
+
+function customerStatusText(store) {
+  return String(store.customerNoticeStatus || '').trim() || (store.customerImpact ? '고객 영향 확인' : '지표 없음');
+}
+
+function customerStatusHelpText(store) {
+  if (!hasCustomerStatusData(store)) {
+    return 'Apps Script dashboard payload에 고객 안내 또는 고객 영향 필드가 없습니다. 정상 0건으로 해석하지 말고 시트의 customer_notice_status 연동 여부를 확인해야 합니다.';
+  }
+  if (isCustomerActionPending(store)) return '고객 영향 또는 안내가 대기 중입니다. 현장 안전·운영 상태와 승인 여부를 확인한 뒤 안내를 완료해야 합니다.';
+  return '고객 안내 상태가 명시되어 있고 현재 추가 조치 대기로 분류되지 않은 상태입니다.';
 }
 
 function renderInfoTip(message, label) {
@@ -1289,6 +1455,10 @@ function signalWeatherText(store) {
 
 function kpiHelpText(label) {
   const messages = {
+    '안전 확보': `운영 원장의 Orange/Red/Error와 최신 기상 API 신호의 즉시 확인 지점을 함께 봅니다. 기상 신호가 없으면 0이 아니라 판단 대기로 표시합니다. ${WEATHER_SIGNAL_HELP}`,
+    '다운타임 축소': 'AS 차단, 정상화 대기, 운영 중단 상태와 제공된 다운타임 시간을 집계합니다. 1건 이상이면 정상화 차단 사유와 ETA를 우선 확인합니다.',
+    'CS 안정화': 'customer_notice_status, customer_action_status, 고객 영향 필드를 기준으로 고객 안내 또는 불편 대응 대기 건을 봅니다. 필드가 없으면 정상으로 간주하지 않고 확인 전으로 표시합니다.',
+    '수요·매출 회복': '회복 조치, 처리대수·매출 성과 대기, CRM 가능 건을 함께 봅니다. AS·안전 게이트 통과 후 CRM 실행 여부를 판단합니다.',
     '운영 즉시': `prod 기준 Orange/Red 미완료 운영 액션 수입니다. ${PROD_MODE_HELP}`,
     '신호 즉시': `최신 기상 신호 기준 즉시확인 대상 지점 수입니다. ${WEATHER_SIGNAL_HELP}`,
     '주의 관찰': 'Yellow 상태 또는 회복 관찰이 필요한 지점 수입니다. 피크 전 사전점검 대상입니다.',
@@ -1342,10 +1512,14 @@ function crmHelpText(store) {
 }
 
 function systemItemHelpText(label) {
+  const system = state.data && state.data.system ? state.data.system : {};
+  const expectedPackVersion = system.expectedPackVersion || system.expected_pack_version || EXPECTED_PACK_VERSION;
   const messages = {
     '마지막 요약': 'sendWeatherOpsSummary 또는 종합 요약 실행 기록의 최신 시각입니다. 이 기록이 없어도 dashboard payload와 기상 원장 데이터가 있으면 화면은 계속 작동합니다.',
     '매출 동기화': '회복률, 성과 대기, 매출 회복 비교에 쓰는 원천 매출 데이터의 최신 동기화 시각입니다. 오래된 경우에도 기상 신호와 지점 운영 상태 표시는 계속됩니다.',
-    '시트/Pack': `Apps Script/시트가 보고한 Weather Ops Pack 버전입니다. 현재 기대 버전은 ${EXPECTED_PACK_VERSION}입니다.`,
+    '시트/Pack': expectedPackVersion
+      ? `Apps Script/시트가 보고한 Weather Ops Pack 버전입니다. 배포 환경의 기대 버전은 ${expectedPackVersion}입니다.`
+      : 'Apps Script/시트가 보고한 현재 Weather Ops Pack 버전입니다. 대시보드는 payload 값을 자동 반영합니다.',
     '데이터 상태': `dashboard payload 연결과 운영 데이터 상태입니다. ${WEATHER_API_HELP}`,
     '판단 상태': decisionReadinessHelpText(),
     '기상 신호': weatherSignalHelpText(),
@@ -1837,6 +2011,7 @@ function rateSeriesForStore(storeId, recovery, allowGlobalFallback = true) {
 }
 
 function numericOrNull(value) {
+  if (value === null || value === undefined || value === '') return null;
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -1889,6 +2064,9 @@ function openStoreDialog(storeId) {
     ['신호 기상 수치', signalWeatherMetricText(store)],
     ['DRI', store.dri],
     ['AS 상태', store.asStatus],
+    ['AS 차단/ETA', [store.normalizationBlocker, store.vendorStatus, store.vendorEta].filter(Boolean).join(' · ') || '-'],
+    ['CS/고객 안내', customerStatusText(store)],
+    ['고객 영향', store.customerImpact || '-'],
     ['회복 상태', store.recoveryStatus],
     ['CRM 가능 여부', store.crmReady ? '가능' : '대기'],
     ['다음 액션', store.nextAction]

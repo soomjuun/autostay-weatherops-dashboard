@@ -53,7 +53,7 @@ weather-ops-dashboard/
 | `AUTH_RATE_LIMIT_MAX_ATTEMPTS` | 로그인 실패 제한 횟수. 기본값은 10분당 8회 |
 | `AUTH_RATE_LIMIT_WINDOW_MS` | 로그인 실패 제한 윈도우. 기본값은 600000ms |
 | `WEATHER_OPS_API_TOKEN` | Apps Script API에 `token` 쿼리로 전달할 공유 토큰 |
-| `WEATHER_OPS_EXPECTED_VERSION` | 대시보드가 기대하는 Weather Ops Pack 버전. 기본값은 `v2.16.4` |
+| `WEATHER_OPS_EXPECTED_VERSION` | 선택값. 배포본을 특정 Pack 버전에 고정 검증할 때만 설정합니다. 미설정 시 Apps Script payload의 현재 버전을 자동 표시합니다. |
 | `WEATHER_OPS_ALLOW_SAMPLE` | 샘플 데이터 표시 여부. 운영 기본값은 `false`, 데모/개발 검토 때만 `true` |
 
 Apps Script 속성:
@@ -246,11 +246,11 @@ autostay-weather-ops-dashboard
 3. 편집 화면에서 Version을 `New version`으로 바꾼 뒤 Deploy합니다.
 4. 같은 Web App URL을 유지했다면 대시보드에서 새로고침합니다.
 5. 새 Web App URL이 만들어졌다면 Vercel 환경변수 `WEATHER_OPS_API_URL`을 새 `/exec` URL로 교체하고 Production redeploy를 실행합니다.
-6. 대시보드 `/api/weather-ops-data?fresh=1` 기준 응답의 `version`, `system.appsScriptVersion`, `system.expectedPackVersion`이 모두 같은지 확인합니다.
+6. 대시보드 `/api/weather-ops-data?fresh=1` 기준 응답의 `version`과 `system.appsScriptVersion`이 같은지 확인합니다. `WEATHER_OPS_EXPECTED_VERSION`을 설정한 배포에서는 `system.expectedPackVersion`도 함께 확인합니다.
 
 판단 기준:
 
-- 대시보드 기대 버전만 낮음: `WEATHER_OPS_EXPECTED_VERSION` 또는 대시보드 코드 수정 대상
+- 대시보드 기대 버전만 낮음: Vercel `WEATHER_OPS_EXPECTED_VERSION` 갱신 또는 제거 대상
 - 연결된 현재 버전만 낮음: Apps Script Web App 재배포 또는 `WEATHER_OPS_API_URL` 수정 대상
 - 둘 다 최신인데 경고 유지: Vercel redeploy/cache 또는 다른 프로젝트 alias 연결 확인 대상
 
