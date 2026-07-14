@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, hasActiveRecoveryData };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, decisionReadiness, decisionReadinessClass, operationalDataStatusClass };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -58,6 +58,10 @@ test('기상 신호가 없으면 운영 정상과 기상 판단 대기를 분리
     system: {}
   };
   assert.equal(api.dashboardHeadline(), '운영 원장 기준 즉시 조치는 없습니다. 최신 기상 신호 수신 전이므로 기상 판단은 대기입니다.');
+  assert.equal(api.primaryDashboardStatus(), 'Gray');
+  assert.equal(api.primaryDashboardStatusLabel(), '기상 판단');
+  assert.equal(api.decisionReadiness(), 'no_signal');
+  assert.equal(api.decisionReadinessClass(), 'danger');
 });
 
 test('운영 원장에 위험이 있으면 원장 헤드라인을 유지한다', () => {
@@ -102,9 +106,42 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Orange">조치<\/button>/);
   assert.match(html, /data-risk="Yellow">주의<\/button>/);
   assert.match(html, /data-risk="Green">정상<\/button>/);
+  assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-13-1/);
-  assert.match(html, /style\.css\?v=2026-07-13-1/);
+  assert.match(html, /app\.js\?v=2026-07-14-1/);
+  assert.match(html, /style\.css\?v=2026-07-14-1/);
+});
+
+test('운영 상태나 기상 신호가 누락되면 지점을 정상으로 기본 처리하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  const missingAll = api.normalizeStore({ store_id: 'ilsan', store_name: '일산 풍동' });
+  assert.equal(missingAll.prodStatus, 'Gray');
+  assert.equal(missingAll.status, 'Gray');
+
+  const prodOnly = api.normalizeStore({ store_id: 'ilsan', store_name: '일산 풍동', status: 'Green' });
+  assert.equal(prodOnly.prodStatus, 'Green');
+  assert.equal(prodOnly.signalStatus, 'Gray');
+  assert.equal(prodOnly.status, 'Gray');
+
+  const covered = api.normalizeStore(
+    { store_id: 'ilsan', store_name: '일산 풍동', status: 'Green' },
+    { ilsan: { status: 'Green', mode: 'shadow', observedAt: '2026-07-14T09:15:00+09:00' } }
+  );
+  assert.equal(covered.status, 'Green');
+});
+
+test('운영 원장만 연결되고 기상 신호가 없으면 데이터 상태를 정상으로 표시하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.data = {
+    source: 'apps_script',
+    generatedAt: '2026-07-14T13:16:00+09:00',
+    stores: [{ status: 'Gray', prodStatus: 'Green' }],
+    weatherSignal: {},
+    summary: {},
+    system: { decisionReadiness: 'prod_ready' }
+  };
+  assert.equal(api.decisionReadiness(), 'no_signal');
+  assert.equal(api.operationalDataStatusClass(), 'warning');
 });
 
 test('운영 목적 카드는 기상 신호와 CS 지표 부재를 정상 0건으로 오인하지 않는다', () => {

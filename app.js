@@ -356,9 +356,13 @@ function normalizeStore(store, signalByStore = {}) {
   const name = firstPresent(store, ['name', 'storeName', 'store_name', 'store', '지점명', '지점', '매장명']) || '-';
   const id = firstPresent(store, ['id', 'storeId', 'store_id', 'storeCode', 'store_code', '지점ID']) || slug(name);
   const signal = signalByStore[slug(id)] || signalByStore[slug(name)] || {};
-  const prodStatus = normalizeStatus(firstPresent(store, ['prodStatus', 'prod_status', 'status', 'risk', 'level', 'riskLevel', 'risk_level', '상태']) || 'Green');
-  const signalStatus = normalizeStatus(firstPresent(store, ['signalStatus', 'signal_status']) || signal.status || 'Gray');
-  const displayStatus = displayStatusFrom(prodStatus, signalStatus);
+  const rawProdStatus = firstPresent(store, ['prodStatus', 'prod_status', 'status', 'risk', 'level', 'riskLevel', 'risk_level', '상태']);
+  const rawSignalStatus = firstPresent(store, ['signalStatus', 'signal_status']) || firstPresent(signal, ['status', 'overallStatus', 'overall_status', 'level']);
+  const prodStatusProvided = rawProdStatus !== null;
+  const signalStatusProvided = rawSignalStatus !== null || Object.keys(signal).length > 0;
+  const prodStatus = normalizeStatus(prodStatusProvided ? rawProdStatus : 'Gray');
+  const signalStatus = normalizeStatus(signalStatusProvided ? rawSignalStatus : 'Gray');
+  const displayStatus = storeDisplayStatus(prodStatus, signalStatus, prodStatusProvided, signalStatusProvided);
   const weatherValues = objectFrom(firstPresent(store, ['weatherValues', 'weather_values']) || signal.weatherValues || signal.weather || {});
   return {
     id,
@@ -367,7 +371,9 @@ function normalizeStore(store, signalByStore = {}) {
     dri: firstPresent(store, ['dri', 'owner', 'manager', 'storeDri', 'store_dri', '담당', '담당자']) || '-',
     status: displayStatus,
     prodStatus,
+    prodStatusProvided,
     signalStatus,
+    signalStatusProvided,
     signalActionLevel: firstPresent(store, ['signalActionLevel', 'signal_action_level']) || signal.actionLevel || signalActionLevel(signalStatus),
     signalMode: firstPresent(store, ['signalMode', 'signal_mode']) || signal.mode || '',
     signalReason: firstPresent(store, ['signalReason', 'signal_reason']) || signal.reason || '',
@@ -446,6 +452,14 @@ function displayStatusFrom(prodStatus, signalStatus) {
   const prod = normalizeStatus(prodStatus);
   const signal = normalizeStatus(signalStatus);
   return (STATUS_ORDER[signal] || 0) > (STATUS_ORDER[prod] || 0) ? signal : prod;
+}
+
+function storeDisplayStatus(prodStatus, signalStatus, prodStatusProvided, signalStatusProvided) {
+  const prod = normalizeStatus(prodStatus);
+  const signal = normalizeStatus(signalStatus);
+  if (!prodStatusProvided) return ['Error', 'Red', 'Orange', 'Yellow'].includes(signal) ? signal : 'Gray';
+  if (!signalStatusProvided && prod === 'Green') return 'Gray';
+  return displayStatusFrom(prod, signal);
 }
 
 function signalActionLevel(status) {
@@ -578,11 +592,14 @@ function decisionStatus() {
 }
 
 function primaryDashboardStatus() {
-  return hasWeatherSignalData() ? signalOverallStatus() : prodOverallStatus();
+  if (hasWeatherSignalData()) return signalOverallStatus();
+  const prodStatus = prodOverallStatus();
+  return ['Error', 'Red', 'Orange', 'Yellow'].includes(prodStatus) ? prodStatus : 'Gray';
 }
 
 function primaryDashboardStatusLabel() {
-  return hasWeatherSignalData() ? '기상 신호' : '운영';
+  if (hasWeatherSignalData()) return '기상 신호';
+  return ['Error', 'Red', 'Orange', 'Yellow'].includes(prodOverallStatus()) ? '운영' : '기상 판단';
 }
 
 function weatherSignalMode() {
@@ -612,8 +629,10 @@ function decisionReadiness() {
   const explicit = typeof raw === 'object'
     ? String(firstPresent(raw, ['level', 'status', 'readiness', 'state', 'code']) || '').trim()
     : String(raw || '').trim();
+  if (explicit === 'error' || explicit === 'danger') return explicit;
+  if (!hasWeatherSignalData()) return 'no_signal';
   if (explicit) return explicit;
-  return hasWeatherSignalData() ? '' : 'no_signal';
+  return '';
 }
 
 function decisionReadinessRaw() {
@@ -644,7 +663,7 @@ function decisionReadinessLabel() {
 function decisionReadinessClass() {
   const readiness = decisionReadiness();
   if (readiness === 'prod_ready' || readiness === 'ok') return 'ok';
-  if (readiness === 'no_signal') return 'info';
+  if (readiness === 'no_signal') return 'danger';
   if (readiness === 'shadow_only' || readiness === 'stale' || readiness === 'warning') return 'warning';
   return 'danger';
 }
@@ -664,12 +683,23 @@ function decisionReadinessHelpText() {
 
 function decisionReadinessMessage() {
   const raw = decisionReadinessRaw();
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return '';
-  return String(firstPresent(raw, ['detail', 'description', 'body', 'message']) || '').trim();
+  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
+    const message = String(firstPresent(raw, ['detail', 'description', 'body', 'message']) || '').trim();
+    if (message) return message;
+  }
+  if (decisionReadiness() === 'no_signal') {
+    return '최신 기상 API 신호가 dashboard payload에 없어 현재 기상 위험을 판단할 수 없습니다. 운영 원장 상태와 별도로 신호 연동을 확인하세요.';
+  }
+  return '';
 }
 
 function hasWeatherSignalData() {
   const signal = state.data && state.data.weatherSignal ? state.data.weatherSignal : {};
+  return weatherSignalHasContent(signal);
+}
+
+function weatherSignalHasContent(signal) {
+  signal = objectFrom(signal);
   const summary = signal.summary || {};
   const riskCount = Number(summary.actionRequired ?? summary.action_required ?? 0)
     + Number(summary.watch ?? 0)
@@ -808,7 +838,7 @@ function renderHero() {
     { text: `버전 ${state.data.version}`, help: 'Apps Script dashboard payload가 보고한 현재 Weather Ops Pack 또는 시트 버전입니다. 대시보드는 이 값을 자동 표시하며, 별도 기대 버전이 설정된 경우에만 불일치를 경고합니다.' },
     { text: sourceText, help: sourceText === '샘플 데이터' ? '샘플 fallback 데이터입니다. 운영 배포에서는 실데이터 연결이어야 합니다.' : `Vercel이 Apps Script dashboard payload를 정상 수신했다는 뜻입니다. ${WEATHER_API_HELP}` },
     { text: `운영 원장 ${levelLabel(prodStatus)}`, help: '공식 완료보고, AS 정상화, 매출회복, CRM 실행 상태는 prod 운영 원장 기준으로 봅니다.' },
-    { text: weatherSignalStatusText(), help: weatherSignalHelpText(), warning: hasRiskSignal },
+    { text: weatherSignalStatusText(), help: weatherSignalHelpText(), warning: !hasSignal || hasRiskSignal },
     { text: `판단 ${decisionReadinessLabel()}`, help: decisionReadinessHelpText(), warning: readinessClass === 'danger' },
     ...(hasSignal ? [{ text: weatherSignalSummaryText(), help: weatherSignalHelpText(), warning: hasRiskSignal }] : [])
   ].concat(warnings.map((warning) => ({ text: `주의: ${warning}`, help: '데이터 신선도 또는 시스템 점검이 필요한 신호입니다.', warning: true })));
@@ -975,7 +1005,7 @@ function storeSignalLine(store) {
 }
 
 function hasStoreSignalData(store) {
-  return Boolean(store.signalMode || store.signalRiskType || store.signalReason || store.signalObservedAt
+  return Boolean(store.signalStatusProvided || store.signalMode || store.signalRiskType || store.signalReason || store.signalObservedAt
     || ['Error', 'Red', 'Orange', 'Yellow'].includes(store.signalStatus));
 }
 
@@ -1357,7 +1387,7 @@ function renderStoreTable() {
         <td data-label="지점"><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
         <td data-label="운영/신호">
           <span class="status-pair"><span class="badge ${store.prodStatus}" title="${escapeAttr(statusHelpText(store.prodStatus))}">운영 ${escapeHtml(levelLabel(store.prodStatus))}</span><span class="badge ${store.signalStatus}" title="${escapeAttr(signalStatusHelpText(store))}">신호 ${escapeHtml(levelLabel(store.signalStatus))}</span></span>
-          <br><span class="muted score-line">점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span>
+          <br><span class="muted score-line">운영 점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span>
         </td>
         <td data-label="기상/트리거">
           <span class="table-main-line">운영 ${escapeHtml(store.weather)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><br>
@@ -1414,9 +1444,11 @@ function riskScoreHelpText(store) {
   const scoreStatus = store.prodStatus || store.status;
   const base = { Error: 95, Red: 90, Orange: 74, Yellow: 54, Green: 20, Gray: 10 }[scoreStatus] || 20;
   const current = Number(store.riskScore);
-  const signalNotice = (STATUS_ORDER[store.signalStatus] || 0) > (STATUS_ORDER[store.prodStatus] || 0)
-    ? ` 현재 화면 상태는 기상 신호 ${levelLabel(store.signalStatus)}가 운영 상태보다 높아 우선 표시된 것입니다. 점수는 prod 운영 액션 기준 값입니다.`
-    : '';
+  const signalNotice = !hasStoreSignalData(store)
+    ? ' 최신 기상 신호가 없어 지점 표시 상태는 판단 대기입니다. 점수는 prod 운영 원장 우선순위일 뿐 현재 기상 정상 판정이 아닙니다.'
+    : ((STATUS_ORDER[store.signalStatus] || 0) > (STATUS_ORDER[store.prodStatus] || 0)
+      ? ` 현재 화면 상태는 기상 신호 ${levelLabel(store.signalStatus)}가 운영 상태보다 높아 우선 표시된 것입니다. 점수는 prod 운영 액션 기준 값입니다.`
+      : '');
   const currentMeaning = scoreStatus === 'Green' && current === 20
     ? '현재 20점은 정상 기본점수만 적용된 상태입니다.'
     : `현재 운영 ${levelLabel(scoreStatus)} 기본점수 ${base}점에 이슈 보정이 반영된 값입니다.`;
@@ -2378,7 +2410,7 @@ function operationalDataStatus(system) {
 
 function operationalDataStatusClass() {
   if (!state.data || (state.data.source && state.data.source.startsWith('sample'))) return 'warning';
-  return hasLiveOperationalData() ? 'ok' : 'warning';
+  return hasLiveOperationalData() && hasWeatherSignalData() ? 'ok' : 'warning';
 }
 
 function hasLiveOperationalData() {
