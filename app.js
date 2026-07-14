@@ -978,8 +978,9 @@ function renderMap() {
     const weatherChips = renderWeatherMetricChips(store, 3);
     const signalChips = renderSignalWeatherMetricChips(store, 3);
     const signalLine = storeSignalLine(store);
+    const nextAction = storeNextActionText(store);
     return `
-      <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}" aria-label="${escapeAttr(`${store.name} ${levelLabel(store.status)}. ${store.weather}. 다음 액션: ${store.nextAction}`)}">
+      <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}" aria-label="${escapeAttr(`${store.name} ${levelLabel(store.status)}. ${store.weather}. 다음 액션: ${nextAction}`)}">
         <span class="pin-top">
           <strong>${escapeHtml(store.name)}</strong>
           <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
@@ -988,7 +989,7 @@ function renderMap() {
         <span class="pin-meta signal-${escapeAttr(store.signalStatus)}">${escapeHtml(signalLine)}</span>
         ${weatherChips ? `<span class="weather-chip-row">${weatherChips}</span>` : ''}
         ${signalChips ? `<span class="weather-chip-row signal-weather">${signalChips}</span>` : ''}
-        <span class="pin-action">${escapeHtml(store.nextAction)}</span>
+        <span class="pin-action">${escapeHtml(nextAction)}</span>
       </button>
     `;
   }).join('');
@@ -1007,6 +1008,14 @@ function storeSignalLine(store) {
 function hasStoreSignalData(store) {
   return Boolean(store.signalStatusProvided || store.signalMode || store.signalRiskType || store.signalReason || store.signalObservedAt
     || ['Error', 'Red', 'Orange', 'Yellow'].includes(store.signalStatus));
+}
+
+function storeNextActionText(store) {
+  const current = String(store.nextAction || '-').trim() || '-';
+  if (!hasStoreSignalData(store) && normalizeStatus(store.prodStatus) === 'Green') {
+    return '기상 신호 연동 확인';
+  }
+  return current;
 }
 
 function renderActions() {
@@ -1382,6 +1391,10 @@ function renderStoreTable() {
   $('storeTable').innerHTML = rows.map((store) => {
     const weatherChips = renderWeatherMetricChips(store, 4);
     const signalChips = renderSignalWeatherMetricChips(store, 4);
+    const nextAction = storeNextActionText(store);
+    const nextActionHelp = nextAction !== store.nextAction
+      ? renderInfoTip('운영 원장은 정상이지만 최신 기상 신호가 없어 현재 기상 정상 판정을 확정할 수 없습니다. weatherSignal 연동을 확인한 뒤 정상 운영 유지 여부를 판단합니다.', '다음 액션 기준')
+      : '';
     return `
       <tr>
         <td data-label="지점"><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
@@ -1400,7 +1413,7 @@ function renderStoreTable() {
         <td data-label="CS/고객"><span class="table-main-line">${escapeHtml(customerStatusText(store))}${renderInfoTip(customerStatusHelpText(store), 'CS/고객 기준')}</span>${store.customerImpact ? `<br><span class="muted">${escapeHtml(store.customerImpact)}</span>` : ''}</td>
         <td data-label="회복"><span class="table-main-line">${escapeHtml(store.recoveryStatus)}${renderInfoTip(recoveryStatusHelpText(store), '회복 기준')}</span><br><span class="muted score-line">CRM ${store.crmReady ? '가능' : '대기'}${renderInfoTip(crmHelpText(store), 'CRM 기준')}</span></td>
         <td data-label="담당">${escapeHtml(store.dri)}</td>
-        <td data-label="다음 액션">${escapeHtml(store.nextAction)}</td>
+        <td data-label="다음 액션"><span class="table-main-line">${escapeHtml(nextAction)}${nextActionHelp}</span></td>
       </tr>
     `;
   }).join('') || '<tr><td colspan="8">현재 필터 기준 지점이 없습니다.</td></tr>';
@@ -2101,7 +2114,7 @@ function openStoreDialog(storeId) {
     ['고객 영향', store.customerImpact || '-'],
     ['회복 상태', store.recoveryStatus],
     ['CRM 가능 여부', store.crmReady ? '가능' : '대기'],
-    ['다음 액션', store.nextAction]
+    ['다음 액션', storeNextActionText(store)]
   ].map(([label, value]) => `
     <div class="detail-row"><b>${escapeHtml(label)}</b><span>${escapeHtml(value)}</span></div>
   `).join('');
@@ -2115,7 +2128,7 @@ async function copyBrief() {
   const topStores = state.data.stores
     .filter((store) => ['Error', 'Red', 'Orange'].includes(store.status))
     .slice(0, 5)
-    .map((store) => `- ${store.name}: 운영 ${levelLabel(store.prodStatus)}, 신호 ${levelLabel(store.signalStatus)}(${store.signalMode || '-'}) / ${store.signalReason || store.nextAction}`)
+    .map((store) => `- ${store.name}: 운영 ${levelLabel(store.prodStatus)}, 신호 ${levelLabel(store.signalStatus)}(${store.signalMode || '-'}) / ${store.signalReason || storeNextActionText(store)}`)
     .join('\n') || '- 즉시 조치 지점 없음';
   const text = [
     `[OPS] Weather Ops Dashboard | ${formatDateTime(state.data.generatedAt)}`,

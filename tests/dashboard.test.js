@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, decisionReadiness, decisionReadinessClass, operationalDataStatusClass };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, decisionReadiness, decisionReadinessClass, operationalDataStatusClass, storeNextActionText };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -108,8 +108,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-14-1/);
-  assert.match(html, /style\.css\?v=2026-07-14-1/);
+  assert.match(html, /app\.js\?v=2026-07-14-2/);
+  assert.match(html, /style\.css\?v=2026-07-14-2/);
 });
 
 test('운영 상태나 기상 신호가 누락되면 지점을 정상으로 기본 처리하지 않는다', () => {
@@ -122,12 +122,14 @@ test('운영 상태나 기상 신호가 누락되면 지점을 정상으로 기�
   assert.equal(prodOnly.prodStatus, 'Green');
   assert.equal(prodOnly.signalStatus, 'Gray');
   assert.equal(prodOnly.status, 'Gray');
+  assert.equal(api.storeNextActionText(prodOnly), '기상 신호 연동 확인');
 
   const covered = api.normalizeStore(
     { store_id: 'ilsan', store_name: '일산 풍동', status: 'Green' },
     { ilsan: { status: 'Green', mode: 'shadow', observedAt: '2026-07-14T09:15:00+09:00' } }
   );
   assert.equal(covered.status, 'Green');
+  assert.equal(api.storeNextActionText(covered), '-');
 });
 
 test('운영 원장만 연결되고 기상 신호가 없으면 데이터 상태를 정상으로 표시하지 않는다', () => {
