@@ -541,6 +541,11 @@ select { min-width: 180px; }
   line-height: 1.45;
   color: var(--muted);
 }
+.pin-meta {
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+  text-wrap: pretty;
+}
 .pin-meta.signal-Red,
 .pin-meta.signal-Orange,
 .pin-meta.signal-Error {
