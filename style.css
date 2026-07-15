@@ -18,6 +18,17 @@
 }
 
 * { box-sizing: border-box; }
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
 html { scroll-behavior: smooth; }
 body {
   margin: 0;
@@ -1146,7 +1157,7 @@ select { min-width: 180px; }
   overflow-y: visible;
   max-height: none;
 }
-table { width: 100%; border-collapse: collapse; min-width: 1120px; }
+table { width: 100%; border-collapse: collapse; min-width: 1240px; }
 th, td {
   border-bottom: 1px solid var(--line);
   padding: 10px 9px;
@@ -1162,8 +1173,22 @@ th {
   background: #f8fafc;
   color: #475569;
   font-size: 12px;
+  white-space: nowrap;
 }
+th:nth-child(4), td:nth-child(4) { min-width: 82px; }
+th:nth-child(5), td:nth-child(5) { min-width: 150px; }
+th:nth-child(6), td:nth-child(6) { min-width: 120px; }
+th:nth-child(7), td:nth-child(7) { min-width: 112px; }
 td:last-child { min-width: 280px; }
+tbody tr {
+  transition: background-color .14s ease;
+}
+tbody tr:nth-child(even) {
+  background: #fbfdff;
+}
+tbody tr:hover {
+  background: #f4f9fd;
+}
 .score-line {
   display: inline-flex;
   align-items: center;
@@ -1191,6 +1216,38 @@ td:last-child { min-width: 280px; }
   position: absolute;
   right: 0;
   bottom: 1px;
+}
+.customer-status {
+  font-weight: 850;
+}
+.customer-status::before {
+  content: "";
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  vertical-align: 1px;
+  background: var(--gray);
+}
+.customer-status.is-unknown { color: #475569; }
+.customer-status.is-pending { color: #9a3412; }
+.customer-status.is-pending::before { background: var(--orange); }
+.customer-status.is-clear { color: #166534; }
+.customer-status.is-clear::before { background: var(--green); }
+.customer-detail {
+  display: block;
+  margin-top: 7px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.customer-detail-label {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 900;
 }
 .signal-line {
   display: block;
@@ -1536,6 +1593,7 @@ td:last-child { min-width: 280px; }
     gap: 10px;
     border-bottom: 1px solid #eef2f7;
     padding: 8px 0;
+    min-width: 0 !important;
   }
   td::before {
     content: attr(data-label);
