@@ -785,6 +785,16 @@ function dashboardHeadline() {
   return summary.headline || signal.message || '오늘 운영 조치와 회복 액션을 확인하세요.';
 }
 
+function keepMetricValueTogether(value) {
+  return String(value ?? '')
+    .split(/(\s*(?:\/|\u00b7)\s*)/)
+    .map((part, index) => {
+      if (index % 2 === 1) return part;
+      return part.replace(/(\S)\s+(-?\d+(?:[.,]\d+)?\S*)(\s*)$/, '$1\u00a0$2$3');
+    })
+    .join('');
+}
+
 function renderDecisionBanner() {
   const target = $('decisionBanner');
   if (!target) return;
@@ -831,7 +841,7 @@ function renderHero() {
   const hasRiskSignal = weatherSignalHasRisk();
   $('overallStatus').innerHTML = `${escapeHtml(primaryDashboardStatusLabel())} ${escapeHtml(levelLabel(status))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
   $('overallStatus').className = `status-word text-${status}`;
-  $('headline').textContent = dashboardHeadline();
+  $('headline').textContent = keepMetricValueTogether(dashboardHeadline());
   const sourceText = state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결';
   const metaItems = [
     { text: `업데이트 ${formatDateTime(state.data.generatedAt)}`, help: 'Apps Script dashboard payload가 생성된 시각입니다. 화면은 5분마다 자동 갱신되며, 오래 비활성화한 탭으로 돌아오면 최신 데이터를 즉시 다시 조회합니다.' },

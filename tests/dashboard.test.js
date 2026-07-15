@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, decisionReadiness, decisionReadinessClass, operationalDataStatusClass, storeNextActionText };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, decisionReadiness, decisionReadinessClass, operationalDataStatusClass, storeNextActionText };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -108,8 +108,17 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-14-2/);
-  assert.match(html, /style\.css\?v=2026-07-14-2/);
+  assert.match(html, /app\.js\?v=2026-07-15-1/);
+  assert.match(html, /style\.css\?v=2026-07-15-1/);
+});
+
+test('summary metric labels stay attached to their values', () => {
+  const { api } = loadDashboardLogic();
+  assert.equal(
+    api.keepMetricValueTogether('Immediate 0 / Watch 7 / Check 0'),
+    'Immediate\u00a00 / Watch\u00a07 / Check\u00a00'
+  );
+  assert.equal(api.keepMetricValueTogether('No metric summary'), 'No metric summary');
 });
 
 test('운영 상태나 기상 신호가 누락되면 지점을 정상으로 기본 처리하지 않는다', () => {
