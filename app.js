@@ -225,7 +225,7 @@ function renderFatalErrorState(message) {
   const bulletList = $('processedBulletList');
   if (bulletList) bulletList.innerHTML = '';
   $('recoveryComparison').innerHTML = '<div class="empty-state">데이터 연결 후 회복 비교를 표시합니다.</div>';
-  $('storeTable').innerHTML = '<tr><td colspan="7">데이터 연결 후 지점별 상태를 표시합니다.</td></tr>';
+  $('storeTable').innerHTML = '<tr><td colspan="8">데이터 연결 후 지점별 상태를 표시합니다.</td></tr>';
   $('weatherTimeline').innerHTML = '<div class="timeline-item"><div class="timeline-label">데이터 연결 후 타임라인을 표시합니다.</div></div>';
   $('systemStatus').innerHTML = `
     <div class="system-item danger system-wide">
@@ -982,10 +982,10 @@ function renderHero() {
     { text: `운영 원장 ${levelLabel(prodStatus)}`, help: '공식 완료보고, AS 정상화, 매출회복, CRM 실행 상태는 prod 운영 원장 기준으로 봅니다.' },
     { text: weatherSignalStatusText(), help: weatherSignalHelpText(), warning: !hasSignal || hasRiskSignal },
     { text: `판단 ${decisionReadinessLabel()}`, help: decisionReadinessHelpText(), warning: readinessClass === 'danger' },
-    ...(hasSignal ? [{ text: weatherSignalSummaryText(), help: weatherSignalHelpText(), warning: hasRiskSignal }] : [])
-  ].concat(warnings.map((warning) => ({ text: `주의: ${warning}`, help: '데이터 신선도 또는 시스템 점검이 필요한 신호입니다.', warning: true })));
+    ...(hasSignal ? [{ text: weatherSignalSummaryText(), help: weatherSignalHelpText(), warning: hasRiskSignal, wide: true }] : [])
+  ].concat(warnings.map((warning) => ({ text: `주의: ${warning}`, help: '데이터 신선도 또는 시스템 점검이 필요한 신호입니다.', warning: true, wide: true })));
   $('heroMeta').innerHTML = metaItems
-    .map((item) => `<span class="meta-pill${item.warning ? ' warning' : ''}">${escapeHtml(item.text)}${renderInfoTip(item.help, item.text)}</span>`)
+    .map((item) => `<span class="meta-pill${item.warning ? ' warning' : ''}${item.wide ? ' wide' : ''}">${escapeHtml(item.text)}${renderInfoTip(item.help, item.text)}</span>`)
     .join('');
 }
 

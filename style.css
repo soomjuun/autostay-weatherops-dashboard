@@ -1162,7 +1162,7 @@ select { min-width: 180px; }
   overflow-y: visible;
   max-height: none;
 }
-table { width: 100%; border-collapse: collapse; min-width: 1240px; }
+table { width: 100%; border-collapse: collapse; min-width: 1160px; }
 th, td {
   border-bottom: 1px solid var(--line);
   padding: 10px 9px;
@@ -1185,7 +1185,7 @@ th:nth-child(4), td:nth-child(4) { min-width: 82px; }
 th:nth-child(5), td:nth-child(5) { min-width: 150px; }
 th:nth-child(6), td:nth-child(6) { min-width: 120px; }
 th:nth-child(7), td:nth-child(7) { min-width: 112px; }
-td:last-child { min-width: 280px; }
+td:last-child { min-width: 220px; }
 tbody tr {
   transition: background-color .14s ease;
 }
@@ -1639,7 +1639,10 @@ tbody tr:hover {
     justify-content: center;
     white-space: normal;
     text-align: center;
+    word-break: keep-all;
+    overflow-wrap: anywhere;
   }
+  .meta-pill.wide { grid-column: 1 / -1; }
   .panel {
     padding: 14px;
   }
