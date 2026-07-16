@@ -322,6 +322,13 @@ function normalizeWeatherSignal(signal) {
       mode: firstPresent(row, ['mode', 'signalMode', 'signal_mode']) || signal.mode || '',
       observedAt: firstPresent(row, ['observedAt', 'observed_at', 'generatedAt', 'generated_at']) || signal.observedAt || signal.observed_at || signal.generatedAt || signal.generated_at || '',
       weatherValues,
+      loggedStatus: normalizeStatus(firstPresent(row, ['loggedStatus', 'logged_status']) || status),
+      metricStatus: normalizeStatus(firstPresent(row, ['metricStatus', 'metric_status']) || status),
+      sourceStatus: normalizeSignalSourceStatus(firstPresent(row, ['sourceStatus', 'source_status', 'dataStatus', 'data_status'])),
+      sourceError: firstPresent(row, ['sourceError', 'source_error']) || '',
+      sourceWarnings: firstPresent(row, ['sourceWarnings', 'source_warnings']) || '',
+      sourceDetails: objectFrom(firstPresent(row, ['sourceDetails', 'source_details'])),
+      consistency: objectFrom(firstPresent(row, ['consistency'])),
       operationStatus: firstPresent(row, ['operationStatus', 'operation_status']) || '',
       prodActionEventId: firstPresent(row, ['prodActionEventId', 'prod_action_event_id']) || ''
     };
@@ -338,7 +345,10 @@ function normalizeWeatherSignal(signal) {
       normal: numberFrom(firstPresent(summary, ['normal', 'green']), 0),
       watch: numberFrom(firstPresent(summary, ['watch', 'yellow']), 0),
       actionRequired: numberFrom(firstPresent(summary, ['actionRequired', 'action_required', 'immediate', 'orangeRed']), 0),
-      dataCheck: numberFrom(firstPresent(summary, ['dataCheck', 'data_check', 'error']), 0)
+      dataCheck: numberFrom(firstPresent(summary, ['dataCheck', 'data_check', 'error']), 0),
+      riskNormal: numberFrom(firstPresent(summary, ['riskNormal', 'risk_normal']), 0),
+      riskWatch: numberFrom(firstPresent(summary, ['riskWatch', 'risk_watch']), 0),
+      riskActionRequired: numberFrom(firstPresent(summary, ['riskActionRequired', 'risk_action_required']), 0)
     },
     stores,
     source: firstPresent(signal, ['source']) || '',
@@ -386,6 +396,15 @@ function normalizeStore(store, signalByStore = {}) {
     signalReason: firstPresent(store, ['signalReason', 'signal_reason']) || signal.reason || '',
     signalRiskType: firstPresent(store, ['signalRiskType', 'signal_risk_type']) || signal.riskType || '',
     signalObservedAt: firstPresent(store, ['signalObservedAt', 'signal_observed_at']) || signal.observedAt || '',
+    signalSourceStatus: normalizeSignalSourceStatus(firstPresent(store, ['signalSourceStatus', 'signal_source_status', 'sourceStatus', 'source_status', 'dataStatus', 'data_status'])
+      || firstPresent(signal, ['sourceStatus', 'source_status', 'dataStatus', 'data_status'])),
+    signalSourceError: firstPresent(store, ['signalSourceError', 'signal_source_error', 'sourceError', 'source_error'])
+      || firstPresent(signal, ['sourceError', 'source_error']) || '',
+    signalSourceWarnings: firstPresent(store, ['signalSourceWarnings', 'signal_source_warnings', 'sourceWarnings', 'source_warnings'])
+      || firstPresent(signal, ['sourceWarnings', 'source_warnings']) || '',
+    signalMetricStatus: normalizeStatus(firstPresent(store, ['signalMetricStatus', 'signal_metric_status', 'metricStatus', 'metric_status'])
+      || firstPresent(signal, ['metricStatus', 'metric_status']) || signalStatus),
+    signalConsistency: objectFrom(firstPresent(store, ['signalConsistency', 'signal_consistency', 'consistency']) || signal.consistency),
     weather: normalizeWeatherLabel(store),
     weatherDetail: normalizeWeatherDetail(store),
     weatherData: normalizeWeatherData(store),
@@ -1100,6 +1119,14 @@ function customerStatusValues(store) {
   };
 }
 
+function normalizeSignalSourceStatus(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (['error', 'failed', 'failure'].includes(text)) return 'error';
+  if (['warning', 'warn', 'partial'].includes(text)) return 'warning';
+  if (['ok', 'normal', 'success', 'healthy'].includes(text)) return 'ok';
+  return '';
+}
+
 function normalizeCustomerStatusValue(value) {
   return String(value ?? '').trim().replace(/\s+/g, ' ');
 }
@@ -1177,7 +1204,8 @@ function storeSignalLine(store) {
   if (!hasStoreSignalData(store)) return '기상 신호 없음';
   const mode = store.signalMode ? `${store.signalMode} · ` : '';
   const risk = store.signalRiskType && store.signalRiskType !== '-' ? ` · ${store.signalRiskType}` : '';
-  return `기상 신호 ${mode}${levelLabel(store.signalStatus)}${risk}`;
+  const source = signalSourceNotice(store);
+  return `기상 신호 ${mode}${levelLabel(store.signalStatus)}${risk}${source ? ` · ${source}` : ''}`;
 }
 
 function hasStoreSignalData(store) {
@@ -1632,7 +1660,25 @@ function renderTableSignalLine(store) {
   if (!hasStoreSignalData(store)) {
     return '<span class="signal-line"><span class="badge Gray">기상 신호 없음</span></span>';
   }
-  return `<span class="signal-line"><span class="badge ${store.signalStatus}">신호 ${escapeHtml(store.signalActionLevel)}</span> ${escapeHtml(signalWeatherText(store))}</span>`;
+  const sourceNotice = signalSourceNotice(store);
+  const sourceStatus = normalizeSignalSourceStatus(store.signalSourceStatus);
+  const sourceMarkup = sourceNotice
+    ? ` <span class="source-status is-${escapeAttr(sourceStatus)}">${escapeHtml(sourceNotice)}${renderInfoTip(signalSourceDetail(store), '기상 원천 상태')}</span>`
+    : '';
+  return `<span class="signal-line"><span class="badge ${store.signalStatus}">신호 ${escapeHtml(store.signalActionLevel)}</span> ${escapeHtml(signalWeatherText(store))}${sourceMarkup}</span>`;
+}
+
+function signalSourceNotice(store) {
+  const status = normalizeSignalSourceStatus(store && store.signalSourceStatus);
+  if (status === 'error') return '원천 확인';
+  if (status === 'warning') return '원천 경고';
+  return '';
+}
+
+function signalSourceDetail(store) {
+  if (!store) return '';
+  return String(store.signalSourceError || store.signalSourceWarnings || '').trim()
+    || (signalSourceNotice(store) ? '기상 또는 대기질 원천 일부를 확인해야 합니다.' : '원천 데이터 정상');
 }
 
 function riskScoreHelpText(store) {
@@ -1667,7 +1713,10 @@ function statusHelpText(status) {
 }
 
 function signalStatusHelpText(store) {
-  return `${WEATHER_SIGNAL_HELP} 현재 ${store.signalMode || '미지정'} 기준 ${levelLabel(store.signalStatus)}이며, 판단 근거는 ${store.signalReason || store.signalRiskType || '제공된 신호 없음'}입니다.`;
+  const source = signalSourceNotice(store)
+    ? ` 원천 상태는 ${signalSourceNotice(store)}이며, 상세는 ${signalSourceDetail(store)}입니다.`
+    : '';
+  return `${WEATHER_SIGNAL_HELP} 현재 ${store.signalMode || '미지정'} 기준 ${levelLabel(store.signalStatus)}이며, 판단 근거는 ${store.signalReason || store.signalRiskType || '제공된 신호 없음'}입니다.${source}`;
 }
 
 function signalWeatherText(store) {
@@ -1769,7 +1818,8 @@ function systemItemHelpText(label) {
     '기상 신호 갱신': 'Slack 발송 없이 대시보드용 기상 신호를 새로 계산한 시각입니다. 정기 종합 요약 발송 시각과는 별도입니다.',
     '시스템 오류': '최근 24시간 미해결 ERROR/CRITICAL/FATAL급 시스템 오류입니다. 해결 처리된 dashboard 인증 오류와 lock 경고는 Apps Script payload에서 제외됩니다.',
     '시스템 오류 상세': 'Apps Script dashboard payload가 제공한 미해결 시스템 오류의 최근 메시지입니다. 상세 payload가 없으면 오류 건수만 표시합니다.',
-    '시스템 경고': '최근 24시간 미해결 WARN/WARNING급 비차단 경고입니다. 운영 판단을 막지는 않지만 반복되면 자동화 또는 원천 상태를 점검해야 합니다.'
+    '시스템 경고': '최근 24시간 미해결 WARN/WARNING급 비차단 경고입니다. 운영 판단을 막지는 않지만 반복되면 자동화 또는 원천 상태를 점검해야 합니다.',
+    '시스템 경고 상세': 'Apps Script dashboard payload가 제공한 최근 비차단 경고입니다. 발생 시각, 실행 단계와 원천 메시지를 함께 확인합니다.'
   };
   return messages[label] || '시스템 운영 상태입니다.';
 }
@@ -1828,6 +1878,7 @@ function renderSystem() {
   const systemErrorCount = metricNumber(systemErrorCountValue);
   const systemWarnCount = metricNumber(systemWarnCountValue);
   const systemErrorDetail = systemIssueSummary('error', systemErrorCount);
+  const systemWarningDetail = systemIssueSummary('warning', systemWarnCount);
   const items = [
     {
       label: latestRecordIsSignalRefresh ? '기상 신호 갱신' : '마지막 요약',
@@ -1861,6 +1912,12 @@ function renderSystem() {
       <span class="system-dot" aria-hidden="true"></span>
       <div class="system-label">주의 신호${renderInfoTip('요약 실행, 시트 버전, 시스템 오류 중 사용자가 확인해야 할 신선도 경고입니다. 매출 동기화 지연은 매출 동기화 카드에서만 별도 확인합니다.', '주의 신호 기준')}</div>
       <div class="system-value">${warnings.map(escapeHtml).join(' · ')}</div>
+    </div>
+  ` : '') + (systemWarningDetail ? `
+    <div class="system-item warning system-wide">
+      <span class="system-dot" aria-hidden="true"></span>
+      <div class="system-label">시스템 경고 상세${renderInfoTip(systemItemHelpText('시스템 경고 상세'), '시스템 경고 상세 기준')}</div>
+      <div class="system-value">${escapeHtml(systemWarningDetail)}</div>
     </div>
   ` : '') + (summaryAdvisory ? `
     <div class="system-item info system-wide">
@@ -2359,6 +2416,7 @@ function openStoreDialog(storeId) {
     ['운영 상태', levelLabel(store.prodStatus)],
     ['기상 신호', `${levelLabel(store.signalStatus)} · ${store.signalActionLevel} · ${store.signalMode || '-'}`],
     ['신호 근거', signalWeatherText(store)],
+    ['기상 원천 상태', signalSourceNotice(store) ? `${signalSourceNotice(store)} · ${signalSourceDetail(store)}` : '정상'],
     ['운영 기상/트리거', `${store.weather} · ${store.weatherDetail || store.trigger}`],
     ['운영 기상 수치', weatherMetricText(store)],
     ['신호 기상 수치', signalWeatherMetricText(store)],

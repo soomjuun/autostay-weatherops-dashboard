@@ -1262,6 +1262,20 @@ tbody tr:hover {
   font-size: 12px;
   line-height: 1.45;
 }
+.source-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.source-status.is-error {
+  color: #b42318;
+}
+.source-status.is-warning {
+  color: #9a4d08;
+}
 .info-tip {
   position: relative;
   display: inline-flex;

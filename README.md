@@ -192,7 +192,7 @@ Apps Script Web App은 대략 아래 JSON을 반환하면 됩니다.
 }
 ```
 
-`summary.systemError24h`와 `system.systemError24h`는 운영 판단을 막을 수 있는 미해결 오류입니다. `systemWarn24h`는 비차단 경고이며, 지점 알림 일부 실패나 원천 위생 경고처럼 추적은 필요하지만 `decisionReadiness=error`로 올리지는 않는 신호입니다.
+`summary.systemError24h`와 `system.systemError24h`는 운영 판단을 막을 수 있는 미해결 오류입니다. `systemWarn24h`는 비차단 경고이며, 지점 알림 일부 실패나 원천 위생 경고처럼 추적은 필요하지만 `decisionReadiness=error`로 올리지는 않는 신호입니다. `system.systemWarnings`가 있으면 발생 단계와 원천 메시지를 시스템 경고 상세에 표시합니다.
 
 대시보드의 대표 위험도는 `weatherSignal`을 우선 사용합니다. `weatherSignal.mode=shadow`는 샘플이나 가짜 데이터가 아니라 실제 기상 API 기반 신호가 공식 prod 운영 액션 원장에 반영되기 전이라는 뜻입니다. 따라서 상단 상태와 지점별 기상 위험은 `weatherSignal.overallStatus`와 `stores[].signalStatus`를 우선 표시하고, 완료보고·AS 정상화·매출회복·CRM 실행 상태는 계속 `mode=prod` 운영 원장을 기준으로 표시합니다.
 
@@ -232,6 +232,7 @@ autostay-weather-ops-dashboard
 - `stores[].weatherData.peakTime`은 `HH:mm`, `HHmm`, `H시`, `시만`, ISO 날짜시간, 시트 시간값을 `HH:mm`으로 정규화합니다. `1899-12-30 00:00` 계열의 시트 잔여값은 `피크 미정`으로 표시합니다.
 - `stores[].weatherData.weatherBaseAt`은 유효한 날짜시간만 `MM-DD HH:mm`으로 표시하고, 1899년 계열 sentinel 날짜는 화면에서 제외합니다.
 - 현재 실황은 `observedRain1h`, `observedTemperature`, `observedWind`, `observedAt` 또는 동일한 snake_case 필드를 수용합니다. 예보는 `forecastMaxPop`, `forecastMaxPcp1h`, `forecastMaxWind`, `forecastMaxTemperature`, `forecastPeakTime`, `forecastBaseAt` 또는 snake_case를 수용하며 기존 `pop`, `pcp`, `windSpeed`, `tmpMax`, `peakTime`, `weatherBaseAt`과 하위 호환됩니다.
+- 지점별 `sourceStatus`, `sourceError`, `sourceWarnings`, `metricStatus`, `consistency`를 위험등급과 별도로 수용합니다. 원천 오류가 있어도 계산된 기상 위험등급은 유지하고, 해당 지점에 `원천 확인`과 상세 원인을 표시합니다.
 - `forecastCacheFallback`, `observationCacheFallback`, `airCacheFallback`이 참이면 기상 칩과 설명에서 캐시 대체값임을 경고합니다.
 - `generatedAt`이 없으면 현재 시각으로 대체하지 않고 `-`와 경고 배너로 표시합니다.
 - 시간 포맷은 브라우저 로컬시간이 아니라 KST 기준으로 표시합니다.
