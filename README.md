@@ -231,6 +231,8 @@ autostay-weather-ops-dashboard
 - `visuals.recoveryFunnel`의 AS 차단 항목은 `key: "asBlocked"` 또는 라벨 `AS 차단`으로 전달합니다. 대시보드는 이 항목을 CRM·재방문 전환율 계산에서 제외하고 별도 참고 지표로 표시합니다.
 - `stores[].weatherData.peakTime`은 `HH:mm`, `HHmm`, `H시`, `시만`, ISO 날짜시간, 시트 시간값을 `HH:mm`으로 정규화합니다. `1899-12-30 00:00` 계열의 시트 잔여값은 `피크 미정`으로 표시합니다.
 - `stores[].weatherData.weatherBaseAt`은 유효한 날짜시간만 `MM-DD HH:mm`으로 표시하고, 1899년 계열 sentinel 날짜는 화면에서 제외합니다.
+- 현재 실황은 `observedRain1h`, `observedTemperature`, `observedWind`, `observedAt` 또는 동일한 snake_case 필드를 수용합니다. 예보는 `forecastMaxPop`, `forecastMaxPcp1h`, `forecastMaxWind`, `forecastMaxTemperature`, `forecastPeakTime`, `forecastBaseAt` 또는 snake_case를 수용하며 기존 `pop`, `pcp`, `windSpeed`, `tmpMax`, `peakTime`, `weatherBaseAt`과 하위 호환됩니다.
+- `forecastCacheFallback`, `observationCacheFallback`, `airCacheFallback`이 참이면 기상 칩과 설명에서 캐시 대체값임을 경고합니다.
 - `generatedAt`이 없으면 현재 시각으로 대체하지 않고 `-`와 경고 배너로 표시합니다.
 - 시간 포맷은 브라우저 로컬시간이 아니라 KST 기준으로 표시합니다.
 - 연결된 Apps Script Web App 버전이 기대 버전과 다르면 시스템 상태와 상단 경고에 재배포 또는 `WEATHER_OPS_API_URL` 확인 필요 메시지를 표시합니다.
@@ -278,7 +280,8 @@ autostay-weather-ops-dashboard
 - `doGet(mode=dashboard)`는 정상 payload를 60초 동안 `CacheService`에 보관합니다.
 - 대시보드 새로고침은 `/api/weather-ops-data?fresh=1`을 통해 Apps Script의 60초 캐시를 우회할 수 있습니다.
 - 캐시는 인증 토큰 검증 후에만 사용하며, 인증 실패/오류 응답은 캐시하지 않습니다.
-- `마지막 요약` 신선도는 단순 4시간 기준이 아니라 Apps Script의 09:10/16:30 종합 요약 스케줄과 45분 유예시간 기준으로 표시합니다.
+- `마지막 요약` 신선도는 단순 경과시간이 아니라 Apps Script의 09:10 종합 요약 1회 스케줄과 45분 유예시간 기준으로 표시합니다.
+- 기상 신호는 Apps Script의 2시간 무알림 `signal_refresh` 정책을 기준으로 하며, 마지막 신호가 3시간을 넘으면 payload의 기존 `decisionReadiness` 값과 무관하게 `신호 오래됨`으로 표시합니다.
 - 운영 개시 전이거나 지점별 Webhook 미등록으로 운영 로그가 비어 있어도 Apps Script가 `Alert_Log`에 종합 요약 heartbeat를 남기면 `lastSummaryAt`이 갱신됩니다.
 - `stores[].weatherData`는 최신 Action_Log의 구조화 컬럼(`weather_pop`, `weather_pcp`, `weather_wsd`, `weather_tmp_min`, `weather_tmp_max`, `weather_sno`, `weather_pm10`, `weather_pm25`, `weather_peak_time`, `weather_base_at`)을 우선 사용합니다.
 - `stores[].weatherData.levels`는 Apps Script의 `RULES` 기준으로 계산된 칩별 위험등급입니다. 프론트는 이 값을 사용해 Green/Yellow/Orange/Red 색상을 표시합니다.

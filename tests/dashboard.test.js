@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, decisionReadiness, decisionReadinessClass, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, normalizeSignalWeatherValues, weatherMetricRows, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, decisionReadiness, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -109,8 +109,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-15-4/);
-  assert.match(html, /style\.css\?v=2026-07-15-4/);
+  assert.match(html, /app\.js\?v=2026-07-16-1/);
+  assert.match(html, /style\.css\?v=2026-07-16-1/);
   assert.match(html, /<caption class="sr-only">/);
   assert.match(html, /<th scope="col">CS\/고객<\/th>/);
   assert.match(css, /\.pin-meta\s*\{[^}]*word-break:\s*keep-all;/s);
@@ -123,6 +123,68 @@ test('summary metric labels stay attached to their values', () => {
     'Immediate\u00a00 / Watch\u00a07 / Check\u00a00'
   );
   assert.equal(api.keepMetricValueTogether('No metric summary'), 'No metric summary');
+});
+
+test('최신 시트의 종합 요약은 09:10 한 번만 예정한다', () => {
+  const { api } = loadDashboardLogic();
+  const candidates = api.summaryScheduleCandidates(new Date('2026-07-16T12:00:00+09:00'), 0, 0);
+  assert.equal(candidates.length, 1);
+  assert.equal(candidates[0].toISOString(), '2026-07-16T00:10:00.000Z');
+});
+
+test('2시간 갱신 기상 신호가 3시간을 넘으면 오래된 신호로 처리한다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.data = {
+    summary: {},
+    stores: [{ status: 'Green', prodStatus: 'Green' }],
+    weatherSignal: {
+      mode: 'prod',
+      generatedAt: '2026-07-15T00:00:00+09:00',
+      overallStatus: 'Green',
+      summary: { totalStores: 1, normal: 1 },
+      stores: [{ storeId: 'ilsan', status: 'Green' }]
+    },
+    system: { decisionReadiness: 'prod_ready' }
+  };
+  assert.equal(api.weatherSignalIsStale(), true);
+  assert.equal(api.decisionReadiness(), 'stale');
+  assert.match(api.weatherSignalFreshnessWarning(), /2시간 무알림 갱신/);
+});
+
+test('현재 실황과 오늘 예보 최대값을 별도 기상 지표로 정규화한다', () => {
+  const { api } = loadDashboardLogic();
+  const store = api.normalizeStore({ store_id: 'ilsan', store_name: '일산 풍동', status: 'Green' }, {
+    ilsan: {
+      status: 'Yellow',
+      riskType: '강수, 폭염',
+      weatherValues: {
+        observed_rain_1h: 1.2,
+        observed_temperature: 31.4,
+        observed_wind: 3.8,
+        observed_at: '2026-07-16T10:00:00+09:00',
+        forecast_max_pop: 80,
+        forecast_max_pcp_1h: 5,
+        forecast_max_wind: 8,
+        forecast_max_temperature: 34,
+        forecast_peak_time: '16:00',
+        forecast_base_at: '2026-07-16T08:00:00+09:00'
+      }
+    }
+  });
+  const rows = api.weatherMetricRows({
+    weatherData: store.weatherValues,
+    trigger: store.signalRiskType,
+    weather: store.signalRiskType,
+    weatherDetail: store.signalReason
+  });
+  assert.equal(store.weatherValues.pop, 80);
+  assert.equal(store.weatherValues.pcp, 5);
+  assert.equal(store.weatherValues.windSpeed, 8);
+  assert.equal(store.weatherValues.tmpMax, 34);
+  assert.ok(rows.some((row) => row.label === '현재 강수' && row.value === '1.2mm/h'));
+  assert.ok(rows.some((row) => row.label === '현재기온' && row.value === '31.4℃'));
+  assert.ok(rows.some((row) => row.label === '예보 최대강수' && row.value === '5mm/h'));
+  assert.ok(rows.some((row) => row.label === '예보 최고기온' && row.value === '34℃'));
 });
 
 test('운영 상태나 기상 신호가 누락되면 지점을 정상으로 기본 처리하지 않는다', () => {

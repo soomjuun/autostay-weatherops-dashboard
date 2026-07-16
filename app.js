@@ -10,6 +10,8 @@ const state = {
 const EXPECTED_PACK_VERSION = '';
 const DASHBOARD_CACHE_KEY = 'weatherOpsDashboard:lastSuccess:v2';
 const AUTO_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const WEATHER_SIGNAL_REFRESH_HOURS = 2;
+const WEATHER_SIGNAL_STALE_HOURS = 3;
 
 const $ = (id) => document.getElementById(id);
 
@@ -23,13 +25,12 @@ const STATUS_LABELS = {
   Gray: '대기'
 };
 const SUMMARY_SCHEDULES = [
-  { hour: 9, minute: 10 },
-  { hour: 16, minute: 30 }
+  { hour: 9, minute: 10 }
 ];
 const SUMMARY_GRACE_MINUTES = 45;
 const PROD_MODE_HELP = '이 대시보드는 운영 반영 대상(prod) dashboard payload를 기준으로 집계합니다. shadow/test 실행 기록은 원장 검증에는 사용되지만 화면 집계에서는 제외됩니다.';
-const WEATHER_SIGNAL_HELP = '기상 신호는 최신 Action_Log/Alert_Log 기준의 API 감지 결과입니다. shadow 신호도 실제 API 기반일 수 있으며, 공식 운영 액션 원장 반영 전 상태로 분리 표시합니다.';
-const WEATHER_API_HELP = '기상 수치는 기상청 단기예보와 에어코리아 값이 Action_Log 또는 weatherSignal에 적재된 경우 표시됩니다. 운영 상태와 기상 신호는 분리해서 봐야 합니다.';
+const WEATHER_SIGNAL_HELP = '기상 신호는 최신 Action_Log/Alert_Log 기준의 API 감지 결과이며 2시간마다 무알림 갱신됩니다. shadow 신호도 실제 API 기반일 수 있으며, 공식 운영 액션 원장 반영 전 상태로 분리 표시합니다.';
+const WEATHER_API_HELP = '기상 수치는 현재 실황과 오늘 남은 운영시간 예보를 구분해 표시합니다. Apps Script payload에 실황 또는 예보 필드가 없는 값은 표시하지 않으며, 운영 상태와 기상 신호는 분리해서 봐야 합니다.';
 const WEATHER_THRESHOLD_HELP = '임계값: 강수 Yellow=POP 60% 또는 PCP 0.1mm+, Orange=POP 80% 또는 PCP 5mm+, Red=PCP 15mm+. 풍속 7/10/14m/s, 한파 0/-5/-10도, 적설 0.1/1/5cm, 폭염 30/33/35도, PM10 81/151/300, PM2.5 36/76/150 기준입니다.';
 const STATIC_HELP_ITEMS = [
   ['.map-panel h2', `지점 현황은 prod 운영 상태와 최신 기상 신호 중 확인 우선순위가 높은 상태로 정렬합니다. ${WEATHER_SIGNAL_HELP}`, '지점 현황 기준'],
@@ -307,7 +308,10 @@ function normalizeWeatherSignal(signal) {
   const stores = arrayFrom(signal.stores).map((row) => {
     row = objectFrom(row);
     const status = normalizeStatus(firstPresent(row, ['status', 'overallStatus', 'overall_status', 'level', 'riskLevel', 'risk_level']) || 'Gray');
-    const weatherValues = objectFrom(firstPresent(row, ['weatherValues', 'weather_values', 'weather', 'weatherData', 'weather_data']));
+    const weatherValues = normalizeSignalWeatherValues(
+      firstPresent(row, ['weatherValues', 'weather_values', 'weather', 'weatherData', 'weather_data']),
+      row
+    );
     return {
       storeId: firstPresent(row, ['storeId', 'store_id', 'id']) || slug(firstPresent(row, ['storeName', 'store_name', 'name', 'store']) || ''),
       storeName: firstPresent(row, ['storeName', 'store_name', 'name', 'store']) || '-',
@@ -363,7 +367,10 @@ function normalizeStore(store, signalByStore = {}) {
   const prodStatus = normalizeStatus(prodStatusProvided ? rawProdStatus : 'Gray');
   const signalStatus = normalizeStatus(signalStatusProvided ? rawSignalStatus : 'Gray');
   const displayStatus = storeDisplayStatus(prodStatus, signalStatus, prodStatusProvided, signalStatusProvided);
-  const weatherValues = objectFrom(firstPresent(store, ['weatherValues', 'weather_values']) || signal.weatherValues || signal.weather || {});
+  const weatherValues = normalizeSignalWeatherValues(
+    firstPresent(store, ['weatherValues', 'weather_values']) || signal.weatherValues || signal.weather || {},
+    Object.assign({}, signal, store)
+  );
   return {
     id,
     name,
@@ -430,7 +437,61 @@ function normalizeWeatherData(store) {
     const value = firstPresent(store, aliases[key]);
     if (value !== null) data[key] = value;
   });
-  return data;
+  return normalizeSignalWeatherValues(data, store);
+}
+
+function normalizeSignalWeatherValues(value, fallback = {}) {
+  const source = objectFrom(value);
+  const row = objectFrom(fallback);
+  const observation = objectFrom(firstPresent(source, ['observation', 'currentObservation', 'current_observation', 'currentWeather', 'current_weather'])
+    || firstPresent(row, ['observation', 'currentObservation', 'current_observation', 'currentWeather', 'current_weather']));
+  const forecast = objectFrom(firstPresent(source, ['forecast', 'weatherForecast', 'weather_forecast'])
+    || firstPresent(row, ['forecast', 'weatherForecast', 'weather_forecast']));
+  const normalized = Object.assign({}, source);
+  const fields = {
+    observedRain1h: ['observedRain1h', 'observed_rain_1h', 'currentRain1h', 'current_rain_1h', 'rn1', 'RN1'],
+    observedTemperature: ['observedTemperature', 'observed_temperature', 'currentTemperature', 'current_temperature', 't1h', 'T1H'],
+    observedWind: ['observedWind', 'observed_wind', 'currentWind', 'current_wind', 'observationWind', 'observation_wind'],
+    observedAt: ['observedAt', 'observed_at', 'observationAt', 'observation_at', 'currentObservedAt', 'current_observed_at'],
+    forecastMaxPop: ['forecastMaxPop', 'forecast_max_pop', 'maxPop', 'max_pop'],
+    forecastMaxPcp1h: ['forecastMaxPcp1h', 'forecast_max_pcp_1h', 'forecastMaxPcp', 'forecast_max_pcp', 'maxPcp', 'max_pcp'],
+    forecastMaxWind: ['forecastMaxWind', 'forecast_max_wind', 'maxWind', 'max_wind'],
+    forecastMaxTemperature: ['forecastMaxTemperature', 'forecast_max_temperature', 'maxTemperature', 'max_temperature'],
+    forecastMinTemperature: ['forecastMinTemperature', 'forecast_min_temperature', 'minTemperature', 'min_temperature'],
+    forecastPeakTime: ['forecastPeakTime', 'forecast_peak_time', 'weatherPeakTime', 'weather_peak_time'],
+    forecastBaseAt: ['forecastBaseAt', 'forecast_base_at', 'weatherBaseAt', 'weather_base_at'],
+    airObservedAt: ['airObservedAt', 'air_observed_at', 'airQualityObservedAt', 'air_quality_observed_at'],
+    forecastCacheFallback: ['forecastCacheFallback', 'forecast_cache_fallback', 'weatherCacheFallback', 'weather_cache_fallback'],
+    observationCacheFallback: ['observationCacheFallback', 'observation_cache_fallback'],
+    airCacheFallback: ['airCacheFallback', 'air_cache_fallback']
+  };
+  Object.keys(fields).forEach((key) => {
+    const aliases = fields[key];
+    const candidate = firstPresent(source, aliases)
+      ?? firstPresent(row, aliases)
+      ?? firstPresent(observation, aliases)
+      ?? firstPresent(forecast, aliases);
+    if (candidate !== null) normalized[key] = candidate;
+  });
+  if (firstPresent(normalized, ['observedWind']) === null) {
+    const observedWind = firstPresent(observation, ['WSD', 'wsd', 'windSpeed', 'wind_speed']);
+    if (observedWind !== null) normalized.observedWind = observedWind;
+  }
+  const compatibility = {
+    pop: normalized.forecastMaxPop,
+    pcp: normalized.forecastMaxPcp1h,
+    windSpeed: normalized.forecastMaxWind,
+    tmpMax: normalized.forecastMaxTemperature,
+    tmpMin: normalized.forecastMinTemperature,
+    peakTime: normalized.forecastPeakTime,
+    weatherBaseAt: normalized.forecastBaseAt
+  };
+  Object.keys(compatibility).forEach((key) => {
+    if (firstPresent(normalized, [key]) === null && compatibility[key] !== undefined && compatibility[key] !== null && compatibility[key] !== '') {
+      normalized[key] = compatibility[key];
+    }
+  });
+  return normalized;
 }
 
 function normalizeStatus(value) {
@@ -631,8 +692,32 @@ function decisionReadiness() {
     : String(raw || '').trim();
   if (explicit === 'error' || explicit === 'danger') return explicit;
   if (!hasWeatherSignalData()) return 'no_signal';
+  if (weatherSignalIsStale()) return 'stale';
   if (explicit) return explicit;
   return '';
+}
+
+function weatherSignalTimestamp() {
+  const signal = state.data && state.data.weatherSignal ? state.data.weatherSignal : {};
+  const system = state.data && state.data.system ? state.data.system : {};
+  return firstPresent(signal, ['generatedAt', 'generated_at', 'observedAt', 'observed_at'])
+    || firstPresent(system, ['lastWeatherSignalAt', 'last_weather_signal_at'])
+    || '';
+}
+
+function weatherSignalAgeHours() {
+  return hoursSince(weatherSignalTimestamp());
+}
+
+function weatherSignalIsStale() {
+  const age = weatherSignalAgeHours();
+  return age !== null && age > WEATHER_SIGNAL_STALE_HOURS;
+}
+
+function weatherSignalFreshnessWarning() {
+  const age = weatherSignalAgeHours();
+  if (age === null || age <= WEATHER_SIGNAL_STALE_HOURS) return '';
+  return `기상 신호가 ${Math.floor(age)}시간 이상 갱신되지 않았습니다. 2시간 무알림 갱신과 signal_refresh 로그를 확인하세요.`;
 }
 
 function decisionReadinessRaw() {
@@ -761,9 +846,12 @@ function weatherSignalHelpText() {
   if (!hasWeatherSignalData()) {
     return `Apps Script dashboard payload에 최신 weatherSignal 데이터가 없습니다. 대시보드는 prod 운영 원장 기준 상태를 계속 표시하지만, 현재 기상 API 신호 판단은 대기 상태로 봐야 합니다. ${WEATHER_SIGNAL_HELP}`;
   }
-  const generated = formatDateTime(signal.generatedAt || signal.observedAt);
+  const generated = formatDateTime(weatherSignalTimestamp());
+  const freshness = weatherSignalIsStale()
+    ? ` 신호가 ${WEATHER_SIGNAL_STALE_HOURS}시간 기준을 초과해 운영 판단에는 오래된 값으로 처리합니다.`
+    : ` ${WEATHER_SIGNAL_REFRESH_HOURS}시간 무알림 갱신 기준 안의 신호입니다.`;
   const base = signal.message || WEATHER_SIGNAL_HELP;
-  return `${base} 신호 기준시각: ${generated || '-'}. ${WEATHER_THRESHOLD_HELP}`;
+  return `${base} 신호 기준시각: ${generated || '-'}.${freshness} ${WEATHER_THRESHOLD_HELP}`;
 }
 
 function dashboardHeadline() {
@@ -1562,11 +1650,14 @@ function signalStatusHelpText(store) {
 }
 
 function signalWeatherText(store) {
+  const currentObservedAt = firstPresent(store.weatherValues || {}, ['observedAt', 'observed_at', 'observationAt', 'observation_at']);
   const pieces = [
     store.signalMode || '',
     store.signalRiskType || '',
     store.signalReason || '',
-    store.signalObservedAt ? `관측 ${formatDateTime(store.signalObservedAt)}` : ''
+    currentObservedAt
+      ? `실황 ${formatDateTime(currentObservedAt)}`
+      : (store.signalObservedAt ? `신호 기준 ${formatDateTime(store.signalObservedAt)}` : '')
   ].filter(Boolean);
   return pieces.length ? pieces.join(' · ') : '최신 기상 신호 없음';
 }
@@ -1599,16 +1690,26 @@ function weatherDetailText(store) {
 function weatherCellHelpText(store) {
   const metricCount = weatherMetricRows(store).length;
   const signalMetricCount = signalWeatherMetricRows(store).length;
+  const sourceNotice = weatherSourceQualityNotice(store);
   if (metricCount && weatherMetricRowsEquivalent(store)) {
-    return `운영과 최신 기상 신호 수치 ${metricCount}개가 동일해 중복 없이 한 번만 표시합니다. ${WEATHER_THRESHOLD_HELP}`;
+    return `운영과 최신 기상 신호 수치 ${metricCount}개가 동일해 중복 없이 한 번만 표시합니다. ${sourceNotice} ${WEATHER_THRESHOLD_HELP}`.trim();
   }
   if (metricCount) {
-    return `운영 수치 ${metricCount}개는 prod 운영 액션 기준입니다. 최신 기상 신호 수치는 별도 신호 줄에 ${signalMetricCount}개 표시됩니다. ${WEATHER_THRESHOLD_HELP}`;
+    return `운영 수치 ${metricCount}개는 prod 운영 액션 기준입니다. 최신 기상 신호 수치는 별도 신호 줄에 ${signalMetricCount}개 표시됩니다. ${sourceNotice} ${WEATHER_THRESHOLD_HELP}`.trim();
   }
   if (signalMetricCount) {
-    return `prod 운영 액션 수치는 없지만 최신 기상 신호 수치 ${signalMetricCount}개가 있습니다. ${WEATHER_SIGNAL_HELP} ${WEATHER_THRESHOLD_HELP}`;
+    return `prod 운영 액션 수치는 없지만 최신 기상 신호 수치 ${signalMetricCount}개가 있습니다. ${sourceNotice} ${WEATHER_SIGNAL_HELP} ${WEATHER_THRESHOLD_HELP}`.trim();
   }
   return `${WEATHER_API_HELP} ${PROD_MODE_HELP}`;
+}
+
+function weatherSourceQualityNotice(store) {
+  const data = Object.assign({}, store.weatherData || {}, store.weatherValues || {});
+  const sources = [];
+  if (normalizeBoolean(firstPresent(data, ['forecastCacheFallback', 'forecast_cache_fallback', 'weatherCacheFallback', 'weather_cache_fallback']))) sources.push('예보');
+  if (normalizeBoolean(firstPresent(data, ['observationCacheFallback', 'observation_cache_fallback']))) sources.push('실황');
+  if (normalizeBoolean(firstPresent(data, ['airCacheFallback', 'air_cache_fallback']))) sources.push('대기질');
+  return sources.length ? `${sources.join('·')} 데이터는 마지막 성공 캐시 대체값입니다.` : '';
 }
 
 function asStatusHelpText(store) {
@@ -1704,12 +1805,12 @@ function renderSystem() {
   const systemWarnCount = metricNumber(systemWarnCountValue);
   const systemErrorDetail = systemIssueSummary('error', systemErrorCount);
   const items = [
-    { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || systemFreshnessClass(lastSummaryAt, 8) },
+    { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || summaryFreshnessStatusClass(system) },
     { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
     { label: '시트/Pack', value: formatPackVersionStatus(system), className: versionStatusClass(system) },
     { label: '데이터 상태', value: operationalDataStatus(system), className: operationalDataStatusClass() },
     { label: '판단 상태', value: decisionReadinessLabel(), className: decisionReadinessClass() },
-    { label: '기상 신호', value: weatherSignalSummaryText(), className: !hasWeatherSignalData() ? 'info' : (weatherSignalHasRisk() ? 'warning' : 'ok') },
+    { label: '기상 신호', value: weatherSignalSummaryText(), className: !hasWeatherSignalData() ? 'info' : (weatherSignalIsStale() || weatherSignalHasRisk() ? 'warning' : 'ok') },
     { label: '시스템 오류', value: systemErrorCountValue === '-' ? '-' : `${systemErrorCount}건`, className: systemErrorCount > 0 ? 'danger' : (systemErrorCountValue === '-' ? 'info' : 'ok') },
     { label: '시스템 경고', value: systemWarnCountValue === '-' ? '-' : `${systemWarnCount}건`, className: systemWarnCount > 0 ? 'warning' : (systemWarnCountValue === '-' ? 'info' : 'ok') }
   ];
@@ -1817,25 +1918,36 @@ function renderSignalWeatherMetricChips(store, limit = 3) {
 
 function weatherMetricRows(store) {
   const data = store.weatherData || {};
-  const peakTime = formatPeakTime(firstPresent(data, ['peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']));
+  const peakTime = formatPeakTime(firstPresent(data, ['forecastPeakTime', 'forecast_peak_time', 'peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']));
+  const fallbackSources = [
+    normalizeBoolean(firstPresent(data, ['forecastCacheFallback', 'forecast_cache_fallback', 'weatherCacheFallback', 'weather_cache_fallback'])) ? '예보' : '',
+    normalizeBoolean(firstPresent(data, ['observationCacheFallback', 'observation_cache_fallback'])) ? '실황' : '',
+    normalizeBoolean(firstPresent(data, ['airCacheFallback', 'air_cache_fallback'])) ? '대기질' : ''
+  ].filter(Boolean);
   const rows = [
-    { key: 'pop', label: '강수확률', value: firstPresent(data, ['pop', 'POP', 'weather_pop', 'rainProbability', 'rain_probability', 'precipitationProbability', 'precipitation_probability']), unit: '%' },
-    { key: 'pcp', label: '강수량', value: firstPresent(data, ['pcp', 'PCP', 'weather_pcp', 'rainfall', 'rainfallMm', 'rainfall_mm', 'precipitation', 'precipitationMm', 'precipitation_mm']), unit: 'mm' },
-    { key: 'peakTime', label: '피크', value: peakTime, unit: '' },
-    { key: 'windSpeed', label: '풍속', value: firstPresent(data, ['wsd', 'WSD', 'weather_wsd', 'windSpeed', 'wind_speed']), unit: 'm/s' },
-    { key: 'tmpMax', label: '최고기온', value: firstPresent(data, ['tmpMax', 'tmp_max', 'weather_tmp_max', 'tmx', 'TMX', 'TMP_MAX']), unit: '℃' },
-    { key: 'tmpMin', label: '최저기온', value: firstPresent(data, ['tmpMin', 'tmp_min', 'weather_tmp_min', 'tmn', 'TMN', 'TMP_MIN']), unit: '℃' },
-    { key: 'snowfallCm', label: '적설', value: firstPresent(data, ['sno', 'SNO', 'weather_sno', 'snow', 'snowfall', 'snowfallCm', 'snowfall_cm']), unit: 'cm' },
+    { key: 'sourceFallback', label: '원천', value: fallbackSources.length ? `${fallbackSources.join('·')} 캐시 대체` : '', unit: '', level: 'Yellow' },
+    { key: 'observedRain1h', label: '현재 강수', value: firstPresent(data, ['observedRain1h', 'observed_rain_1h', 'currentRain1h', 'current_rain_1h', 'rn1', 'RN1']), unit: 'mm/h' },
+    { key: 'observedTemperature', label: '현재기온', value: firstPresent(data, ['observedTemperature', 'observed_temperature', 'currentTemperature', 'current_temperature', 't1h', 'T1H']), unit: '℃' },
+    { key: 'observedWind', label: '현재풍속', value: firstPresent(data, ['observedWind', 'observed_wind', 'currentWind', 'current_wind']), unit: 'm/s' },
+    { key: 'pop', label: '예보 강수확률', value: firstPresent(data, ['forecastMaxPop', 'forecast_max_pop', 'pop', 'POP', 'weather_pop', 'rainProbability', 'rain_probability', 'precipitationProbability', 'precipitation_probability']), unit: '%' },
+    { key: 'pcp', label: '예보 최대강수', value: firstPresent(data, ['forecastMaxPcp1h', 'forecast_max_pcp_1h', 'forecastMaxPcp', 'forecast_max_pcp', 'pcp', 'PCP', 'weather_pcp', 'rainfall', 'rainfallMm', 'rainfall_mm', 'precipitation', 'precipitationMm', 'precipitation_mm']), unit: 'mm/h' },
+    { key: 'peakTime', label: '예보 피크', value: peakTime, unit: '' },
+    { key: 'windSpeed', label: '예보 최대풍속', value: firstPresent(data, ['forecastMaxWind', 'forecast_max_wind', 'wsd', 'WSD', 'weather_wsd', 'windSpeed', 'wind_speed']), unit: 'm/s' },
+    { key: 'tmpMax', label: '예보 최고기온', value: firstPresent(data, ['forecastMaxTemperature', 'forecast_max_temperature', 'tmpMax', 'tmp_max', 'weather_tmp_max', 'tmx', 'TMX', 'TMP_MAX']), unit: '℃' },
+    { key: 'tmpMin', label: '예보 최저기온', value: firstPresent(data, ['forecastMinTemperature', 'forecast_min_temperature', 'tmpMin', 'tmp_min', 'weather_tmp_min', 'tmn', 'TMN', 'TMP_MIN']), unit: '℃' },
+    { key: 'snowfallCm', label: '예보 적설', value: firstPresent(data, ['sno', 'SNO', 'weather_sno', 'snow', 'snowfall', 'snowfallCm', 'snowfall_cm']), unit: 'cm' },
     { key: 'pm10', label: 'PM10', value: firstPresent(data, ['pm10', 'PM10', 'weather_pm10', 'air_pm10']), unit: ' ㎍/㎥' },
     { key: 'pm25', label: 'PM2.5', value: firstPresent(data, ['pm25', 'pm2_5', 'PM25', 'PM2_5', 'weather_pm25', 'air_pm25']), unit: ' ㎍/㎥' },
-    { key: 'weatherBaseAt', label: '기준', value: formatMaybeDate(firstPresent(data, ['weatherBaseAt', 'weather_base_at', 'baseAt', 'base_at'])), unit: '' }
+    { key: 'observedAt', label: '실황 기준', value: formatMaybeDate(firstPresent(data, ['observedAt', 'observed_at', 'observationAt', 'observation_at'])), unit: '' },
+    { key: 'weatherBaseAt', label: '예보 기준', value: formatMaybeDate(firstPresent(data, ['forecastBaseAt', 'forecast_base_at', 'weatherBaseAt', 'weather_base_at', 'baseAt', 'base_at'])), unit: '' },
+    { key: 'airObservedAt', label: '대기질 기준', value: formatMaybeDate(firstPresent(data, ['airObservedAt', 'air_observed_at', 'airQualityObservedAt', 'air_quality_observed_at'])), unit: '' }
   ];
   return rows
     .map((row, index) => ({
       key: row.key,
       label: row.label,
       value: formatMetricValue(row.value, row.unit),
-      level: weatherMetricLevel(data, row.key),
+      level: row.level || weatherMetricLevel(data, row.key),
       order: index
     }))
     .filter((row) => row.value !== null && row.value !== undefined && row.value !== '' && row.value !== '-')
@@ -1857,6 +1969,7 @@ function signalWeatherMetricRows(store) {
 
 function weatherMetricLevel(data, key) {
   const levels = data.levels || data.metricLevels || data.metric_levels || {};
+  if (key === 'sourceFallback') return 'Yellow';
   if (key === 'peakTime') return highestWeatherMetricLevel(levels) || 'Gray';
   const camelLevelKey = `${key}Level`;
   const snakeLevelKey = `${key.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)}_level`;
@@ -1875,9 +1988,10 @@ function highestWeatherMetricLevel(levels) {
 function weatherMetricPriority(store, key) {
   const text = `${store.trigger || ''} ${store.weather || ''} ${store.weatherDetail || ''}`.toLowerCase();
   const priority = [];
-  if (text.includes('강수') || text.includes('비') || text.includes('rain')) priority.push('pop', 'pcp', 'peakTime');
-  if (text.includes('강풍') || text.includes('풍속') || text.includes('wind')) priority.push('windSpeed', 'peakTime');
-  if (text.includes('폭염') || text.includes('더위') || text.includes('heat')) priority.push('tmpMax', 'peakTime');
+  priority.push('sourceFallback');
+  if (text.includes('강수') || text.includes('비') || text.includes('rain')) priority.push('observedRain1h', 'pop', 'pcp', 'peakTime');
+  if (text.includes('강풍') || text.includes('풍속') || text.includes('wind')) priority.push('observedWind', 'windSpeed', 'peakTime');
+  if (text.includes('폭염') || text.includes('더위') || text.includes('heat')) priority.push('observedTemperature', 'tmpMax', 'peakTime');
   if (text.includes('한파') || text.includes('동파') || text.includes('cold')) priority.push('tmpMin', 'peakTime');
   if (text.includes('대설') || text.includes('적설') || text.includes('눈') || text.includes('snow')) priority.push('snowfallCm', 'peakTime');
   if (text.includes('먼지') || text.includes('황사') || text.includes('dust')) priority.push('pm10', 'pm25', 'peakTime');
@@ -2465,6 +2579,8 @@ function freshnessWarnings(options = {}) {
     warnings.push(versionMismatchWarning(currentVersion, expectedVersion));
   }
   if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
+  const signalWarning = weatherSignalFreshnessWarning();
+  if (signalWarning) warnings.push(signalWarning);
   if (includeOperationalAdvisory && systemErrorCount > 0 && !warnings.some((warning) => String(warning || '').includes('시스템 오류'))) {
     warnings.push(`시스템 오류 ${systemErrorCount}건`);
   }
@@ -2499,6 +2615,12 @@ function summaryAdvisoryMessage(system) {
     return '종합 요약 발송 이력 없음. 기상·지점 데이터 수신과는 별도입니다.';
   }
   return `${warning} 데이터 수신과는 별도입니다.`;
+}
+
+function summaryFreshnessStatusClass(system) {
+  const warning = summaryFreshnessWarning(system || {});
+  if (!warning) return 'ok';
+  return warning.includes('예정된 종합 요약') ? 'danger' : 'warning';
 }
 
 function operationalDataStatus(system) {
