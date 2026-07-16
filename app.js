@@ -663,6 +663,12 @@ function primaryDashboardStatusLabel() {
   return ['Error', 'Red', 'Orange', 'Yellow'].includes(prodOverallStatus()) ? '운영' : '기상 판단';
 }
 
+function primaryDashboardStatusText() {
+  const status = primaryDashboardStatus();
+  if (hasWeatherSignalData() && status === 'Error') return '기상 데이터 확인';
+  return `${primaryDashboardStatusLabel()} ${levelLabel(status)}`;
+}
+
 function weatherSignalMode() {
   return String((state.data && state.data.weatherSignal && state.data.weatherSignal.mode)
     || (state.data && state.data.system && (state.data.system.currentDataMode || state.data.system.current_data_mode))
@@ -820,7 +826,25 @@ function signalStoreStatusCount(status) {
 
 function nextSummaryDueText() {
   const system = state.data && state.data.system ? state.data.system : {};
-  return formatDateTime(system.nextSummaryDueAt || system.next_summary_due_at) || '';
+  const provided = system.nextSummaryDueAt || system.next_summary_due_at;
+  const providedDate = new Date(provided || '');
+  if (Number.isFinite(providedDate.getTime()) && summaryDateMatchesPolicy(providedDate)) {
+    return formatDateTime(providedDate);
+  }
+  const nextDue = summaryScheduleCandidates(new Date(), 0, 1)
+    .filter((date) => date.getTime() > Date.now())
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+  return formatDateTime(nextDue) || '';
+}
+
+function summaryDateMatchesPolicy(date) {
+  const time = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  }).format(date);
+  return SUMMARY_SCHEDULES.some((schedule) => time === `${String(schedule.hour).padStart(2, '0')}:${String(schedule.minute).padStart(2, '0')}`);
 }
 
 function weatherSignalSummaryText() {
@@ -838,7 +862,8 @@ function weatherSignalSummaryText() {
 }
 
 function weatherSignalStatusText() {
-  return hasWeatherSignalData() ? `기상 신호 ${levelLabel(signalOverallStatus())}` : '기상 신호 없음';
+  if (!hasWeatherSignalData()) return '기상 신호 없음';
+  return signalOverallStatus() === 'Error' ? '기상 데이터 확인' : `기상 신호 ${levelLabel(signalOverallStatus())}`;
 }
 
 function weatherSignalHelpText() {
@@ -895,7 +920,7 @@ function renderDecisionBanner() {
     ['운영', levelLabel(prodOverallStatus())],
     ['신호', hasWeatherSignalData() ? levelLabel(signalOverallStatus()) : '없음'],
     ['모드', weatherSignalMode()],
-    ['관측', signalTime]
+    ['신호 생성', signalTime]
   ].filter(([, value]) => value);
   const hasContent = Boolean(message || weatherSignalHasRisk());
   const shouldShow = readinessClass === 'danger' && hasContent;
@@ -927,7 +952,7 @@ function renderHero() {
   const warnings = topBannerWarnings();
   const readinessClass = decisionReadinessClass();
   const hasRiskSignal = weatherSignalHasRisk();
-  $('overallStatus').innerHTML = `${escapeHtml(primaryDashboardStatusLabel())} ${escapeHtml(levelLabel(status))}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
+  $('overallStatus').innerHTML = `${escapeHtml(primaryDashboardStatusText())}${renderInfoTip(overallStatusHelpText(status), '전체 상태 기준')}`;
   $('overallStatus').className = `status-word text-${status}`;
   $('headline').textContent = keepMetricValueTogether(dashboardHeadline());
   const sourceText = state.data.source && state.data.source.startsWith('sample') ? '샘플 데이터' : '실데이터 연결';
@@ -1127,8 +1152,7 @@ function renderMap() {
     return;
   }
   $('metroMap').innerHTML = stores.map((store, index) => {
-    const weatherChips = renderWeatherMetricChips(store, 3);
-    const signalChips = weatherMetricRowsEquivalent(store) ? '' : renderSignalWeatherMetricChips(store, 3);
+    const weatherChips = renderCombinedWeatherMetricChips(store, 4);
     const signalLine = storeSignalLine(store);
     const nextAction = storeNextActionText(store);
     return `
@@ -1140,7 +1164,6 @@ function renderMap() {
         <span class="pin-meta">운영 ${escapeHtml(levelLabel(store.prodStatus))} · ${escapeHtml(store.dri)}</span>
         <span class="pin-meta signal-${escapeAttr(store.signalStatus)}">${escapeHtml(signalLine)}</span>
         ${weatherChips ? `<span class="weather-chip-row">${weatherChips}</span>` : ''}
-        ${signalChips ? `<span class="weather-chip-row signal-weather">${signalChips}</span>` : ''}
         <span class="pin-action">${escapeHtml(nextAction)}</span>
       </button>
     `;
@@ -1541,8 +1564,7 @@ function renderProcessedBulletList() {
 function renderStoreTable() {
   const rows = filteredStores();
   $('storeTable').innerHTML = rows.map((store) => {
-    const weatherChips = renderWeatherMetricChips(store, 4);
-    const signalChips = weatherMetricRowsEquivalent(store) ? '' : renderSignalWeatherMetricChips(store, 4);
+    const weatherChips = renderCombinedWeatherMetricChips(store, 5);
     const customer = customerStatusView(store);
     const nextAction = storeNextActionText(store);
     const nextActionHelp = nextAction !== store.nextAction
@@ -1560,7 +1582,6 @@ function renderStoreTable() {
           <span class="muted">${escapeHtml(weatherDetailText(store))}</span>
           ${renderTableSignalLine(store)}
           ${weatherChips ? `<div class="weather-chip-row table-weather">${weatherChips}</div>` : ''}
-          ${signalChips ? `<div class="weather-chip-row table-weather signal-weather">${signalChips}</div>` : ''}
         </td>
         <td data-label="AS"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span>${renderDowntimeDetail(store)}</td>
         <td data-label="CS/고객">
@@ -1745,6 +1766,7 @@ function systemItemHelpText(label) {
     '데이터 상태': `dashboard payload 연결과 운영 데이터 상태입니다. ${WEATHER_API_HELP}`,
     '판단 상태': decisionReadinessHelpText(),
     '기상 신호': weatherSignalHelpText(),
+    '기상 신호 갱신': 'Slack 발송 없이 대시보드용 기상 신호를 새로 계산한 시각입니다. 정기 종합 요약 발송 시각과는 별도입니다.',
     '시스템 오류': '최근 24시간 미해결 ERROR/CRITICAL/FATAL급 시스템 오류입니다. 해결 처리된 dashboard 인증 오류와 lock 경고는 Apps Script payload에서 제외됩니다.',
     '시스템 오류 상세': 'Apps Script dashboard payload가 제공한 미해결 시스템 오류의 최근 메시지입니다. 상세 payload가 없으면 오류 건수만 표시합니다.',
     '시스템 경고': '최근 24시간 미해결 WARN/WARNING급 비차단 경고입니다. 운영 판단을 막지는 않지만 반복되면 자동화 또는 원천 상태를 점검해야 합니다.'
@@ -1797,6 +1819,8 @@ function renderSystem() {
   const warnings = topBannerWarnings();
   const summaryAdvisory = summaryAdvisoryMessage(system);
   const lastSummaryAt = system.lastSummaryAt || system.last_summary_at || '-';
+  const lastSummaryStatus = String(system.lastSummaryStatus || system.last_summary_status || '').trim().toLowerCase();
+  const latestRecordIsSignalRefresh = lastSummaryStatus === 'signal_refresh';
   const summaryFreshnessLevel = system.summaryFreshnessLevel || system.summary_freshness_level;
   const summary = state.data.summary || {};
   const systemErrorCountValue = firstMetricValue(summary.systemError24h, summary.system_error_24h, system.systemError24h, system.system_error_24h);
@@ -1805,7 +1829,13 @@ function renderSystem() {
   const systemWarnCount = metricNumber(systemWarnCountValue);
   const systemErrorDetail = systemIssueSummary('error', systemErrorCount);
   const items = [
-    { label: '마지막 요약', value: lastSummaryAt, className: summaryFreshnessLevel || summaryFreshnessStatusClass(system) },
+    {
+      label: latestRecordIsSignalRefresh ? '기상 신호 갱신' : '마지막 요약',
+      value: lastSummaryAt,
+      className: latestRecordIsSignalRefresh
+        ? (weatherSignalIsStale() ? 'warning' : 'ok')
+        : (summaryFreshnessLevel || summaryFreshnessStatusClass(system))
+    },
     { label: '매출 동기화', value: system.lastRevenueSyncAt || system.last_revenue_sync_at || '-', className: systemFreshnessClass(system.lastRevenueSyncAt || system.last_revenue_sync_at, 30) },
     { label: '시트/Pack', value: formatPackVersionStatus(system), className: versionStatusClass(system) },
     { label: '데이터 상태', value: operationalDataStatus(system), className: operationalDataStatusClass() },
@@ -1976,6 +2006,27 @@ function weatherMetricLevel(data, key) {
   return firstPresent(levels, [key, camelLevelKey, snakeLevelKey])
     || firstPresent(data, [camelLevelKey, snakeLevelKey])
     || 'Gray';
+}
+
+function combinedWeatherMetricRows(store) {
+  const operational = store.weatherData || {};
+  const signal = store.weatherValues || {};
+  const levels = Object.assign({}, operational.levels || {}, signal.levels || {});
+  const merged = Object.assign({}, operational, signal, { levels });
+  return weatherMetricRows(Object.assign({}, store, {
+    weatherData: merged,
+    weather: store.signalRiskType || store.weather,
+    weatherDetail: store.signalReason || store.weatherDetail,
+    trigger: store.signalRiskType || store.trigger
+  }));
+}
+
+function renderCombinedWeatherMetricChips(store, limit = 4) {
+  return combinedWeatherMetricRows(store).slice(0, limit).map((chip) => {
+    const level = normalizeStatus(chip.level || store.signalStatus || 'Gray');
+    const text = `${chip.label} ${chip.value}`;
+    return `<span class="weather-chip level-${escapeAttr(level)}" title="${escapeAttr(`${text} · ${levelLabel(level)} · ${WEATHER_THRESHOLD_HELP}`)}">${escapeHtml(text)}</span>`;
+  }).join('');
 }
 
 function highestWeatherMetricLevel(levels) {

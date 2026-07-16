@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, normalizeSignalWeatherValues, weatherMetricRows, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, decisionReadiness, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalizeStore, normalizeSignalWeatherValues, weatherMetricRows, combinedWeatherMetricRows, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -109,8 +109,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-16-1/);
-  assert.match(html, /style\.css\?v=2026-07-16-1/);
+  assert.match(html, /app\.js\?v=2026-07-16-2/);
+  assert.match(html, /style\.css\?v=2026-07-16-2/);
   assert.match(html, /<caption class="sr-only">/);
   assert.match(html, /<th scope="col">CS\/고객<\/th>/);
   assert.match(css, /\.pin-meta\s*\{[^}]*word-break:\s*keep-all;/s);
@@ -130,6 +130,24 @@ test('최신 시트의 종합 요약은 09:10 한 번만 예정한다', () => {
   const candidates = api.summaryScheduleCandidates(new Date('2026-07-16T12:00:00+09:00'), 0, 0);
   assert.equal(candidates.length, 1);
   assert.equal(candidates[0].toISOString(), '2026-07-16T00:10:00.000Z');
+  assert.equal(api.summaryDateMatchesPolicy(new Date('2026-07-16T09:10:00+09:00')), true);
+  assert.equal(api.summaryDateMatchesPolicy(new Date('2026-07-16T16:30:00+09:00')), false);
+});
+
+test('기상 Error는 시스템 장애가 아닌 데이터 확인 상태로 표시한다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.data = {
+    summary: {},
+    stores: [{ status: 'Error', prodStatus: 'Red' }],
+    weatherSignal: {
+      generatedAt: new Date().toISOString(),
+      overallStatus: 'Error',
+      summary: { dataCheck: 1 },
+      stores: [{ storeId: 'gwangmyeong', status: 'Error' }]
+    },
+    system: { decisionReadiness: 'prod_ready' }
+  };
+  assert.equal(api.primaryDashboardStatusText(), '기상 데이터 확인');
 });
 
 test('2시간 갱신 기상 신호가 3시간을 넘으면 오래된 신호로 처리한다', () => {
@@ -316,6 +334,37 @@ test('운영과 기상 신호 수치가 같으면 중복 기상 칩을 축약한
   });
   assert.equal(api.weatherMetricRowsEquivalent(same), true);
   assert.equal(api.weatherMetricRowsEquivalent(different), false);
+});
+
+test('운영과 최신 신호의 기상 수치는 키별 최신 값으로 한 번만 합친다', () => {
+  const { api } = loadDashboardLogic();
+  const store = api.normalizeStore({
+    store_id: 'gwangmyeong',
+    store_name: '광명점',
+    weatherData: {
+      pop: 100,
+      pcp: 25,
+      peakTime: '19:00',
+      levels: { pop: 'Red', pcp: 'Red', tmpMax: 'Green' }
+    }
+  }, {
+    gwangmyeong: {
+      status: 'Error',
+      riskType: '폭염, 미세먼지/황사',
+      weatherValues: {
+        pop: 100,
+        pcp: 25,
+        tmpMax: 31,
+        peakTime: '19:00',
+        levels: { pop: 'Red', pcp: 'Red', tmpMax: 'Yellow' }
+      }
+    }
+  });
+  const rows = api.combinedWeatherMetricRows(store);
+  assert.equal(rows.filter((row) => row.key === 'pop').length, 1);
+  assert.equal(rows.filter((row) => row.key === 'pcp').length, 1);
+  assert.equal(rows.filter((row) => row.key === 'peakTime').length, 1);
+  assert.equal(rows.find((row) => row.key === 'tmpMax').value, '31℃');
 });
 
 test('기대 버전은 환경변수 설정 시에만 고정 비교한다', () => {
