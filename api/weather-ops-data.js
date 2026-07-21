@@ -198,6 +198,7 @@ function normalizePayload(payload, source) {
   addVersionWarning(system, version);
   return {
     version,
+    buildId: data.buildId || data.build_id || system.scriptBuildId || system.script_build_id || '',
     generatedAt,
     source,
     summary: objectOrEmpty(data.summary),
@@ -448,7 +449,8 @@ function samplePayload(source) {
 
   return {
     version: 'v2.16.4',
-    dashboardPayloadVersion: 'v2.16.4-weather-signal.1',
+    dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
+    buildId: '2026-07-21-enhanced-weather-validation.3',
     generatedAt: iso,
     source,
     summary: {
@@ -537,7 +539,8 @@ function samplePayload(source) {
       appsScriptVersion: 'v2.16.4',
       packVersion: 'v2.16.4',
       sheetVersion: 'v2.16.4',
-      dashboardPayloadVersion: 'v2.16.4-weather-signal.1',
+      dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
+      scriptBuildId: '2026-07-21-enhanced-weather-validation.3',
       decisionReadiness: 'shadow_only',
       nextSummaryDueAt: iso,
       systemError24h: 0,

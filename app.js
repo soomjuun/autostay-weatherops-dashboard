@@ -33,6 +33,7 @@ const WEATHER_SIGNAL_HELP = '기상 신호는 최신 Action_Log/Alert_Log 기준
 const WEATHER_API_HELP = '기상 수치는 현재 실황과 오늘 남은 운영시간 예보를 구분해 표시합니다. Apps Script payload에 실황 또는 예보 필드가 없는 값은 표시하지 않으며, 운영 상태와 기상 신호는 분리해서 봐야 합니다.';
 const WEATHER_THRESHOLD_HELP = '임계값: 강수 Yellow=POP 60% 또는 PCP 0.1mm+, Orange=POP 80% 또는 PCP 5mm+, Red=PCP 15mm+. 풍속 7/10/14m/s, 한파 0/-5/-10도, 적설 0.1/1/5cm, 폭염 30/33/35도, PM10 81/151/300, PM2.5 36/76/150 기준입니다.';
 const STATIC_HELP_ITEMS = [
+  ['.source-strip h2', '단기예보·실황·대기질은 공식 prod 판단의 원천 가용성을, AWS·레이더·기상특보는 신규 shadow 검증 상태를 보여줍니다. shadow 검증 결과는 공식 운영 등급과 액션을 자동 변경하지 않습니다.', '기상 원천 상태 기준'],
   ['.map-panel h2', `지점 현황은 prod 운영 상태와 최신 기상 신호 중 확인 우선순위가 높은 상태로 정렬합니다. ${WEATHER_SIGNAL_HELP}`, '지점 현황 기준'],
   ['.queue-panel h2', '회복 큐는 기상 영향 이후 처리대수·매출 회복, AS 차단, CRM 가능 여부를 함께 보는 실행 대기열입니다.', '회복 큐 기준'],
   ['#recoveryChartPanel h2', '지점 필터를 선택하면 D-day, D+1, D+2 처리대수·매출 회복률을 표시합니다. 100%는 기준선 회복, 90% 미만은 조치 검토 구간입니다.', '회복률 기준'],
@@ -214,11 +215,23 @@ function renderFatalErrorState(message) {
     decision.hidden = true;
     decision.innerHTML = '';
   }
+  const sourceSummary = $('sourceDecisionSummary');
+  const sourceStrip = $('weatherSourceStrip');
+  const sourceDetail = $('weatherSourceDetailBody');
+  const sourceMode = $('enhancedModeTag');
+  if (sourceSummary) {
+    sourceSummary.innerHTML = '<div class="source-decision-item danger"><span>원천 연결</span><strong>확인 필요</strong></div>';
+  }
+  if (sourceStrip) sourceStrip.innerHTML = '';
+  if (sourceDetail) sourceDetail.innerHTML = `<div class="source-detail-row"><b>연결 오류</b><span>${escapeHtml(text)}</span></div>`;
+  if (sourceMode) sourceMode.textContent = '연결 실패';
   $('mapCount').textContent = '0개 지점';
   $('metroMap').innerHTML = `<div class="empty-state filter-empty">대시보드 데이터를 불러오지 못했습니다. 새로고침으로 다시 시도하세요.</div>`;
   $('opsActions').innerHTML = '<div class="empty-state compact">데이터 연결 후 조치 항목을 표시합니다.</div>';
   $('marketingActions').innerHTML = '<div class="empty-state compact">데이터 연결 후 마케팅 항목을 표시합니다.</div>';
   $('recoveryQueue').innerHTML = '<div class="empty-state">데이터 연결 후 회복 큐를 표시합니다.</div>';
+  const recoveryCount = $('recoveryQueueCount');
+  if (recoveryCount) recoveryCount.textContent = '0건';
   $('riskMatrix').innerHTML = '<div class="empty-state">데이터 연결 후 기상 리스크를 표시합니다.</div>';
   $('recoveryFunnel').innerHTML = '<div class="empty-state">데이터 연결 후 회복 퍼널을 표시합니다.</div>';
   $('recoveryStageHeatmap').innerHTML = '<div class="empty-state">데이터 연결 후 회복 진행을 표시합니다.</div>';
@@ -269,6 +282,10 @@ function normalize(payload) {
 
   return {
     version,
+    buildId: firstPresent(data, ['buildId', 'build_id'])
+      || firstPresent(raw, ['buildId', 'build_id'])
+      || firstPresent(system, ['scriptBuildId', 'script_build_id'])
+      || '',
     generatedAt: firstPresent(data, ['generatedAt', 'generated_at']) || firstPresent(raw, ['generatedAt', 'generated_at']) || '',
     source: data.source || raw.source || 'unknown',
     dashboardPayloadVersion: firstPresent(data, ['dashboardPayloadVersion', 'dashboard_payload_version']) || '',
@@ -312,6 +329,11 @@ function normalizeWeatherSignal(signal) {
       firstPresent(row, ['weatherValues', 'weather_values', 'weather', 'weatherData', 'weather_data']),
       row
     );
+    const enhancedSignal = normalizeEnhancedSignal(
+      firstPresent(row, ['enhancedSignal', 'enhanced_signal'])
+        || firstPresent(weatherValues, ['enhancedSignal', 'enhanced_signal']),
+      Object.assign({}, weatherValues, row)
+    );
     return {
       storeId: firstPresent(row, ['storeId', 'store_id', 'id']) || slug(firstPresent(row, ['storeName', 'store_name', 'name', 'store']) || ''),
       storeName: firstPresent(row, ['storeName', 'store_name', 'name', 'store']) || '-',
@@ -329,6 +351,7 @@ function normalizeWeatherSignal(signal) {
       sourceWarnings: firstPresent(row, ['sourceWarnings', 'source_warnings']) || '',
       sourceDetails: objectFrom(firstPresent(row, ['sourceDetails', 'source_details'])),
       consistency: objectFrom(firstPresent(row, ['consistency'])),
+      enhancedSignal,
       operationStatus: firstPresent(row, ['operationStatus', 'operation_status']) || '',
       prodActionEventId: firstPresent(row, ['prodActionEventId', 'prod_action_event_id']) || ''
     };
@@ -381,6 +404,13 @@ function normalizeStore(store, signalByStore = {}) {
     firstPresent(store, ['weatherValues', 'weather_values']) || signal.weatherValues || signal.weather || {},
     Object.assign({}, signal, store)
   );
+  const enhancedSignal = signal.enhancedSignal && typeof signal.enhancedSignal === 'object'
+    ? signal.enhancedSignal
+    : normalizeEnhancedSignal(
+      firstPresent(store, ['enhancedSignal', 'enhanced_signal'])
+        || firstPresent(weatherValues, ['enhancedSignal', 'enhanced_signal']),
+      Object.assign({}, weatherValues, store)
+    );
   return {
     id,
     name,
@@ -405,6 +435,7 @@ function normalizeStore(store, signalByStore = {}) {
     signalMetricStatus: normalizeStatus(firstPresent(store, ['signalMetricStatus', 'signal_metric_status', 'metricStatus', 'metric_status'])
       || firstPresent(signal, ['metricStatus', 'metric_status']) || signalStatus),
     signalConsistency: objectFrom(firstPresent(store, ['signalConsistency', 'signal_consistency', 'consistency']) || signal.consistency),
+    enhancedSignal,
     weather: normalizeWeatherLabel(store),
     weatherDetail: normalizeWeatherDetail(store),
     weatherData: normalizeWeatherData(store),
@@ -513,6 +544,86 @@ function normalizeSignalWeatherValues(value, fallback = {}) {
   return normalized;
 }
 
+function normalizeEnhancedSignal(value, fallback = {}) {
+  const nested = objectFrom(value);
+  const row = objectFrom(fallback);
+  const compatibilityKeys = [
+    'enhancedValidationMode', 'enhanced_validation_mode', 'enhancedSourceStatus', 'enhanced_source_status',
+    'enhancedSourceError', 'enhanced_source_error', 'enhancedSourceWarnings', 'enhanced_source_warnings',
+    'enhancedFusionStatus', 'enhanced_fusion_status', 'enhancedFusionReason', 'enhanced_fusion_reason',
+    'awsStationId', 'aws_station_id', 'awsStationName', 'aws_station_name', 'awsDistanceKm', 'aws_distance_km',
+    'awsRain15m', 'aws_rain_15m', 'awsRain1h', 'aws_rain_1h', 'awsRainDay', 'aws_rain_day',
+    'awsTemperature', 'aws_temperature', 'awsWind', 'aws_wind', 'awsObservedAt', 'aws_observed_at',
+    'awsCacheFallback', 'aws_cache_fallback', 'radarRainRate', 'radar_rain_rate', 'radarUnit', 'radar_unit',
+    'radarDistanceKm', 'radar_distance_km', 'radarObservedAt', 'radar_observed_at',
+    'radarCacheFallback', 'radar_cache_fallback', 'weatherWarningSummary', 'weather_warning_summary',
+    'weatherWarningIssuedAt', 'weather_warning_issued_at', 'weatherWarningActiveSevere', 'weather_warning_active_severe',
+    'operationalImpact', 'operational_impact', 'managerInputRequired', 'manager_input_required',
+    'validationPolicy', 'validation_policy'
+  ];
+  const available = Object.keys(nested).length > 0
+    || compatibilityKeys.some((key) => Object.prototype.hasOwnProperty.call(row, key));
+  const pick = (nestedKeys, rowKeys = nestedKeys) => {
+    for (const key of nestedKeys) {
+      if (Object.prototype.hasOwnProperty.call(nested, key) && nested[key] !== undefined) return nested[key];
+    }
+    for (const key of rowKeys) {
+      if (Object.prototype.hasOwnProperty.call(row, key) && row[key] !== undefined) return row[key];
+    }
+    return null;
+  };
+  const validationPolicy = objectFrom(pick(['validationPolicy', 'validation_policy'], ['validationPolicy', 'validation_policy']));
+  return {
+    available,
+    validationMode: String(pick(['validationMode', 'validation_mode'], ['enhancedValidationMode', 'enhanced_validation_mode']) || '').trim(),
+    validationStartedAt: String(pick(['validationStartedAt', 'validation_started_at'], ['enhancedValidationStartedAt', 'enhanced_validation_started_at']) || '').trim(),
+    sourceStatus: normalizeSignalSourceStatus(pick(['sourceStatus', 'source_status'], ['enhancedSourceStatus', 'enhanced_source_status'])),
+    sourceError: String(pick(['sourceError', 'source_error'], ['enhancedSourceError', 'enhanced_source_error']) || '').trim(),
+    sourceWarnings: String(pick(['sourceWarnings', 'source_warnings'], ['enhancedSourceWarnings', 'enhanced_source_warnings']) || '').trim(),
+    sourceConfidence: String(pick(['sourceConfidence', 'source_confidence'], ['enhancedSourceConfidence', 'enhanced_source_confidence']) || '').trim(),
+    awsStationId: String(pick(['awsStationId', 'aws_station_id']) || '').trim(),
+    awsStationName: String(pick(['awsStationName', 'aws_station_name']) || '').trim(),
+    awsDistanceKm: numericOrNull(pick(['awsDistanceKm', 'aws_distance_km'])),
+    awsRain15m: numericOrNull(pick(['awsRain15m', 'aws_rain_15m'])),
+    awsRain1h: numericOrNull(pick(['awsRain1h', 'aws_rain_1h'])),
+    awsRainDay: numericOrNull(pick(['awsRainDay', 'aws_rain_day'])),
+    awsTemperature: numericOrNull(pick(['awsTemperature', 'aws_temperature'])),
+    awsWind: numericOrNull(pick(['awsWind', 'aws_wind'])),
+    awsObservedAt: String(pick(['awsObservedAt', 'aws_observed_at']) || '').trim(),
+    awsCacheFallback: booleanOrNull(pick(['awsCacheFallback', 'aws_cache_fallback'])),
+    radarRainRate: numericOrNull(pick(['radarRainRate', 'radar_rain_rate'])),
+    radarUnit: String(pick(['radarUnit', 'radar_unit']) || '').trim(),
+    radarDistanceKm: numericOrNull(pick(['radarDistanceKm', 'radar_distance_km'])),
+    radarObservedAt: String(pick(['radarObservedAt', 'radar_observed_at']) || '').trim(),
+    radarCacheFallback: booleanOrNull(pick(['radarCacheFallback', 'radar_cache_fallback'])),
+    weatherWarningSummary: String(pick(['weatherWarningSummary', 'weather_warning_summary']) || '').trim(),
+    weatherWarningIssuedAt: String(pick(['weatherWarningIssuedAt', 'weather_warning_issued_at']) || '').trim(),
+    weatherWarningActiveSevere: booleanOrNull(pick(['weatherWarningActiveSevere', 'weather_warning_active_severe'])),
+    forecastMaxPop: numericOrNull(pick(['forecastMaxPop', 'forecast_max_pop'])),
+    forecastMaxPcp1h: numericOrNull(pick(['forecastMaxPcp1h', 'forecast_max_pcp_1h'])),
+    fusionStatus: String(pick(['fusionStatus', 'fusion_status'], ['enhancedFusionStatus', 'enhanced_fusion_status']) || '').trim(),
+    fusionReason: String(pick(['fusionReason', 'fusion_reason'], ['enhancedFusionReason', 'enhanced_fusion_reason']) || '').trim(),
+    fusionEvidenceCount: numericOrNull(pick(['fusionEvidenceCount', 'fusion_evidence_count'], ['enhancedFusionEvidenceCount', 'enhanced_fusion_evidence_count'])),
+    operationalImpact: String(pick(['operationalImpact', 'operational_impact']) || '').trim(),
+    managerInputRequired: booleanOrNull(pick(['managerInputRequired', 'manager_input_required'])),
+    affectsOperationalLevel: booleanOrNull(
+      pick(['affectsOperationalLevel', 'affects_operational_level'], ['affectsOperationalLevel', 'affects_operational_level'])
+        ?? firstPresent(validationPolicy, ['affectsOperationalLevel', 'affects_operational_level'])
+    ),
+    validationPolicy
+  };
+}
+
+function booleanOrNull(value) {
+  if (value === true || value === false) return value;
+  if (value === 1 || value === 0) return Boolean(value);
+  const text = String(value ?? '').trim().toLowerCase();
+  if (!text) return null;
+  if (['true', 'y', 'yes', '1', '가능', '필요'].includes(text)) return true;
+  if (['false', 'n', 'no', '0', '불가', '불필요', '없음'].includes(text)) return false;
+  return null;
+}
+
 function normalizeStatus(value) {
   const text = String(value || '').toLowerCase();
   if (text.includes('no_signal') || text.includes('nosignal') || text.includes('신호 없음')) return 'Gray';
@@ -585,6 +696,7 @@ function render() {
   renderHero();
   renderKpis();
   renderDecisionBanner();
+  renderWeatherSources();
   renderMap();
   renderActions();
   renderRecoveryChart();
@@ -621,11 +733,6 @@ function updateSectionVisibility() {
 }
 
 function hasActiveRecoveryData() {
-  const summary = state.data.summary || {};
-  const recoveryAction = metricFromKeysNumber(summary, ['recoveryActionCount', 'recovery_action_count']) || 0;
-  const dataWait = metricFromKeysNumber(summary, ['dataWaitCount', 'data_wait_count']) || 0;
-  if (recoveryAction + dataWait > 0) return true;
-
   const queue = arrayFrom(state.data.recovery && state.data.recovery.queue).filter(matchesSelectedStore);
   if (queue.length) return true;
 
@@ -698,7 +805,7 @@ function weatherSignalModeLabel() {
   const mode = weatherSignalMode();
   const labels = {
     prod: '공식 운영',
-    shadow: '실제 기상',
+    shadow: 'shadow 검증',
     test: '테스트'
   };
   return labels[mode] || (mode ? mode : '기상');
@@ -758,7 +865,7 @@ function decisionReadinessLabel() {
     if (title) return String(title);
   }
   const labels = {
-    prod_ready: '운영 판단 가능',
+    prod_ready: '운영 판단 가능 · prod',
     shadow_only: '실제 신호 · 운영 반영 전',
     stale: '신호 오래됨',
     error: '확인 필요',
@@ -782,7 +889,7 @@ function decisionReadinessHelpText() {
   const readiness = decisionReadiness();
   const nextDue = nextSummaryDueText();
   const messages = {
-    prod_ready: '최신 기상 신호가 prod 운영 반영 기준으로 들어와 화면만으로 공식 운영 판단이 가능합니다.',
+    prod_ready: '최신 prod 기상 신호가 공식 운영 반영 기준으로 들어와 화면만으로 운영 판단이 가능합니다. 이는 AWS·레이더 신규 원천 검증 완료를 의미하지 않으며, 신규 검증 상태는 기상 원천 상태에서 별도로 확인합니다.',
     shadow_only: '최신 기상 신호는 실제 API 기반으로 확인되었습니다. 다만 공식 prod 운영 액션 원장에는 아직 반영되기 전이므로, 대시보드는 기상 위험 판단에 쓰고 완료보고·AS·매출회복 실행 상태는 prod 원장 기준으로 확인합니다.',
     stale: `기상 신호 생성 시각이 오래되어 최신 운영 판단에 제한이 있습니다.${nextDue ? ` 다음 종합 신호 예정 또는 기준 시각은 ${nextDue}입니다.` : ''}`,
     error: '시스템 오류 또는 데이터 확인 신호가 있어 원천 데이터와 자동화 상태를 점검해야 합니다.',
@@ -963,6 +1070,318 @@ function renderDecisionBanner() {
   `;
 }
 
+function renderWeatherSources() {
+  const sourceRows = weatherSourceRows();
+  const enhancedRows = enhancedSignals();
+  const hasEnhanced = enhancedRows.length > 0;
+  const target = $('weatherSourceStrip');
+  const summaryTarget = $('sourceDecisionSummary');
+  const detailTarget = $('weatherSourceDetailBody');
+  const modeTarget = $('enhancedModeTag');
+  if (!target || !summaryTarget || !detailTarget || !modeTarget) return;
+
+  const enhancedMode = hasEnhanced
+    ? (enhancedRows.find((row) => row.validationMode)?.validationMode || 'shadow')
+    : '계약 대기';
+  modeTarget.textContent = hasEnhanced ? `${enhancedMode} 검증` : 'enhanced 계약 대기';
+
+  const enhancedLimited = !hasEnhanced || enhancedRows.some((row) => (
+    row.sourceStatus === 'error'
+    || !enhancedAwsAvailable(row)
+    || !enhancedRadarAvailable(row)
+  ));
+  const operationalImpact = enhancedOperationalImpactText(enhancedRows);
+  const summaryRows = [
+    {
+      label: '운영 판단',
+      value: decisionReadiness() === 'prod_ready' ? '가능 · prod' : decisionReadinessLabel(),
+      className: decisionReadinessClass()
+    },
+    {
+      label: '신규 원천 검증',
+      value: !hasEnhanced
+        ? '확인 불가 · enhancedSignal 미제공'
+        : (enhancedLimited ? '제한됨 · AWS/레이더 확인 불가' : `검증 중 · ${enhancedMode}`),
+      className: enhancedLimited ? 'warning' : 'info'
+    },
+    {
+      label: '운영 영향',
+      value: operationalImpact,
+      className: 'info'
+    }
+  ];
+  summaryTarget.innerHTML = summaryRows.map((row) => `
+    <div class="source-decision-item ${escapeAttr(row.className)}">
+      <span>${escapeHtml(row.label)}</span>
+      <strong>${escapeHtml(row.value)}</strong>
+    </div>
+  `).join('');
+
+  target.innerHTML = sourceRows.map((row) => `
+    <div class="source-status-item ${escapeAttr(row.className)}">
+      <span class="source-dot" aria-hidden="true"></span>
+      <div>
+        <span class="source-name">${escapeHtml(row.label)}${renderInfoTip(row.detail, `${row.label} 원천 상태`)}</span>
+        <strong>${escapeHtml(row.value)}</strong>
+        ${row.meta ? `<small>${escapeHtml(row.meta)}</small>` : ''}
+      </div>
+    </div>
+  `).join('');
+
+  detailTarget.innerHTML = weatherSourceDetailRows(sourceRows, enhancedRows).map((row) => `
+    <div class="source-detail-row">
+      <b>${escapeHtml(row.label)}</b>
+      <span>${escapeHtml(row.value)}</span>
+    </div>
+  `).join('');
+}
+
+function weatherSourceRows() {
+  const stores = state.data.stores || [];
+  const total = stores.length;
+  const forecastStores = stores.filter((store) => weatherSourceHasForecast(store));
+  const observationStores = stores.filter((store) => weatherSourceHasObservation(store));
+  const airStores = stores.filter((store) => weatherSourceHasAir(store));
+  const airErrorStores = stores.filter(isAirQualitySourceIssue);
+  const forecastCacheStores = stores.filter((store) => booleanOrNull(firstPresent(store.weatherValues || {}, ['forecastCacheFallback', 'forecast_cache_fallback'])) === true);
+  const observationCacheStores = stores.filter((store) => booleanOrNull(firstPresent(store.weatherValues || {}, ['observationCacheFallback', 'observation_cache_fallback'])) === true);
+  const airCacheStores = stores.filter((store) => booleanOrNull(firstPresent(store.weatherValues || {}, ['airCacheFallback', 'air_cache_fallback'])) === true);
+  const enhancedRows = enhancedSignals();
+  const awsAvailableCount = enhancedRows.filter(enhancedAwsAvailable).length;
+  const radarAvailableCount = enhancedRows.filter(enhancedRadarAvailable).length;
+  const awsCacheCount = enhancedRows.filter((row) => row.awsCacheFallback === true).length;
+  const radarCacheCount = enhancedRows.filter((row) => row.radarCacheFallback === true).length;
+  const warningFlags = enhancedRows.map((row) => row.weatherWarningActiveSevere).filter((value) => value !== null);
+  const warningActive = warningFlags.some(Boolean);
+  const warningKnown = enhancedRows.length > 0 && warningFlags.length === enhancedRows.length;
+  const warningIssuedAt = latestDateValue(enhancedRows.map((row) => row.weatherWarningIssuedAt));
+  const warningSummaries = uniqueTextParts(enhancedRows.flatMap((row) => [row.weatherWarningSummary]));
+  const warningReleased = warningSummaries.some((text) => text.includes('해제'));
+  const warningIssuedDate = new Date(warningIssuedAt || '');
+  const warningIssuedClock = Number.isFinite(warningIssuedDate.getTime())
+    ? formatKstTimeOnly(warningIssuedDate)
+    : formatClockValue(warningIssuedAt);
+  const releasedMeta = warningReleased && warningIssuedAt ? `최근 해제 ${warningIssuedClock || formatDateTime(warningIssuedAt)}` : '';
+
+  return [
+    {
+      id: 'forecast',
+      label: '단기예보',
+      value: sourceCoverageValue(forecastStores.length, total, forecastCacheStores.length),
+      className: sourceCoverageClass(forecastStores.length, total, forecastCacheStores.length),
+      meta: forecastCacheStores.length ? `캐시 ${forecastCacheStores.length}개점` : latestSourceTime(stores, ['forecastBaseAt', 'forecast_base_at']),
+      detail: sourceCoverageDetail('단기예보', forecastStores.length, total, forecastCacheStores)
+    },
+    {
+      id: 'observation',
+      label: '실황',
+      value: sourceCoverageValue(observationStores.length, total, observationCacheStores.length),
+      className: sourceCoverageClass(observationStores.length, total, observationCacheStores.length),
+      meta: observationCacheStores.length ? `캐시 ${observationCacheStores.length}개점` : latestSourceTime(stores, ['observedAt', 'observed_at']),
+      detail: sourceCoverageDetail('실황', observationStores.length, total, observationCacheStores)
+    },
+    {
+      id: 'air',
+      label: '에어코리아',
+      value: airErrorStores.length
+        ? `부분 오류 · ${shortStoreNames(airErrorStores)}`
+        : sourceCoverageValue(airStores.length, total, airCacheStores.length),
+      className: airErrorStores.length ? 'warning' : sourceCoverageClass(airStores.length, total, airCacheStores.length),
+      meta: airErrorStores.length ? '강수 데이터 사용 가능' : (airCacheStores.length ? `캐시 ${airCacheStores.length}개점` : latestSourceTime(stores, ['airObservedAt', 'air_observed_at'])),
+      detail: airErrorStores.length
+        ? `대기질만 확인 불가: ${uniqueTextParts(airErrorStores.flatMap((store) => [store.signalSourceError, store.signalSourceWarnings])).join(' · ')} 강수 실황과 단기예보는 계속 사용할 수 있습니다.`
+        : sourceCoverageDetail('대기질', airStores.length, total, airCacheStores)
+    },
+    {
+      id: 'aws',
+      label: 'AWS',
+      value: !enhancedRows.length ? '계약 미제공' : enhancedCoverageValue(awsAvailableCount, enhancedRows.length),
+      className: !enhancedRows.length || awsAvailableCount < enhancedRows.length ? 'warning' : (awsCacheCount ? 'warning' : 'ok'),
+      meta: !enhancedRows.length ? '공식 prod 판단과 무관' : (awsCacheCount ? `캐시 ${awsCacheCount}개점` : enhancedLatestTime(enhancedRows, 'awsObservedAt')),
+      detail: !enhancedRows.length
+        ? '운영 dashboard payload에 weatherSignal.stores[].enhancedSignal 및 AWS 호환 필드가 없어 상태를 확인할 수 없습니다.'
+        : enhancedSourceDetail('AWS', enhancedRows, 'aws')
+    },
+    {
+      id: 'radar',
+      label: '레이더',
+      value: !enhancedRows.length ? '계약 미제공' : enhancedCoverageValue(radarAvailableCount, enhancedRows.length),
+      className: !enhancedRows.length || radarAvailableCount < enhancedRows.length ? 'warning' : (radarCacheCount ? 'warning' : 'ok'),
+      meta: !enhancedRows.length ? '공식 prod 판단과 무관' : (radarCacheCount ? `캐시 ${radarCacheCount}개점` : enhancedLatestTime(enhancedRows, 'radarObservedAt')),
+      detail: !enhancedRows.length
+        ? '운영 dashboard payload에 weatherSignal.stores[].enhancedSignal 및 레이더 호환 필드가 없어 상태를 확인할 수 없습니다.'
+        : enhancedSourceDetail('레이더', enhancedRows, 'radar')
+    },
+    {
+      id: 'warning',
+      label: '기상특보',
+      value: !enhancedRows.length
+        ? '계약 미제공'
+        : (warningActive ? '활성 중대특보 있음' : (warningKnown ? '조회 정상 · 활성 특보 없음' : '활성 여부 확인 불가')),
+      className: warningActive ? 'warning' : (warningKnown ? 'ok' : 'warning'),
+      meta: !enhancedRows.length ? '활성 여부 확정 불가' : releasedMeta,
+      detail: !enhancedRows.length
+        ? 'weatherWarningActiveSevere 구조화 필드가 없어 활성 특보 여부를 확정하지 않습니다.'
+        : (warningSummaries.join(' · ') || (warningKnown ? '특보 조회 결과에 활성 중대특보가 없습니다.' : '특보 요약 또는 활성 여부 필드가 일부 누락되었습니다.'))
+    }
+  ];
+}
+
+function weatherSourceDetailRows(sourceRows, enhancedRows) {
+  const airRow = sourceRows.find((row) => row.id === 'air');
+  const enhancedErrors = uniqueTextParts(enhancedRows.flatMap((row) => [row.sourceError, row.sourceWarnings]));
+  const enhancedReason = uniqueTextParts(enhancedRows.flatMap((row) => [row.fusionReason]));
+  const cacheRows = sourceRows
+    .filter((row) => String(row.meta || '').includes('캐시'))
+    .map((row) => `${row.label} ${row.meta}`);
+  const rows = [
+    { label: '공식 운영 신호', value: `${weatherSignalModeLabel()} · ${weatherSignalSummaryText()} · ${formatDateTime(weatherSignalTimestamp())}` },
+    { label: '계약 버전', value: weatherSourceContractText(enhancedRows) },
+    { label: '에어코리아', value: airRow ? `${airRow.value} · ${airRow.detail}` : '상태 확인 불가' }
+  ];
+  if (!enhancedRows.length) {
+    rows.push({
+      label: '신규 원천 계약',
+      value: 'weatherSignal.stores[].enhancedSignal 또는 enhanced 호환 필드가 운영 endpoint에 없습니다. 공식 prod 운영 판단은 계속 가능하지만 AWS·레이더·특보 검증 상태는 확인할 수 없습니다.'
+    });
+  } else {
+    rows.push({ label: '신규 검증 오류', value: enhancedErrors.length ? enhancedErrors.join(' · ') : '반복 원천 오류 없음' });
+    rows.push({ label: '융합 판단 근거', value: enhancedReason.length ? enhancedReason.join(' · ') : '근거 필드 미제공' });
+  }
+  if (cacheRows.length) rows.push({ label: '캐시 대체', value: cacheRows.join(' · ') });
+  rows.push({ label: '운영 영향', value: enhancedOperationalImpactText(enhancedRows) });
+  return rows;
+}
+
+function weatherSourceContractText(enhancedRows) {
+  const system = state.data.system || {};
+  const payloadVersion = state.data.dashboardPayloadVersion
+    || firstPresent(system, ['dashboardPayloadVersion', 'dashboard_payload_version'])
+    || '';
+  const buildId = state.data.buildId
+    || firstPresent(system, ['scriptBuildId', 'script_build_id'])
+    || '';
+  const parts = [
+    payloadVersion ? `payload ${payloadVersion}` : 'payload 버전 미제공',
+    buildId ? `build ${buildId}` : 'build ID 미제공',
+    enhancedRows.length ? `enhanced ${enhancedRows.length}개점` : 'enhanced 미제공'
+  ];
+  return parts.join(' · ');
+}
+
+function enhancedSignals() {
+  return (state.data.stores || [])
+    .map((store) => store.enhancedSignal)
+    .filter((row) => row && row.available);
+}
+
+function enhancedAwsAvailable(row) {
+  return Boolean(row && (row.awsStationId || row.awsStationName || row.awsObservedAt
+    || row.awsRain15m !== null || row.awsRain1h !== null || row.awsRainDay !== null
+    || row.awsTemperature !== null || row.awsWind !== null));
+}
+
+function enhancedRadarAvailable(row) {
+  return Boolean(row && (row.radarObservedAt || row.radarRainRate !== null));
+}
+
+function enhancedCoverageValue(available, total) {
+  if (!total || !available) return '확인 불가';
+  if (available < total) return `부분 확인 · ${available}/${total}개점`;
+  return '정상';
+}
+
+function enhancedSourceDetail(label, rows, type) {
+  const available = rows.filter(type === 'aws' ? enhancedAwsAvailable : enhancedRadarAvailable).length;
+  const errors = uniqueTextParts(rows.flatMap((row) => [row.sourceError, row.sourceWarnings]))
+    .filter((text) => type === 'aws' ? /aws|지점 목록|매분자료/i.test(text) : /레이더|radar|no_data/i.test(text));
+  const fallbackCount = rows.filter((row) => type === 'aws' ? row.awsCacheFallback === true : row.radarCacheFallback === true).length;
+  const parts = [`${label} 확인 ${available}/${rows.length}개점`];
+  if (fallbackCount) parts.push(`캐시 대체 ${fallbackCount}개점`);
+  if (errors.length) parts.push(errors.join(' · '));
+  return parts.join(' · ');
+}
+
+function enhancedLatestTime(rows, key) {
+  const value = latestDateValue(rows.map((row) => row[key]));
+  return value ? `기준 ${formatDateTime(value)}` : '';
+}
+
+function enhancedOperationalImpactText(rows) {
+  if (!rows.length) return '미반영 · prod 기준 유지';
+  const impacts = uniqueTextParts(rows.map((row) => row.operationalImpact));
+  const managerInput = rows.some((row) => row.managerInputRequired === true);
+  const affectsProd = rows.some((row) => row.affectsOperationalLevel === true);
+  if (!managerInput && !affectsProd && (!impacts.length || impacts.every((value) => value === 'none_validation_only'))) {
+    return '없음 · shadow 검증 중';
+  }
+  return '계약 확인 필요 · prod 자동 반영 안 함';
+}
+
+function weatherSourceHasForecast(store) {
+  const data = store.weatherValues || {};
+  return firstPresent(data, ['forecastBaseAt', 'forecast_base_at', 'forecastMaxPop', 'forecast_max_pop', 'forecastMaxPcp1h', 'forecast_max_pcp_1h']) !== null;
+}
+
+function weatherSourceHasObservation(store) {
+  const data = store.weatherValues || {};
+  return firstPresent(data, ['observedAt', 'observed_at', 'observedRain1h', 'observed_rain_1h', 'observedTemperature', 'observed_temperature', 'observedWind', 'observed_wind']) !== null;
+}
+
+function weatherSourceHasAir(store) {
+  const data = store.weatherValues || {};
+  return firstPresent(data, ['airObservedAt', 'air_observed_at', 'pm10', 'PM10', 'pm25', 'PM25']) !== null;
+}
+
+function isAirQualitySourceIssue(store) {
+  const text = `${store && store.signalSourceError || ''} ${store && store.signalSourceWarnings || ''}`;
+  return /에어코리아|대기질|pm10|pm2\.5/i.test(text);
+}
+
+function sourceCoverageValue(available, total, cacheCount) {
+  if (!total || !available) return '확인 불가';
+  if (available < total) return `부분 확인 · ${available}/${total}개점`;
+  return cacheCount ? `캐시 사용 · ${cacheCount}개점` : '정상';
+}
+
+function sourceCoverageClass(available, total, cacheCount) {
+  if (!total || !available) return 'warning';
+  return available < total || cacheCount ? 'warning' : 'ok';
+}
+
+function sourceCoverageDetail(label, available, total, cacheStores) {
+  const cacheNames = shortStoreNames(cacheStores || []);
+  if (!total || !available) return `${label} 유효값을 dashboard payload에서 확인할 수 없습니다.`;
+  if (available < total) return `${label} 유효값 ${available}/${total}개점입니다. 결측값은 0이나 정상으로 대체하지 않습니다.`;
+  if (cacheNames) return `${label}은 전 지점에 있으나 ${cacheNames}에서 캐시 대체값을 사용합니다. 카드와 상세의 기준 시각을 함께 확인합니다.`;
+  return `${label} 유효값이 ${total}개 지점에 제공되고 캐시 대체 표시는 없습니다.`;
+}
+
+function latestSourceTime(stores, keys) {
+  const value = latestDateValue((stores || []).map((store) => firstPresent(store.weatherValues || {}, keys)));
+  return value ? `기준 ${formatDateTime(value)}` : '';
+}
+
+function latestDateValue(values) {
+  return (values || [])
+    .filter(Boolean)
+    .map((value) => ({ value, time: new Date(value).getTime() }))
+    .filter((item) => Number.isFinite(item.time))
+    .sort((a, b) => b.time - a.time)[0]?.value || '';
+}
+
+function uniqueTextParts(values) {
+  const parts = (values || []).flatMap((value) => String(value || '').split(/\s*\|\s*/)).map((value) => value.trim()).filter(Boolean);
+  return [...new Set(parts)];
+}
+
+function shortStoreNames(stores) {
+  const names = [...new Set((stores || []).map((store) => store.name || store.storeName).filter(Boolean))];
+  if (!names.length) return '';
+  if (names.length <= 2) return names.join(' · ');
+  return `${names.slice(0, 2).join(' · ')} 외 ${names.length - 2}개점`;
+}
+
 function renderHero() {
   const { summary } = state.data;
   const status = primaryDashboardStatus();
@@ -1033,7 +1452,7 @@ function missionCards() {
   const recoveryAction = metricFromKeysNumber(summary, ['recoveryActionCount', 'recovery_action_count']);
   const dataWait = metricFromKeysNumber(summary, ['dataWaitCount', 'data_wait_count']);
   const crmReady = metricFromKeysNumber(summary, ['crmReadyCount', 'crm_ready_count']);
-  const recoveryCount = (recoveryAction || 0) + (dataWait || 0);
+  const recoveryCandidateCount = recoveryAction || 0;
 
   return [
     {
@@ -1060,9 +1479,9 @@ function missionCards() {
     },
     {
       label: '수요·매출 회복',
-      value: `${recoveryCount}건`,
-      note: `회복 조치 ${recoveryAction ?? 0} · 성과 대기 ${dataWait ?? 0} · CRM 가능 ${crmReady ?? 0}`,
-      level: recoveryCount > 0 ? 'watch' : 'ok'
+      value: `${recoveryCandidateCount}건 후보`,
+      note: `회복 조치·관찰 후보 ${recoveryAction ?? 0} · 성과 해석 대기 ${dataWait ?? 0} · CRM 후보 ${crmReady ?? 0}`,
+      level: recoveryCandidateCount > 0 || (dataWait || 0) > 0 ? 'watch' : 'ok'
     }
   ];
 }
@@ -1181,6 +1600,7 @@ function renderMap() {
   $('metroMap').innerHTML = stores.map((store, index) => {
     const weatherChips = renderCombinedWeatherMetricChips(store, 4);
     const signalLine = storeSignalLine(store);
+    const enhancedLine = enhancedStoreLine(store);
     const nextAction = storeNextActionText(store);
     return `
       <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}" aria-label="${escapeAttr(`${store.name} ${levelLabel(store.status)}. ${store.weather}. 다음 액션: ${nextAction}`)}">
@@ -1191,6 +1611,7 @@ function renderMap() {
         <span class="pin-meta">운영 ${escapeHtml(levelLabel(store.prodStatus))} · ${escapeHtml(store.dri)}</span>
         <span class="pin-meta signal-${escapeAttr(store.signalStatus)}">${escapeHtml(signalLine)}</span>
         ${weatherChips ? `<span class="weather-chip-row">${weatherChips}</span>` : ''}
+        <span class="pin-meta enhanced-line">${escapeHtml(enhancedLine)}</span>
         <span class="pin-action">${escapeHtml(nextAction)}</span>
       </button>
     `;
@@ -1208,6 +1629,34 @@ function storeSignalLine(store) {
   return `기상 신호 ${mode}${levelLabel(store.signalStatus)}${risk}${source ? ` · ${source}` : ''}`;
 }
 
+function enhancedStoreLine(store) {
+  const row = store && store.enhancedSignal ? store.enhancedSignal : {};
+  if (!row.available) return '신규 검증 확인 불가';
+  const mode = row.validationMode || 'shadow';
+  const awsAvailable = enhancedAwsAvailable(row);
+  const radarAvailable = enhancedRadarAvailable(row);
+  if (!awsAvailable && !radarAvailable) return `신규 검증 ${mode} · AWS·레이더 확인 불가`;
+  const parts = [`신규 검증 ${mode}`];
+  parts.push(awsAvailable ? 'AWS 확인' : 'AWS 확인 불가');
+  parts.push(radarAvailable ? '레이더 확인' : '레이더 확인 불가');
+  return parts.join(' · ');
+}
+
+function enhancedStoreDetail(store) {
+  const row = store && store.enhancedSignal ? store.enhancedSignal : {};
+  if (!row.available) {
+    return '운영 dashboard payload에 enhancedSignal이 없어 신규 AWS·레이더·특보 검증 상태를 확인할 수 없습니다. 공식 운영 상태와 액션은 prod 신호 기준으로 계속 판단합니다.';
+  }
+  const parts = [enhancedStoreLine(store)];
+  if (row.sourceError) parts.push(row.sourceError);
+  if (row.sourceWarnings) parts.push(row.sourceWarnings);
+  if (row.fusionReason) parts.push(`융합 근거: ${row.fusionReason}`);
+  if (row.awsCacheFallback === true) parts.push(`AWS 캐시 · ${formatDateTime(row.awsObservedAt) || '기준 시각 미제공'}`);
+  if (row.radarCacheFallback === true) parts.push(`레이더 캐시 · ${formatDateTime(row.radarObservedAt) || '기준 시각 미제공'}`);
+  parts.push(`운영 영향: ${enhancedOperationalImpactText([row])}`);
+  return uniqueTextParts(parts).join(' · ');
+}
+
 function hasStoreSignalData(store) {
   return Boolean(store.signalStatusProvided || store.signalMode || store.signalRiskType || store.signalReason || store.signalObservedAt
     || ['Error', 'Red', 'Orange', 'Yellow'].includes(store.signalStatus));
@@ -1222,30 +1671,36 @@ function storeNextActionText(store) {
 }
 
 function renderActions() {
-  $('opsActions').innerHTML = renderActionList(state.data.opsActions, '사업운영팀');
-  $('marketingActions').innerHTML = renderActionList(state.data.marketingActions, '마케팅팀');
+  $('opsActions').innerHTML = renderActionList(state.data.opsActions, '사업운영팀', 'operations');
+  $('marketingActions').innerHTML = renderActionList(state.data.marketingActions, '마케팅팀', 'marketing');
 }
 
-function renderActionList(items, fallbackTeam) {
+function renderActionList(items, fallbackTeam, kind) {
   const filtered = (items || []).filter(matchesSelectedStore);
-  if (!filtered.length) return '<div class="empty-state compact">현재 필터 기준 조치 항목이 없습니다.</div>';
+  if (!filtered.length) {
+    return `<div class="empty-state compact">현재 필터 기준 ${kind === 'marketing' ? '승인 검토 후보' : '오늘 실행 항목'}이 없습니다.</div>`;
+  }
   return filtered.map((item) => {
     const priority = firstPresent(item, ['priority', 'level', 'actionLevel', 'action_level']) || 'P1';
     const store = firstPresent(item, ['store', 'storeName', 'store_name', 'name']) || fallbackTeam;
     const action = firstPresent(item, ['action', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action', 'customerAction', 'customer_action', 'revenueAction', 'revenue_action']) || '-';
     const owner = firstPresent(item, ['owner', 'dri', 'team', 'opsLead', 'ops_lead']) || fallbackTeam;
-    const due = firstPresent(item, ['due', 'dueAt', 'due_at', 'nextUpdateDue', 'next_update_due', 'vendorEta', 'vendor_eta', 'status']) || '-';
+    const due = firstPresent(item, ['due', 'dueAt', 'due_at', 'nextUpdateDue', 'next_update_due', 'vendorEta', 'vendor_eta']) || '-';
     const audience = firstPresent(item, ['estimatedAudience', 'estimated_audience', 'audienceCount', 'audience_count']);
+    const itemStatus = firstPresent(item, ['status', 'approvalStatus', 'approval_status', 'sendStatus', 'send_status']) || '';
+    const scopeText = kind === 'marketing' ? '제안 · 자동 발송 아님' : '오늘 실행';
     return `
       <div class="action-item">
         <div class="action-top">
           <span class="priority">${escapeHtml(priority)}</span>
           <span class="action-store">${escapeHtml(store)}</span>
         </div>
+        <div class="action-scope scope-${escapeAttr(kind || 'operations')}">${escapeHtml(scopeText)}</div>
         <div class="action-body">${escapeHtml(action)}</div>
         <div class="action-foot">
           <span>담당 ${escapeHtml(owner)}</span>
           <span>기한 ${escapeHtml(formatActionDue(due))}</span>
+          ${kind === 'marketing' && itemStatus ? `<span>상태 ${escapeHtml(itemStatus)}</span>` : ''}
           ${audience !== null && Number.isFinite(Number(audience)) ? `<span>대상 ${Number(audience).toLocaleString('ko-KR')}명</span>` : ''}
         </div>
       </div>
@@ -1516,8 +1971,10 @@ function renderRecoveryComparison() {
 function renderRecoveryQueue() {
   const queue = (state.data.recovery && state.data.recovery.queue) || [];
   const filtered = queue.filter(matchesSelectedStore);
+  const countTarget = $('recoveryQueueCount');
+  if (countTarget) countTarget.textContent = `${filtered.length}건 · 최근 기록`;
   if (!filtered.length) {
-    $('recoveryQueue').innerHTML = '<div class="empty-state">현재 필터 기준 회복 큐가 없습니다.</div>';
+    $('recoveryQueue').innerHTML = '<div class="empty-state">현재 필터 기준 미완료 회복 기록이 없습니다.</div>';
     return;
   }
   $('recoveryQueue').innerHTML = filtered.map((item) => {
@@ -1536,7 +1993,7 @@ function renderRecoveryQueue() {
           <div class="queue-body">${escapeHtml(firstPresent(item, ['stage', 'recoveryStage', 'recovery_stage']) || '-')} · 처리대수 회복률 ${formatPercent(processed)}${revenueText}</div>
         </div>
         <div class="queue-side">
-          <span class="queue-chip ${escapeAttr(crm.className)}" title="${escapeAttr('CRM 가능은 AS 정상화와 회복 판단을 통과해 고객 유도/재방문 안내 후보가 될 수 있다는 뜻입니다.')}">CRM ${escapeHtml(crm.label)}</span>
+          <span class="queue-chip ${escapeAttr(crm.className)}" title="${escapeAttr('CRM 가능은 AS 정상화와 회복 판단을 통과해 승인 검토 후보가 될 수 있다는 뜻이며 자동 발송을 의미하지 않습니다.')}">CRM ${escapeHtml(crm.label)}</span>
           <span class="queue-next">${escapeHtml(firstPresent(item, ['next', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-')}</span>
         </div>
       </div>
@@ -1610,6 +2067,7 @@ function renderStoreTable() {
           <span class="muted">${escapeHtml(weatherDetailText(store))}</span>
           ${renderTableSignalLine(store)}
           ${weatherChips ? `<div class="weather-chip-row table-weather">${weatherChips}</div>` : ''}
+          <span class="enhanced-table-line">${escapeHtml(enhancedStoreLine(store))}${renderInfoTip(enhancedStoreDetail(store), '신규 원천 검증')}</span>
         </td>
         <td data-label="AS"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span>${renderDowntimeDetail(store)}</td>
         <td data-label="CS/고객">
@@ -1670,6 +2128,7 @@ function renderTableSignalLine(store) {
 
 function signalSourceNotice(store) {
   const status = normalizeSignalSourceStatus(store && store.signalSourceStatus);
+  if (isAirQualitySourceIssue(store)) return '대기질만 확인 불가';
   if (status === 'error') return '원천 확인';
   if (status === 'warning') return '원천 경고';
   return '';
@@ -1677,7 +2136,11 @@ function signalSourceNotice(store) {
 
 function signalSourceDetail(store) {
   if (!store) return '';
-  return String(store.signalSourceError || store.signalSourceWarnings || '').trim()
+  const detail = String(store.signalSourceError || store.signalSourceWarnings || '').trim();
+  if (isAirQualitySourceIssue(store)) {
+    return `강수 실황·단기예보는 계속 사용할 수 있으며 대기질만 확인할 수 없습니다. ${detail}`.trim();
+  }
+  return detail
     || (signalSourceNotice(store) ? '기상 또는 대기질 원천 일부를 확인해야 합니다.' : '원천 데이터 정상');
 }
 
@@ -1737,7 +2200,7 @@ function kpiHelpText(label) {
     '안전 확보': `운영 원장의 Orange/Red/Error와 최신 기상 API 신호의 즉시 확인 지점을 함께 봅니다. 기상 신호가 없으면 0이 아니라 판단 대기로 표시합니다. ${WEATHER_SIGNAL_HELP}`,
     '다운타임 축소': 'AS 차단, 정상화 대기, 운영 중단 상태와 제공된 다운타임 시간을 집계합니다. 1건 이상이면 정상화 차단 사유와 ETA를 우선 확인합니다.',
     'CS 안정화': 'customer_notice_status, customer_action_status, 고객 영향 필드를 기준으로 고객 안내 또는 불편 대응 대기 건을 봅니다. 필드가 없으면 정상으로 간주하지 않고 확인 전으로 표시합니다.',
-    '수요·매출 회복': '회복 조치, 처리대수·매출 성과 대기, CRM 가능 건을 함께 봅니다. AS·안전 게이트 통과 후 CRM 실행 여부를 판단합니다.',
+    '수요·매출 회복': '회복 조치·관찰 후보, 처리대수·매출 성과 해석 대기, CRM 승인 검토 후보를 구분해 봅니다. 집계값은 즉시 업무 수와 같지 않으며 AS·안전 게이트 통과 후 실제 실행 여부를 판단합니다.',
     '운영 즉시': `prod 기준 Orange/Red 미완료 운영 액션 수입니다. ${PROD_MODE_HELP}`,
     '신호 즉시': `최신 기상 신호 기준 즉시확인 대상 지점 수입니다. ${WEATHER_SIGNAL_HELP}`,
     '주의 관찰': 'Yellow 상태 또는 회복 관찰이 필요한 지점 수입니다. 피크 전 사전점검 대상입니다.',
@@ -1819,6 +2282,7 @@ function systemItemHelpText(label) {
     '시스템 오류': '최근 24시간 미해결 ERROR/CRITICAL/FATAL급 시스템 오류입니다. 해결 처리된 dashboard 인증 오류와 lock 경고는 Apps Script payload에서 제외됩니다.',
     '시스템 오류 상세': 'Apps Script dashboard payload가 제공한 미해결 시스템 오류의 최근 메시지입니다. 상세 payload가 없으면 오류 건수만 표시합니다.',
     '시스템 경고': '최근 24시간 미해결 WARN/WARNING급 비차단 경고입니다. 운영 판단을 막지는 않지만 반복되면 자동화 또는 원천 상태를 점검해야 합니다.',
+    '원천 경고': '최근 24시간 WARN/WARNING 중 기상·대기질 원천에 한정된 비차단 경고입니다. 공식 prod 운영 판단을 막지 않으며 원천 상태 스트립에서 영향 범위를 확인합니다.',
     '시스템 경고 상세': 'Apps Script dashboard payload가 제공한 최근 비차단 경고입니다. 발생 시각, 실행 단계와 원천 메시지를 함께 확인합니다.'
   };
   return messages[label] || '시스템 운영 상태입니다.';
@@ -1879,6 +2343,7 @@ function renderSystem() {
   const systemWarnCount = metricNumber(systemWarnCountValue);
   const systemErrorDetail = systemIssueSummary('error', systemErrorCount);
   const systemWarningDetail = systemIssueSummary('warning', systemWarnCount);
+  const sourceWarningOnly = Boolean(systemWarningDetail && /에어코리아|대기질|기상\/대기질|weather_lookup/i.test(systemWarningDetail));
   const items = [
     {
       label: latestRecordIsSignalRefresh ? '기상 신호 갱신' : '마지막 요약',
@@ -1893,7 +2358,7 @@ function renderSystem() {
     { label: '판단 상태', value: decisionReadinessLabel(), className: decisionReadinessClass() },
     { label: '기상 신호', value: weatherSignalSummaryText(), className: !hasWeatherSignalData() ? 'info' : (weatherSignalIsStale() || weatherSignalHasRisk() ? 'warning' : 'ok') },
     { label: '시스템 오류', value: systemErrorCountValue === '-' ? '-' : `${systemErrorCount}건`, className: systemErrorCount > 0 ? 'danger' : (systemErrorCountValue === '-' ? 'info' : 'ok') },
-    { label: '시스템 경고', value: systemWarnCountValue === '-' ? '-' : `${systemWarnCount}건`, className: systemWarnCount > 0 ? 'warning' : (systemWarnCountValue === '-' ? 'info' : 'ok') }
+    { label: sourceWarningOnly ? '원천 경고' : '시스템 경고', value: systemWarnCountValue === '-' ? '-' : `${systemWarnCount}건`, className: systemWarnCount > 0 ? 'warning' : (systemWarnCountValue === '-' ? 'info' : 'ok') }
   ];
   $('systemStatus').innerHTML = items.map((item) => `
     <div class="system-item ${escapeAttr(item.className)}">
@@ -1916,7 +2381,7 @@ function renderSystem() {
   ` : '') + (systemWarningDetail ? `
     <div class="system-item warning system-wide">
       <span class="system-dot" aria-hidden="true"></span>
-      <div class="system-label">시스템 경고 상세${renderInfoTip(systemItemHelpText('시스템 경고 상세'), '시스템 경고 상세 기준')}</div>
+      <div class="system-label">${sourceWarningOnly ? '원천 경고 상세' : '시스템 경고 상세'}${renderInfoTip(systemItemHelpText(sourceWarningOnly ? '원천 경고' : '시스템 경고 상세'), sourceWarningOnly ? '원천 경고 상세 기준' : '시스템 경고 상세 기준')}</div>
       <div class="system-value">${escapeHtml(systemWarningDetail)}</div>
     </div>
   ` : '') + (summaryAdvisory ? `
@@ -2417,6 +2882,8 @@ function openStoreDialog(storeId) {
     ['기상 신호', `${levelLabel(store.signalStatus)} · ${store.signalActionLevel} · ${store.signalMode || '-'}`],
     ['신호 근거', signalWeatherText(store)],
     ['기상 원천 상태', signalSourceNotice(store) ? `${signalSourceNotice(store)} · ${signalSourceDetail(store)}` : '정상'],
+    ['신규 원천 검증', enhancedStoreLine(store)],
+    ['신규 검증 상세', enhancedStoreDetail(store)],
     ['운영 기상/트리거', `${store.weather} · ${store.weatherDetail || store.trigger}`],
     ['운영 기상 수치', weatherMetricText(store)],
     ['신호 기상 수치', signalWeatherMetricText(store)],
@@ -2445,8 +2912,9 @@ async function copyBrief() {
     .join('\n') || '- 즉시 조치 지점 없음';
   const text = [
     `[OPS] Weather Ops Dashboard | ${formatDateTime(state.data.generatedAt)}`,
-    `전체 상태: ${levelLabel(decisionStatus())} / 판단: ${decisionReadinessLabel()} / ${weatherSignalSummaryText()}`,
-    `운영 즉시: ${summary.immediateCount ?? summary.immediate_count ?? 0} / 회복 조치: ${summary.recoveryActionCount ?? summary.recovery_action_count ?? 0} / CRM 가능: ${summary.crmReadyCount ?? summary.crm_ready_count ?? 0} / 성과 대기: ${summary.dataWaitCount ?? summary.data_wait_count ?? 0}`,
+    `공식 상태: 운영 ${levelLabel(prodOverallStatus())} / 기상 신호 ${levelLabel(signalOverallStatus())}(${weatherSignalMode() || '-'}) / ${decisionReadinessLabel()}`,
+    `신규 원천 검증: ${enhancedSignals().length ? enhancedStoreLine(state.data.stores[0]) : '확인 불가 · enhancedSignal 미제공'} / 운영 영향: ${enhancedOperationalImpactText(enhancedSignals())}`,
+    `운영 즉시: ${summary.immediateCount ?? summary.immediate_count ?? 0} / 회복 조치·관찰 후보: ${summary.recoveryActionCount ?? summary.recovery_action_count ?? 0} / CRM 후보: ${summary.crmReadyCount ?? summary.crm_ready_count ?? 0} / 성과 해석 대기: ${summary.dataWaitCount ?? summary.data_wait_count ?? 0}`,
     '',
     '우선 지점',
     topStores

@@ -6,7 +6,7 @@
   <title>[OPS] Weather Ops Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
-  <link rel="stylesheet" href="style.css?v=2026-07-16-5">
+  <link rel="stylesheet" href="style.css?v=2026-07-21-3">
   <script
     src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
     integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
@@ -59,6 +59,22 @@
       <button id="copyBriefBtn" class="icon-btn secondary" type="button" title="Slack 공유용 요약 복사">요약 복사</button>
     </section>
 
+    <section id="weatherSourcePanel" class="source-strip" aria-labelledby="weatherSourceTitle">
+      <div class="source-strip-head">
+        <div>
+          <h2 id="weatherSourceTitle">기상 원천 상태</h2>
+          <p>공식 prod 운영 판단과 신규 shadow 원천 검증의 가용성을 분리해 확인합니다.</p>
+        </div>
+        <span id="enhancedModeTag" class="tag">확인 중</span>
+      </div>
+      <div id="sourceDecisionSummary" class="source-decision-summary" aria-label="운영 판단과 신규 원천 검증 상태"></div>
+      <div id="weatherSourceStrip" class="source-status-grid" aria-label="기상 원천별 상태"></div>
+      <details id="weatherSourceDetails" class="source-details">
+        <summary>원천 상세 확인</summary>
+        <div id="weatherSourceDetailBody" class="source-detail-body"></div>
+      </details>
+    </section>
+
     <section class="dashboard-grid primary-grid" id="primaryDashboardGrid">
       <article class="panel map-panel">
         <div class="panel-head">
@@ -75,8 +91,9 @@
         <div class="panel-head">
           <div>
             <h2>회복 큐</h2>
-            <p>CRM 가능 여부와 AS 차단 상태를 함께 확인합니다.</p>
+            <p>최근 미완료 기록에서 CRM 게이트와 AS 차단 상태를 함께 확인합니다.</p>
           </div>
+          <span id="recoveryQueueCount" class="tag">0건</span>
         </div>
         <div id="recoveryQueue" class="queue-list"></div>
       </article>
@@ -97,16 +114,16 @@
         <div class="panel-head">
           <div>
             <h2>오늘 조치할 항목</h2>
-            <p>사업운영팀 우선순위와 마케팅 실행 대기를 분리합니다.</p>
+            <p>오늘 실행할 운영 업무와 승인 검토가 필요한 마케팅 후보를 분리합니다.</p>
           </div>
         </div>
         <div class="action-columns">
           <section>
-            <h3>사업운영팀</h3>
+            <h3>사업운영팀 <span class="scope-label">오늘 실행</span></h3>
             <div id="opsActions" class="action-list"></div>
           </section>
           <section>
-            <h3>마케팅팀</h3>
+            <h3>마케팅팀 <span class="scope-label">승인 검토 후보</span></h3>
             <div id="marketingActions" class="action-list"></div>
           </section>
         </div>
@@ -129,7 +146,7 @@
         <div class="panel-head">
           <div>
             <h2>회복 실행 단계</h2>
-            <p>하락 감지 이후 CRM·재방문까지 어디서 멈추는지 봅니다.</p>
+            <p>최근 기록에서 하락 감지 이후 CRM·재방문까지 어디서 멈추는지 봅니다.</p>
           </div>
         </div>
         <div id="recoveryFunnel" class="funnel-list"></div>
@@ -142,7 +159,7 @@
         <div class="panel-head">
           <div>
             <h2>지점별 회복 진행</h2>
-            <p>D-day, D+1, D+2 회복률을 단계별 색상과 숫자로 확인합니다.</p>
+            <p>최근 회복 기록의 D-day, D+1, D+2 진행률을 단계별로 확인합니다.</p>
           </div>
         </div>
         <div id="recoveryStageHeatmap" class="heatmap-table"></div>
@@ -220,6 +237,6 @@
     <div id="dialogBody" class="dialog-body"></div>
   </dialog>
 
-  <script src="app.js?v=2026-07-16-5"></script>
+  <script src="app.js?v=2026-07-21-3"></script>
 </body>
 </html>
