@@ -3,6 +3,7 @@ const state = {
   risk: 'all',
   store: 'all',
   vulnerability: 'all',
+  activeTab: 'overview',
   chart: null,
   loading: false,
   lastLoadedAt: 0,
@@ -36,7 +37,10 @@ const WEATHER_API_HELP = '기상 수치는 현재 실황과 오늘 남은 운영
 const WEATHER_THRESHOLD_HELP = '임계값: 강수 Yellow=POP 60% 또는 PCP 0.1mm+, Orange=POP 80% 또는 PCP 5mm+, Red=PCP 15mm+. 풍속 7/10/14m/s, 한파 0/-5/-10도, 적설 0.1/1/5cm, 폭염 30/33/35도, PM10 81/151/300, PM2.5 36/76/150 기준입니다.';
 const STATIC_HELP_ITEMS = [
   ['.source-strip h2', '단기예보·실황·대기질은 공식 prod 판단의 원천 가용성을, AWS·레이더·기상특보는 신규 shadow 검증 상태를 보여줍니다. shadow 검증 결과는 공식 운영 등급과 액션을 자동 변경하지 않습니다.', '기상 원천 상태 기준'],
-  ['.map-panel h2', `지점 현황은 prod 운영 상태와 최신 기상 신호 중 확인 우선순위가 높은 상태로 정렬합니다. ${WEATHER_SIGNAL_HELP}`, '지점 현황 기준'],
+  ['.map-panel h2', `지점 운영 매트릭스는 공식 prod 운영 상태, 최신 기상 신호, shadow 검증과 AS·CS·회복 게이트를 한 행에서 비교합니다. ${WEATHER_SIGNAL_HELP}`, '지점 운영 매트릭스 기준'],
+  ['.priority-panel h2', '우선 확인 큐는 오늘 공식 미완료 액션을 먼저 표시하고, 그다음 최신 기상 신호의 즉시확인·사전점검 지점을 위험도순으로 최대 3건 보여줍니다.', '우선 확인 큐 기준'],
+  ['.weather-comparison-panel h2', `현재 강수 실황과 오늘 예보 최대강수를 같은 축에서 비교합니다. 수치가 없는 지점은 추정하지 않습니다. ${WEATHER_API_HELP}`, '강수 비교 기준'],
+  ['.source-health-panel h2', '공식 운영 판단에 필요한 원천과 신규 shadow 검증 원천의 가용성을 축약해 표시합니다. 부분 결측은 전체 기상 실패와 분리합니다.', '데이터 상태 기준'],
   ['.queue-panel h2', '회복 큐는 기상 영향 이후 처리대수·매출 회복, AS 차단, CRM 가능 여부를 함께 보는 실행 대기열입니다.', '회복 큐 기준'],
   ['#recoveryChartPanel h2', '지점 필터를 선택하면 D-day, D+1, D+2 처리대수·매출 회복률을 표시합니다. 100%는 기준선 회복, 90% 미만은 조치 검토 구간입니다.', '회복률 기준'],
   ['.action-panel h2', '오늘 조치할 항목은 미완료 운영 액션을 사업운영팀과 마케팅팀으로 나눕니다. 운영 제한·AS 차단·회복 조치가 우선입니다.', '조치 항목 기준'],
@@ -67,6 +71,7 @@ function checkAuthSession() {
 }
 
 function bindEvents() {
+  bindDashboardTabs();
   $('refreshBtn').addEventListener('click', () => loadDashboard({ fresh: true }));
   $('copyBriefBtn').addEventListener('click', copyBrief);
   $('storeFilter').addEventListener('change', (event) => {
@@ -94,6 +99,7 @@ function bindEvents() {
       $('storeFilter').value = 'all';
       updateRiskFilterState();
       render();
+      setActiveTab('overview');
       $('metroMap').scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }
@@ -112,6 +118,45 @@ function bindEvents() {
     state.dialogTrigger = null;
   });
   updateRiskFilterState();
+}
+
+function bindDashboardTabs() {
+  const tabs = [...document.querySelectorAll('[data-tab-target]')];
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => setActiveTab(tab.dataset.tabTarget, { focus: true }));
+    tab.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      let nextIndex = index;
+      if (event.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+      if (event.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+      if (event.key === 'Home') nextIndex = 0;
+      if (event.key === 'End') nextIndex = tabs.length - 1;
+      setActiveTab(tabs[nextIndex].dataset.tabTarget, { focus: true });
+    });
+  });
+  document.querySelectorAll('[data-open-tab]').forEach((button) => {
+    button.addEventListener('click', () => setActiveTab(button.dataset.openTab, { focus: true, scroll: true }));
+  });
+  setActiveTab(state.activeTab);
+}
+
+function setActiveTab(tabName, options = {}) {
+  const available = [...document.querySelectorAll('[data-tab-panel]')].map((panel) => panel.dataset.tabPanel);
+  const next = available.includes(tabName) ? tabName : 'overview';
+  state.activeTab = next;
+  document.querySelectorAll('[data-tab-target]').forEach((tab) => {
+    const active = tab.dataset.tabTarget === next;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    tab.tabIndex = active ? 0 : -1;
+    if (active && options.focus) tab.focus();
+  });
+  document.querySelectorAll('[data-tab-panel]').forEach((panel) => {
+    panel.hidden = panel.dataset.tabPanel !== next;
+  });
+  if (next === 'recovery' && state.chart) requestAnimationFrame(() => state.chart.resize());
+  if (options.scroll) document.querySelector('.dashboard-tabs')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function closeStoreDialog() {
@@ -265,6 +310,10 @@ function renderFatalErrorState(message) {
   if (vulnerabilityContract) vulnerabilityContract.innerHTML = '';
   $('mapCount').textContent = '0개 지점';
   $('metroMap').innerHTML = `<div class="empty-state filter-empty">대시보드 데이터를 불러오지 못했습니다. 새로고침으로 다시 시도하세요.</div>`;
+  if ($('priorityQueue')) $('priorityQueue').innerHTML = '<div class="empty-state compact">확인 항목을 불러오지 못했습니다.</div>';
+  if ($('priorityCount')) $('priorityCount').textContent = '0건';
+  if ($('weatherComparison')) $('weatherComparison').innerHTML = '<div class="empty-state compact">기상 비교 데이터를 불러오지 못했습니다.</div>';
+  if ($('sourceHealthCompact')) $('sourceHealthCompact').innerHTML = '<div class="empty-state compact">데이터 상태를 불러오지 못했습니다.</div>';
   $('opsActions').innerHTML = '<div class="empty-state compact">데이터 연결 후 조치 항목을 표시합니다.</div>';
   $('marketingActions').innerHTML = '<div class="empty-state compact">데이터 연결 후 마케팅 항목을 표시합니다.</div>';
   $('recoveryQueue').innerHTML = '<div class="empty-state">데이터 연결 후 회복 큐를 표시합니다.</div>';
@@ -816,6 +865,8 @@ function render() {
   renderWeatherSources();
   renderSiteVulnerabilitySummary();
   renderMap();
+  renderPriorityQueue();
+  renderWeatherComparison();
   renderActions();
   renderRecoveryChart();
   renderRecoveryQueue();
@@ -1257,6 +1308,36 @@ function renderWeatherSources() {
       <span>${escapeHtml(row.value)}</span>
     </div>
   `).join('');
+  renderSourceHealthCompact(sourceRows);
+}
+
+function renderSourceHealthCompact(sourceRows = weatherSourceRows()) {
+  const target = $('sourceHealthCompact');
+  if (!target) return;
+  const rows = Array.isArray(sourceRows) ? sourceRows : [];
+  const attention = rows.filter((row) => ['warning', 'danger'].includes(row.className));
+  const readinessClass = decisionReadinessClass();
+  target.innerHTML = `
+    <div class="source-health-summary ${escapeAttr(readinessClass)}">
+      <span>운영 판단</span>
+      <strong>${escapeHtml(decisionReadinessLabel())}</strong>
+      <small>${escapeHtml(formatDateTime(weatherSignalTimestamp()) || '기상 신호 시각 미제공')}</small>
+    </div>
+    <div class="source-health-grid" aria-label="기상 원천 가용성">
+      ${rows.map((row) => `
+        <div class="source-health-segment ${escapeAttr(row.className)}" title="${escapeAttr(row.detail || row.value)}">
+          <span class="source-dot" aria-hidden="true"></span>
+          <b>${escapeHtml(row.label)}</b>
+          <small>${escapeHtml(row.value)}</small>
+        </div>
+      `).join('')}
+    </div>
+    <div class="source-health-note ${attention.length ? 'warning' : 'ok'}">
+      ${attention.length
+        ? `<strong>${attention.length}개 원천 확인</strong><span>${escapeHtml(attention.map((row) => row.label).join(' · '))}</span>`
+        : '<strong>주요 원천 정상</strong><span>운영 판단용 데이터가 연결되어 있습니다.</span>'}
+    </div>
+  `;
 }
 
 function renderSiteVulnerabilitySummary() {
@@ -1882,32 +1963,225 @@ function renderMap() {
     });
     return;
   }
-  $('metroMap').innerHTML = stores.map((store, index) => {
-    const weatherChips = renderCombinedWeatherMetricChips(store, 4);
-    const signalLine = storeSignalLine(store);
-    const enhancedLine = enhancedStoreLine(store);
-    const vulnerability = siteVulnerabilityContext(store);
-    const nextAction = storeNextActionText(store);
-    return `
-      <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}"
-        aria-haspopup="dialog" aria-controls="storeDialog" aria-expanded="false"
-        aria-label="${escapeAttr(`${store.name} ${levelLabel(store.status)}. ${store.weather}. 다음 액션: ${nextAction}. 상세 보기`)}">
-        <span class="pin-top">
-          <strong>${escapeHtml(store.name)}</strong>
-          <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
-        </span>
-        <span class="pin-meta">운영 ${escapeHtml(levelLabel(store.prodStatus))} · ${escapeHtml(store.dri)}</span>
-        <span class="pin-meta signal-${escapeAttr(store.signalStatus)}">${escapeHtml(signalLine)}</span>
-        ${weatherChips ? `<span class="weather-chip-row">${weatherChips}</span>` : ''}
-        <span class="pin-meta enhanced-line">${escapeHtml(enhancedLine)}</span>
-        ${vulnerability.visible ? renderSiteVulnerabilityCard(vulnerability) : ''}
-        <span class="pin-action">${escapeHtml(nextAction)}</span>
-      </button>
-    `;
-  }).join('');
+  $('metroMap').innerHTML = `
+    <div class="command-matrix-head" aria-hidden="true">
+      <span>지점</span><span>공식 기상</span><span>검증 신호</span><span>운영</span><span>AS</span><span>CS</span><span>회복</span><span>다음 행동</span>
+    </div>
+    ${stores.map((store) => renderCommandMatrixRow(store)).join('')}
+  `;
   $('metroMap').querySelectorAll('.store-pin').forEach((button) => {
     button.addEventListener('click', () => openStoreDialog(button.dataset.store, button));
   });
+}
+
+function renderCommandMatrixRow(store) {
+  const officialStatus = normalizeStatus(store.signalStatus);
+  const shadowStatus = normalizeStatus(store.enhancedSignal && store.enhancedSignal.fusionStatus);
+  const customer = customerStatusView(store);
+  const asView = compactAsStatus(store);
+  const recoveryView = compactRecoveryStatus(store);
+  const nextAction = storeNextActionText(store);
+  const officialDetail = [levelLabel(officialStatus), compactRiskType(store.signalRiskType || store.weather)].filter(Boolean).join(' · ');
+  const shadowDetail = store.enhancedSignal && store.enhancedSignal.available
+    ? [levelLabel(shadowStatus), store.enhancedSignal.validationMode || 'shadow'].filter(Boolean).join(' · ')
+    : '확인 전';
+  const aria = [
+    store.name,
+    `공식 기상 ${officialDetail}`,
+    `검증 신호 ${shadowDetail}`,
+    `운영 ${levelLabel(store.prodStatus)}`,
+    `AS ${asView.label}`,
+    `CS ${customer.primary}`,
+    `회복 ${recoveryView.label}`,
+    `다음 행동 ${nextAction}`
+  ].join('. ');
+  return `
+    <button class="store-pin command-matrix-row status-${escapeAttr(store.status)}" type="button" data-store="${escapeAttr(store.id)}"
+      aria-haspopup="dialog" aria-controls="storeDialog" aria-expanded="false" aria-label="${escapeAttr(`${aria}. 상세 보기`)}">
+      <span class="command-store" data-label="지점">
+        <strong>${escapeHtml(store.name)}</strong>
+        <small>${escapeHtml(store.dri)}</small>
+      </span>
+      <span class="command-state official" data-label="공식 기상">
+        <span class="matrix-status status-${escapeAttr(officialStatus)}">${escapeHtml(officialDetail || '신호 없음')}</span>
+      </span>
+      <span class="command-state shadow-signal" data-label="검증 신호">
+        <span class="matrix-status shadow status-${escapeAttr(shadowStatus)}">${escapeHtml(shadowDetail)}</span>
+      </span>
+      <span class="command-state operation" data-label="운영">
+        <span class="matrix-status status-${escapeAttr(store.prodStatus)}">${escapeHtml(levelLabel(store.prodStatus))}</span>
+      </span>
+      <span class="command-state as" data-label="AS"><span class="gate-state ${escapeAttr(asView.className)}">${escapeHtml(asView.label)}</span></span>
+      <span class="command-state cs" data-label="CS"><span class="gate-state ${escapeAttr(customer.state)}">${escapeHtml(customer.primary)}</span></span>
+      <span class="command-state recovery" data-label="회복"><span class="gate-state ${escapeAttr(recoveryView.className)}">${escapeHtml(recoveryView.label)}</span></span>
+      <span class="command-mobile-gates" data-label="실행 게이트">${escapeHtml(mobileGateSummary(store, asView, customer, recoveryView))}</span>
+      <span class="command-next" data-label="다음 행동">${escapeHtml(nextAction)}</span>
+    </button>
+  `;
+}
+
+function compactRiskType(value) {
+  const text = String(value || '').trim();
+  if (!text || text === '-') return '';
+  return text.split(/[·,/]/).map((part) => part.trim()).filter(Boolean).slice(0, 2).join('·');
+}
+
+function compactAsStatus(store) {
+  if (isBlockingAsStatus(store)) return { label: '차단·대기', className: 'blocked' };
+  const text = String(store.asStatus || '').trim();
+  if (!text || text === '-' || /확인\s*전|미확인/i.test(text)) return { label: '확인 전', className: 'unknown' };
+  if (/정상|완료|해결|해당\s*없음|대상\s*없음/i.test(text)) return { label: '정상', className: 'clear' };
+  return { label: text, className: 'watch' };
+}
+
+function compactRecoveryStatus(store) {
+  const text = String(store.recoveryStatus || '').trim();
+  if (!text || text === '-' || /확인\s*전|미확인/i.test(text)) return { label: '확인 전', className: 'unknown' };
+  if (/대상\s*없음|해당\s*없음|완료|정상/i.test(text)) return { label: '대상 없음', className: 'clear' };
+  if (/차단/i.test(text)) return { label: '차단', className: 'blocked' };
+  if (/필요|대기|관찰|진행/i.test(text)) return { label: '관찰', className: 'watch' };
+  return { label: text, className: 'watch' };
+}
+
+function mobileGateSummary(store, asView = compactAsStatus(store), customer = customerStatusView(store), recoveryView = compactRecoveryStatus(store)) {
+  const attention = [];
+  if (normalizeStatus(store.prodStatus) !== 'Green') attention.push(`운영 ${levelLabel(store.prodStatus)}`);
+  if (asView.className !== 'clear') attention.push(`AS ${asView.label}`);
+  if (customer.state !== 'clear') attention.push(`CS ${customer.primary}`);
+  if (recoveryView.className !== 'clear') attention.push(`회복 ${recoveryView.label}`);
+  return attention.length ? attention.join(' · ') : '실행 게이트 이상 없음';
+}
+
+function renderPriorityQueue() {
+  const target = $('priorityQueue');
+  const countTarget = $('priorityCount');
+  if (!target || !countTarget) return;
+  const rows = priorityQueueRows();
+  countTarget.textContent = `${rows.length}건`;
+  if (!rows.length) {
+    target.innerHTML = '<div class="empty-state compact">현재 즉시 확인할 항목이 없습니다.</div>';
+    return;
+  }
+  target.innerHTML = rows.slice(0, 3).map((row) => `
+    <button class="priority-item" type="button" data-store="${escapeAttr(row.storeId || '')}"
+      ${row.storeId ? 'aria-haspopup="dialog" aria-controls="storeDialog" aria-expanded="false"' : ''}>
+      <span class="priority-topline">
+        <span class="badge ${escapeAttr(row.status)}">${escapeHtml(row.scope)}</span>
+        <strong>${escapeHtml(row.storeName)}</strong>
+        <span class="priority-level">${escapeHtml(levelLabel(row.status))}</span>
+      </span>
+      <span class="priority-reason">${escapeHtml(row.reason)}</span>
+      <span class="priority-meta">${escapeHtml(row.meta)}</span>
+      <span class="priority-action">${escapeHtml(row.action)}</span>
+    </button>
+  `).join('') + (rows.length > 3 ? `<div class="priority-more">추가 ${rows.length - 3}건은 지점 상세에서 확인</div>` : '');
+  target.querySelectorAll('.priority-item[data-store]').forEach((button) => {
+    if (!button.dataset.store) return;
+    button.addEventListener('click', () => openStoreDialog(button.dataset.store, button));
+  });
+}
+
+function priorityQueueRows() {
+  const stores = filteredStores();
+  const storeMap = new Map(stores.map((store) => [slug(store.id || store.name), store]));
+  const officialRows = arrayFrom(state.data.opsActions).filter(matchesSelectedStore).map((item) => {
+    const storeName = firstPresent(item, ['store', 'storeName', 'store_name', 'name']) || '사업운영팀';
+    const store = storeMap.get(slug(storeName));
+    return {
+      type: 'official',
+      storeId: store ? store.id : '',
+      storeName,
+      status: normalizeStatus(firstPresent(item, ['level', 'actionLevel', 'action_level', 'status']) || 'Orange'),
+      scope: '공식 액션',
+      reason: firstPresent(item, ['reason', 'trigger', 'priority']) || '오늘 미완료 운영 액션',
+      meta: `담당 ${firstPresent(item, ['owner', 'dri', 'team']) || '사업운영팀'} · 기한 ${formatActionDue(firstPresent(item, ['due', 'dueAt', 'due_at']) || '-')}`,
+      action: firstPresent(item, ['action', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-'
+    };
+  });
+  const officialStoreIds = new Set(officialRows.map((row) => row.storeId).filter(Boolean));
+  const weatherRows = stores
+    .filter((store) => ['Error', 'Red', 'Orange', 'Yellow'].includes(normalizeStatus(store.status)) && !officialStoreIds.has(store.id))
+    .map((store) => ({
+      type: 'weather',
+      storeId: store.id,
+      storeName: store.name,
+      status: normalizeStatus(store.status),
+      scope: '기상 확인',
+      reason: [store.signalRiskType, store.signalReason].filter((value) => value && value !== '-').join(' · ') || store.weather || '기상 신호 확인',
+      meta: weatherComparisonSummary(store),
+      action: storeNextActionText(store)
+    }));
+  return [...officialRows, ...weatherRows].sort((a, b) => (
+    (a.type === 'official' ? -1 : 0) - (b.type === 'official' ? -1 : 0)
+    || (STATUS_ORDER[b.status] || 0) - (STATUS_ORDER[a.status] || 0)
+    || a.storeName.localeCompare(b.storeName, 'ko')
+  ));
+}
+
+function renderWeatherComparison() {
+  const target = $('weatherComparison');
+  if (!target) return;
+  const rows = filteredStores().map(weatherComparisonRow).filter((row) => row.current !== null || row.forecast !== null);
+  if (!rows.length) {
+    target.innerHTML = '<div class="empty-state compact">현재 필터 기준 강수 실황·예보 데이터가 없습니다.</div>';
+    return;
+  }
+  rows.sort((a, b) => Math.max(b.current || 0, b.forecast || 0) - Math.max(a.current || 0, a.forecast || 0));
+  const scaleMax = Math.max(15, ...rows.flatMap((row) => [row.current || 0, row.forecast || 0]));
+  target.innerHTML = `
+    <div class="weather-comparison-legend" aria-hidden="true">
+      <span><i class="current"></i>현재</span><span><i class="forecast"></i>예보 최대</span><span class="scale">0–${escapeHtml(compactNumber(scaleMax))}mm/h</span>
+    </div>
+    <div class="weather-comparison-rows">
+      ${rows.map((row) => {
+        const currentPosition = ((row.current || 0) / scaleMax) * 100;
+        const forecastPosition = ((row.forecast || 0) / scaleMax) * 100;
+        const start = Math.min(currentPosition, forecastPosition);
+        const width = Math.max(1, Math.abs(forecastPosition - currentPosition));
+        return `
+          <div class="weather-compare-row" aria-label="${escapeAttr(`${row.name}, 현재 ${formatRainValue(row.current)}, 예보 최대 ${formatRainValue(row.forecast)}, 피크 ${row.peak || '미정'}`)}">
+            <strong>${escapeHtml(row.name)}</strong>
+            <div class="weather-compare-track" aria-hidden="true">
+              <span class="weather-compare-range" style="left:${start}%;width:${width}%"></span>
+              ${row.current !== null ? `<span class="weather-point current" style="left:${currentPosition}%"></span>` : ''}
+              ${row.forecast !== null ? `<span class="weather-point forecast" style="left:${forecastPosition}%"></span>` : ''}
+            </div>
+            <span class="weather-values"><b>${escapeHtml(formatRainValue(row.current))}</b><b>${escapeHtml(formatRainValue(row.forecast))}</b><small>${escapeHtml(row.peak ? `피크 ${row.peak}` : '피크 미정')}</small></span>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
+}
+
+function weatherComparisonRow(store) {
+  const data = Object.assign({}, store.weatherData || {}, store.weatherValues || {});
+  return {
+    id: store.id,
+    name: store.name,
+    current: numericOrNull(firstPresent(data, ['observedRain1h', 'observed_rain_1h', 'currentRain1h', 'current_rain_1h', 'rn1', 'RN1'])),
+    forecast: numericOrNull(firstPresent(data, ['forecastMaxPcp1h', 'forecast_max_pcp_1h', 'forecastMaxPcp', 'forecast_max_pcp', 'pcp', 'PCP'])),
+    peak: formatPeakTime(firstPresent(data, ['forecastPeakTime', 'forecast_peak_time', 'peakTime', 'peak_time', 'weatherPeakTime', 'weather_peak_time']))
+  };
+}
+
+function weatherComparisonSummary(store) {
+  const row = weatherComparisonRow(store);
+  const parts = [];
+  if (row.current !== null) parts.push(`현재 ${formatRainValue(row.current)}`);
+  if (row.forecast !== null) parts.push(`예보 최대 ${formatRainValue(row.forecast)}`);
+  if (row.peak) parts.push(`피크 ${row.peak}`);
+  return parts.join(' · ') || '강수 수치 확인 전';
+}
+
+function formatRainValue(value) {
+  return value === null ? '-' : `${compactNumber(value)}mm/h`;
+}
+
+function compactNumber(value) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return '-';
+  return number.toLocaleString('ko-KR', { maximumFractionDigits: 1 });
 }
 
 function storeSignalLine(store) {

@@ -6,7 +6,7 @@
   <title>[OPS] Weather Ops Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
-  <link rel="stylesheet" href="style.css?v=2026-07-22-1">
+  <link rel="stylesheet" href="style.css?v=2026-07-22-2">
   <script
     src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
     integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
@@ -25,16 +25,17 @@
   <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <main class="app-shell">
-    <header class="hero">
+    <header class="hero command-hero">
       <div class="hero-main">
-        <div>
+        <div class="hero-identity">
           <div class="eyebrow">AUTOSTAY DIRECT STORES · WEATHER OPS</div>
           <h1>[OPS] Weather Ops Dashboard</h1>
-          <p class="hero-copy">안전을 먼저 확보하고 다운타임과 고객 불편을 줄인 뒤, 기상 악화 이후 수요와 매출 회복 시점을 판단합니다.</p>
-          <a class="logout-link" href="/api/auth?logout=1">로그아웃</a>
-          <div id="heroMeta" class="hero-meta"></div>
+          <div class="hero-actions">
+            <a class="logout-link" href="/api/auth?logout=1">로그아웃</a>
+            <div id="heroMeta" class="hero-meta"></div>
+          </div>
         </div>
-        <aside class="command-card">
+        <aside class="command-card" aria-label="오늘의 운영 판단">
           <div class="command-label">오늘의 운영 판단</div>
           <div id="overallStatus" class="status-word">-</div>
           <div id="headline" class="command-body">데이터 로딩 중</div>
@@ -43,6 +44,13 @@
       <section id="kpiStrip" class="kpi-strip mission-strip" aria-label="운영 목적 상태"></section>
       <section id="decisionBanner" class="decision-banner" aria-label="운영 판단 상태" hidden></section>
     </header>
+
+    <nav class="dashboard-tabs" role="tablist" aria-label="대시보드 보기">
+      <button id="tab-overview" class="dashboard-tab active" type="button" role="tab" aria-selected="true" aria-controls="panel-overview" data-tab-target="overview">오늘 판단</button>
+      <button id="tab-stores" class="dashboard-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-stores" data-tab-target="stores" tabindex="-1">지점 상세</button>
+      <button id="tab-recovery" class="dashboard-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-recovery" data-tab-target="recovery" tabindex="-1">회복</button>
+      <button id="tab-data" class="dashboard-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-data" data-tab-target="data" tabindex="-1">데이터 상태</button>
+    </nav>
 
     <section class="toolbar" aria-label="대시보드 필터">
       <div class="segmented" id="riskFilter">
@@ -59,176 +67,222 @@
       <button id="copyBriefBtn" class="icon-btn secondary" type="button" title="Slack 공유용 요약 복사">요약 복사</button>
     </section>
 
-    <section id="weatherSourcePanel" class="source-strip" aria-labelledby="weatherSourceTitle">
-      <div class="source-strip-head">
-        <div>
-          <h2 id="weatherSourceTitle">기상 원천 상태</h2>
-          <p>공식 prod 운영 판단과 신규 shadow 원천 검증의 가용성을 분리해 확인합니다.</p>
-        </div>
-        <span id="enhancedModeTag" class="tag">확인 중</span>
-      </div>
-      <div id="sourceDecisionSummary" class="source-decision-summary" aria-label="운영 판단과 신규 원천 검증 상태"></div>
-      <div id="siteVulnerabilityContractStatus" class="vulnerability-contract-status" role="status" aria-live="polite"></div>
-      <div id="siteVulnerabilitySummary" class="vulnerability-summary-grid" aria-label="현장 취약정보와 원천 진단 지점 필터"></div>
-      <div id="weatherSourceStrip" class="source-status-grid" aria-label="기상 원천별 상태"></div>
-      <details id="weatherSourceDetails" class="source-details">
-        <summary>원천 상세 확인</summary>
-        <div id="weatherSourceDetailBody" class="source-detail-body"></div>
-      </details>
+    <section id="panel-overview" class="dashboard-tab-panel" role="tabpanel" aria-labelledby="tab-overview" data-tab-panel="overview">
+      <section class="command-grid" aria-label="오늘 운영 판단 핵심 영역">
+        <article class="panel map-panel command-matrix-panel">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>지점 운영 매트릭스</h2>
+              <p>공식 운영, 기상 신호와 실행 게이트를 한 행에서 비교합니다.</p>
+            </div>
+            <span id="mapCount" class="tag">7개 지점</span>
+          </div>
+          <div class="command-matrix" id="metroMap" aria-label="직영점 운영 매트릭스"></div>
+        </article>
+
+        <article class="panel priority-panel">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>우선 확인 큐</h2>
+              <p>지금 확인할 항목만 위험도순으로 최대 3건 표시합니다.</p>
+            </div>
+            <span id="priorityCount" class="tag">0건</span>
+          </div>
+          <div id="priorityQueue" class="priority-list"></div>
+          <button class="panel-link" type="button" data-open-tab="stores">전체 지점 상세</button>
+        </article>
+      </section>
+
+      <section class="overview-secondary-grid" aria-label="기상 비교와 데이터 상태">
+        <article class="panel weather-comparison-panel">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>현재 강수 vs 예보 최대</h2>
+              <p>실황과 오늘 예보 피크의 차이가 큰 지점을 먼저 확인합니다.</p>
+            </div>
+          </div>
+          <div id="weatherComparison" class="weather-comparison"></div>
+        </article>
+
+        <article class="panel source-health-panel">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>데이터 상태</h2>
+              <p>운영 판단에 필요한 원천 가용성과 부분 결측만 요약합니다.</p>
+            </div>
+          </div>
+          <div id="sourceHealthCompact" class="source-health-compact"></div>
+          <button class="panel-link" type="button" data-open-tab="data">원천·시스템 상세</button>
+        </article>
+      </section>
     </section>
 
-    <section class="dashboard-grid primary-grid" id="primaryDashboardGrid">
-      <article class="panel map-panel">
-        <div class="panel-head">
-          <div>
-            <h2>지점 현황</h2>
-            <p>오늘 봐야 할 지점 상태와 다음 액션을 한 줄로 확인합니다.</p>
+    <section id="panel-stores" class="dashboard-tab-panel" role="tabpanel" aria-labelledby="tab-stores" data-tab-panel="stores" hidden>
+      <section id="actionSection" class="action-section" aria-label="오늘 조치할 항목">
+        <article class="panel action-panel">
+          <div class="panel-head">
+            <div>
+              <h2>오늘 조치할 항목</h2>
+              <p>공식 운영 액션과 승인 검토 후보를 분리합니다.</p>
+            </div>
           </div>
-          <span id="mapCount" class="tag">7개 지점</span>
-        </div>
-        <div class="metro-map" id="metroMap" aria-label="직영점 지점 현황"></div>
-      </article>
+          <div class="action-columns">
+            <section>
+              <h3>사업운영팀 <span class="scope-label">오늘 실행</span></h3>
+              <div id="opsActions" class="action-list"></div>
+              <aside id="overdueExceptions" class="overdue-exceptions" aria-label="사업운영팀 과거 미종결 예외" hidden></aside>
+            </section>
+            <section>
+              <h3>마케팅팀 <span class="scope-label">승인 검토 후보</span></h3>
+              <div id="marketingActions" class="action-list"></div>
+            </section>
+          </div>
+        </article>
+      </section>
 
-      <article id="recoveryQueuePanel" class="panel queue-panel">
-        <div class="panel-head">
-          <div>
-            <h2>회복 큐</h2>
-            <p>최근 미완료 기록에서 CRM 게이트와 AS 차단 상태를 함께 확인합니다.</p>
+      <section class="store-detail-grid">
+        <article id="riskPanel" class="panel risk-panel">
+          <div class="panel-head">
+            <div>
+              <h2>오늘 기상 리스크</h2>
+              <p>활성 리스크와 운영 게이트를 지점별로 비교합니다.</p>
+            </div>
           </div>
-          <span id="recoveryQueueCount" class="tag">0건</span>
-        </div>
-        <div id="recoveryQueue" class="queue-list"></div>
-      </article>
+          <div id="riskMatrix" class="risk-matrix"></div>
+        </article>
 
-      <article class="panel chart-panel" id="recoveryChartPanel">
-        <div class="panel-head">
-          <div>
-            <h2>선택 지점 회복률</h2>
-            <p>지점 필터 선택 시 처리대수와 매출 회복 추이를 상세로 봅니다.</p>
+        <article class="panel table-panel">
+          <div class="panel-head">
+            <div>
+              <h2>지점별 상태</h2>
+              <p>담당, 고객 안내, 회복 상태와 다음 액션을 상세 비교합니다.</p>
+            </div>
           </div>
-        </div>
-        <div id="recoveryChartWrap" class="chart-wrap"><canvas id="recoveryChart"></canvas></div>
-      </article>
+          <div class="table-wrap">
+            <table>
+              <caption class="sr-only">지점별 운영, 기상 신호, AS, 고객 안내, 회복 상태와 다음 액션</caption>
+              <thead>
+                <tr>
+                  <th scope="col">지점</th>
+                  <th scope="col">운영/신호</th>
+                  <th scope="col">기상/트리거</th>
+                  <th scope="col">AS</th>
+                  <th scope="col">CS/고객</th>
+                  <th scope="col">회복</th>
+                  <th scope="col">담당</th>
+                  <th scope="col">다음 액션</th>
+                </tr>
+              </thead>
+              <tbody id="storeTable"></tbody>
+            </table>
+          </div>
+        </article>
+      </section>
     </section>
 
-    <section id="actionSection" class="action-section" aria-label="오늘 조치할 항목">
-      <article class="panel action-panel">
-        <div class="panel-head">
-          <div>
-            <h2>오늘 조치할 항목</h2>
-            <p>오늘 실행할 운영 업무와 승인 검토가 필요한 마케팅 후보를 분리합니다.</p>
+    <section id="panel-recovery" class="dashboard-tab-panel" role="tabpanel" aria-labelledby="tab-recovery" data-tab-panel="recovery" hidden>
+      <section class="dashboard-grid primary-grid recovery-primary-grid" id="primaryDashboardGrid">
+        <article id="recoveryQueuePanel" class="panel queue-panel">
+          <div class="panel-head">
+            <div>
+              <h2>회복 큐</h2>
+              <p>최근 미완료 기록의 CRM 게이트와 AS 차단 상태를 확인합니다.</p>
+            </div>
+            <span id="recoveryQueueCount" class="tag">0건</span>
           </div>
+          <div id="recoveryQueue" class="queue-list"></div>
+        </article>
+
+        <article class="panel chart-panel" id="recoveryChartPanel">
+          <div class="panel-head">
+            <div>
+              <h2>선택 지점 회복률</h2>
+              <p>지점 필터 선택 시 처리대수와 매출 회복 추이를 표시합니다.</p>
+            </div>
+          </div>
+          <div id="recoveryChartWrap" class="chart-wrap"><canvas id="recoveryChart"></canvas></div>
+        </article>
+      </section>
+
+      <section id="visualGrid" class="visual-grid" aria-label="회복 시각화">
+        <div class="visual-column">
+          <article id="recoveryFunnelPanel" class="panel funnel-panel">
+            <div class="panel-head">
+              <div>
+                <h2>회복 실행 단계</h2>
+                <p>하락 감지 이후 CRM·재방문 단계의 정체를 확인합니다.</p>
+              </div>
+            </div>
+            <div id="recoveryFunnel" class="funnel-list"></div>
+          </article>
         </div>
-        <div class="action-columns">
-          <section>
-            <h3>사업운영팀 <span class="scope-label">오늘 실행</span></h3>
-            <div id="opsActions" class="action-list"></div>
-            <aside id="overdueExceptions" class="overdue-exceptions" aria-label="사업운영팀 과거 미종결 예외" hidden></aside>
-          </section>
-          <section>
-            <h3>마케팅팀 <span class="scope-label">승인 검토 후보</span></h3>
-            <div id="marketingActions" class="action-list"></div>
-          </section>
+
+        <div class="visual-column">
+          <article id="recoveryStagePanel" class="panel small-multiple-panel">
+            <div class="panel-head">
+              <div>
+                <h2>지점별 회복 진행</h2>
+                <p>D-day, D+1, D+2 처리대수·매출 회복률을 확인합니다.</p>
+              </div>
+            </div>
+            <div id="recoveryStageHeatmap" class="heatmap-table"></div>
+            <div id="processedBulletList" class="bullet-list"></div>
+          </article>
+
+          <article id="recoveryGapPanel" class="panel gap-panel">
+            <div class="panel-head">
+              <div>
+                <h2>처리대수 회복 vs 매출 회복</h2>
+                <p>처리대수보다 매출 회복이 느린 지점을 찾습니다.</p>
+              </div>
+            </div>
+            <div id="recoveryComparison" class="comparison-list"></div>
+          </article>
         </div>
-      </article>
+      </section>
     </section>
 
-    <section id="visualGrid" class="visual-grid" aria-label="운영 시각화">
-      <div class="visual-column">
-      <article id="riskPanel" class="panel risk-panel">
-        <div class="panel-head">
+    <section id="panel-data" class="dashboard-tab-panel" role="tabpanel" aria-labelledby="tab-data" data-tab-panel="data" hidden>
+      <section id="weatherSourcePanel" class="source-strip" aria-labelledby="weatherSourceTitle">
+        <div class="source-strip-head">
           <div>
-            <h2>오늘 기상 리스크</h2>
-            <p>오늘 활성화된 리스크만 표시하고, 정상 지점은 흐리게 처리합니다.</p>
+            <h2 id="weatherSourceTitle">기상 원천 상태</h2>
+            <p>공식 prod 운영 판단과 신규 shadow 원천 검증의 가용성을 분리합니다.</p>
           </div>
+          <span id="enhancedModeTag" class="tag">확인 중</span>
         </div>
-        <div id="riskMatrix" class="risk-matrix"></div>
-      </article>
+        <div id="sourceDecisionSummary" class="source-decision-summary" aria-label="운영 판단과 신규 원천 검증 상태"></div>
+        <div id="siteVulnerabilityContractStatus" class="vulnerability-contract-status" role="status" aria-live="polite"></div>
+        <div id="siteVulnerabilitySummary" class="vulnerability-summary-grid" aria-label="현장 취약정보와 원천 진단 지점 필터"></div>
+        <div id="weatherSourceStrip" class="source-status-grid" aria-label="기상 원천별 상태"></div>
+        <details id="weatherSourceDetails" class="source-details">
+          <summary>원천 상세 확인</summary>
+          <div id="weatherSourceDetailBody" class="source-detail-body"></div>
+        </details>
+      </section>
 
-      <article id="recoveryFunnelPanel" class="panel funnel-panel">
-        <div class="panel-head">
-          <div>
-            <h2>회복 실행 단계</h2>
-            <p>최근 기록에서 하락 감지 이후 CRM·재방문까지 어디서 멈추는지 봅니다.</p>
+      <section class="dashboard-grid lower-grid">
+        <article class="panel timeline-panel">
+          <div class="panel-head">
+            <div>
+              <h2>오늘 운영 타임라인</h2>
+              <p>정기 알림과 현장 점검 시점을 확인합니다.</p>
+            </div>
           </div>
-        </div>
-        <div id="recoveryFunnel" class="funnel-list"></div>
-      </article>
+          <div id="weatherTimeline" class="timeline"></div>
+        </article>
 
-      </div>
-
-      <div class="visual-column">
-      <article id="recoveryStagePanel" class="panel small-multiple-panel">
-        <div class="panel-head">
-          <div>
-            <h2>지점별 회복 진행</h2>
-            <p>최근 회복 기록의 D-day, D+1, D+2 진행률을 단계별로 확인합니다.</p>
+        <article class="panel system-panel">
+          <div class="panel-head">
+            <div>
+              <h2>시스템 상태</h2>
+              <p>자동화, 버전과 원천 데이터 연결을 확인합니다.</p>
+            </div>
           </div>
-        </div>
-        <div id="recoveryStageHeatmap" class="heatmap-table"></div>
-        <div id="processedBulletList" class="bullet-list"></div>
-      </article>
-
-      <article id="recoveryGapPanel" class="panel gap-panel">
-        <div class="panel-head">
-          <div>
-            <h2>처리대수 회복 vs 매출 회복</h2>
-            <p>처리대수는 회복했지만 매출이 따라오지 않는 지점을 찾습니다.</p>
-          </div>
-        </div>
-        <div id="recoveryComparison" class="comparison-list"></div>
-      </article>
-      </div>
-    </section>
-
-    <section class="panel table-panel">
-      <div class="panel-head">
-        <div>
-          <h2>지점별 상태</h2>
-          <p>필터 선택 시 지도와 표가 함께 갱신됩니다.</p>
-        </div>
-      </div>
-      <div class="table-wrap">
-        <table>
-          <caption class="sr-only">지점별 운영, 기상 신호, AS, 고객 안내, 회복 상태와 다음 액션</caption>
-          <thead>
-            <tr>
-              <th scope="col">지점</th>
-              <th scope="col">운영/신호</th>
-              <th scope="col">기상/트리거</th>
-              <th scope="col">AS</th>
-              <th scope="col">CS/고객</th>
-              <th scope="col">회복</th>
-              <th scope="col">담당</th>
-              <th scope="col">다음 액션</th>
-            </tr>
-          </thead>
-          <tbody id="storeTable"></tbody>
-        </table>
-      </div>
-    </section>
-
-    <section class="dashboard-grid lower-grid">
-      <article class="panel timeline-panel">
-        <div class="panel-head">
-          <div>
-            <h2>오늘 운영 타임라인</h2>
-            <p>정기 알림과 현장 점검 시점을 기준으로 봅니다.</p>
-          </div>
-        </div>
-        <div id="weatherTimeline" class="timeline"></div>
-      </article>
-
-      <article class="panel system-panel">
-        <div class="panel-head">
-          <div>
-            <h2>시스템 상태</h2>
-            <p>자동화와 원천 데이터가 살아있는지 확인합니다.</p>
-          </div>
-        </div>
-        <div id="systemStatus" class="system-grid"></div>
-        <div id="systemTrend" class="trend-list"></div>
-      </article>
+          <div id="systemStatus" class="system-grid"></div>
+          <div id="systemTrend" class="trend-list"></div>
+        </article>
+      </section>
     </section>
   </main>
 
@@ -240,6 +294,6 @@
     <div id="dialogBody" class="dialog-body"></div>
   </dialog>
 
-  <script src="app.js?v=2026-07-22-1"></script>
+  <script src="app.js?v=2026-07-22-2"></script>
 </body>
 </html>

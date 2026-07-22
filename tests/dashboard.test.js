@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage, compactAsStatus, compactRecoveryStatus, weatherComparisonRow, weatherComparisonSummary };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -111,8 +111,15 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-22-1/);
-  assert.match(html, /style\.css\?v=2026-07-22-1/);
+  assert.match(html, /app\.js\?v=2026-07-22-2/);
+  assert.match(html, /style\.css\?v=2026-07-22-2/);
+  assert.match(html, /data-tab-target="overview">오늘 판단<\/button>/);
+  assert.match(html, /data-tab-target="stores"[^>]*>지점 상세<\/button>/);
+  assert.match(html, /data-tab-target="recovery"[^>]*>회복<\/button>/);
+  assert.match(html, /data-tab-target="data"[^>]*>데이터 상태<\/button>/);
+  assert.match(html, /id="priorityQueue"/);
+  assert.match(html, /id="weatherComparison"/);
+  assert.match(html, /id="sourceHealthCompact"/);
   assert.match(html, /id="weatherSourceStrip"/);
   assert.match(html, /id="siteVulnerabilitySummary"/);
   assert.match(html, /id="siteVulnerabilityContractStatus"/);
@@ -120,6 +127,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /<caption class="sr-only">/);
   assert.match(html, /<th scope="col">CS\/고객<\/th>/);
   assert.match(css, /\.pin-meta\s*\{[^}]*word-break:\s*keep-all;/s);
+  assert.match(css, /\.command-matrix-row\s*\.store-pin|\.command-matrix-row\.store-pin/);
+  assert.match(css, /\.weather-compare-row/);
   assert.match(css, /\.meta-pill\.wide\s*\{\s*grid-column:\s*1\s*\/\s*-1;/);
   assert.match(app, /wide:\s*true/);
   assert.match(app, /<td colspan="8">데이터 연결 후 지점별 상태를 표시합니다\.<\/td>/);
@@ -695,4 +704,43 @@ test('기대 버전은 환경변수 설정 시에만 고정 비교한다', () =>
   assert.match(proxySource, /overdueExceptions: arrayOrEmpty/);
   assert.match(proxySource, /v2\.16\.4-weather-signal\.2/);
   assert.match(proxySource, /2026-07-22-sheet-handoff-date-ux\.11/);
+});
+
+test('Command Center 게이트 상태는 긴 원문을 운영 판단용 표현으로 축약한다', () => {
+  const { api } = loadDashboardLogic();
+  assert.deepEqual(
+    { ...api.compactAsStatus({ asStatus: '정상화 대기', normalizationBlocker: '부품 입고 대기' }) },
+    { label: '차단·대기', className: 'blocked' }
+  );
+  assert.deepEqual(
+    { ...api.compactAsStatus({ asStatus: '정상' }) },
+    { label: '정상', className: 'clear' }
+  );
+  assert.deepEqual(
+    { ...api.compactRecoveryStatus({ recoveryStatus: '회복 조치 필요' }) },
+    { label: '관찰', className: 'watch' }
+  );
+  assert.deepEqual(
+    { ...api.compactRecoveryStatus({ recoveryStatus: '대상 없음' }) },
+    { label: '대상 없음', className: 'clear' }
+  );
+});
+
+test('강수 비교는 현재 실황과 예보 최대값 및 피크를 분리한다', () => {
+  const { api } = loadDashboardLogic();
+  const row = api.weatherComparisonRow({
+    id: 'hanam',
+    name: '하남 미사',
+    weatherData: { observedRain1h: 1.5, forecastMaxPcp1h: 12, forecastPeakTime: '17:00' },
+    weatherValues: {}
+  });
+  assert.equal(row.current, 1.5);
+  assert.equal(row.forecast, 12);
+  assert.equal(row.peak, '17:00');
+  assert.equal(api.weatherComparisonSummary({
+    id: 'hanam',
+    name: '하남 미사',
+    weatherData: { observedRain1h: 1.5, forecastMaxPcp1h: 12, forecastPeakTime: '17:00' },
+    weatherValues: {}
+  }), '현재 1.5mm/h · 예보 최대 12mm/h · 피크 17:00');
 });

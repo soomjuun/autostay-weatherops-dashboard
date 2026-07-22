@@ -187,32 +187,41 @@ try {
   const desktop = await page.evaluate(() => ({
     viewport: [document.documentElement.clientWidth, window.innerHeight],
     scrollWidth: document.documentElement.scrollWidth,
-    cards: document.querySelectorAll('.store-pin').length,
-    visibleVulnerabilityCards: document.querySelectorAll('.site-vulnerability').length,
+    scrollHeight: document.documentElement.scrollHeight,
+    cards: document.querySelectorAll('.command-matrix-row').length,
+    matrixColumns: document.querySelectorAll('.command-matrix-head > span').length,
+    priorityItems: document.querySelectorAll('.priority-item').length,
+    tabs: document.querySelectorAll('[role="tab"]').length,
+    activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
     summaryButtons: document.querySelectorAll('[data-vulnerability-filter]').length,
-    vulnerabilityContract: document.getElementById('siteVulnerabilityContractStatus')?.innerText || '',
-    sourceErrors: [...document.querySelectorAll('[data-vulnerability-filter]')].find((node) => node.dataset.vulnerabilityFilter === 'sourceError')?.innerText || '',
-    sourceDecision: document.getElementById('sourceDecisionSummary')?.innerText || '',
-    opsActions: document.getElementById('opsActions')?.innerText || '',
-    overdueExceptions: document.getElementById('overdueExceptions')?.innerText || ''
+    vulnerabilityContract: document.getElementById('siteVulnerabilityContractStatus')?.textContent || '',
+    sourceErrors: [...document.querySelectorAll('[data-vulnerability-filter]')].find((node) => node.dataset.vulnerabilityFilter === 'sourceError')?.textContent || '',
+    sourceDecision: document.getElementById('sourceDecisionSummary')?.textContent || '',
+    sourceHealth: document.getElementById('sourceHealthCompact')?.innerText || '',
+    weatherComparisonRows: document.querySelectorAll('.weather-compare-row').length,
+    opsActions: document.getElementById('opsActions')?.textContent || '',
+    overdueExceptions: document.getElementById('overdueExceptions')?.textContent || ''
   }));
   await page.screenshot({ path: path.join(OUTPUT, '01-desktop-1440.png'), fullPage: true });
 
-  await page.locator('[data-store="hanam-misa"]').click();
+  await page.locator('.command-matrix-row[data-store="hanam-misa"]').click();
   const dialogText = await page.locator('#storeDialog').innerText();
   const dialogOpen = await page.locator('#storeDialog').evaluate((element) => element.open);
-  const expandedWhileOpen = await page.locator('[data-store="hanam-misa"]').getAttribute('aria-expanded');
+  const expandedWhileOpen = await page.locator('.command-matrix-row[data-store="hanam-misa"]').getAttribute('aria-expanded');
   await page.screenshot({ path: path.join(OUTPUT, '02-desktop-dialog.png'), fullPage: false });
   await page.locator('#dialogClose').click();
   const dialogReturn = await page.evaluate(() => ({
-    expanded: document.querySelector('[data-store="hanam-misa"]')?.getAttribute('aria-expanded'),
-    focusReturned: document.activeElement?.getAttribute('data-store') === 'hanam-misa'
+    expanded: document.querySelector('.command-matrix-row[data-store="hanam-misa"]')?.getAttribute('aria-expanded'),
+    focusReturned: document.activeElement?.matches('.command-matrix-row[data-store="hanam-misa"]') === true
   }));
 
+  await page.locator('#tab-data').click();
+  const dataTabVisible = await page.locator('#panel-data').isVisible();
   await page.locator('[data-vulnerability-filter="route"]').click();
   const routeFilter = await page.evaluate(() => ({
-    cards: document.querySelectorAll('.store-pin').length,
-    pressed: document.querySelector('[data-vulnerability-filter="route"]')?.getAttribute('aria-pressed')
+    cards: document.querySelectorAll('.command-matrix-row').length,
+    pressed: document.querySelector('[data-vulnerability-filter="route"]')?.getAttribute('aria-pressed'),
+    activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || ''
   }));
 
   const responsive = [];
@@ -223,8 +232,9 @@ try {
     const metrics = await page.evaluate(() => ({
       clientWidth: document.documentElement.clientWidth,
       scrollWidth: document.documentElement.scrollWidth,
-      cardCount: document.querySelectorAll('.store-pin').length,
-      clippedText: [...document.querySelectorAll('.store-pin, .source-strip, .toolbar')].some((node) => node.scrollWidth > node.clientWidth + 1)
+      cardCount: document.querySelectorAll('.command-matrix-row').length,
+      activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
+      clippedText: [...document.querySelectorAll('.command-matrix-row, .source-health-panel, .toolbar')].some((node) => node.scrollWidth > node.clientWidth + 1)
     }));
     responsive.push({ name, ...metrics });
     await page.screenshot({ path: path.join(OUTPUT, name === 'tablet' ? '03-tablet-768.png' : '04-mobile-390.png'), fullPage: true });
@@ -242,18 +252,23 @@ try {
       hasEnhancedDetails: dialogText.includes('AWS') && dialogText.includes('레이더') && dialogText.includes('검증 정책'),
       hidesSourceUrl: !dialogText.includes('example.invalid')
     },
-    routeFilter,
+    routeFilter: { dataTabVisible, ...routeFilter },
     responsive,
     consoleErrors
   };
   console.log(JSON.stringify(result, null, 2));
-  if (desktop.cards !== 7 || desktop.visibleVulnerabilityCards !== 2 || desktop.summaryButtons !== 5) process.exitCode = 1;
+  if (desktop.cards !== 7 || desktop.matrixColumns !== 8 || desktop.tabs !== 4 || desktop.activePanel !== 'overview') process.exitCode = 1;
+  if (desktop.priorityItems < 1 || desktop.priorityItems > 3 || desktop.weatherComparisonRows !== 7) process.exitCode = 1;
+  if (desktop.scrollHeight > desktop.viewport[1] * 2) process.exitCode = 1;
+  if (desktop.summaryButtons !== 5) process.exitCode = 1;
   if (!desktop.vulnerabilityContract.includes('7/7개점 수신')) process.exitCode = 1;
   if (!desktop.sourceDecision.includes('Orange 1 / Yellow 6')) process.exitCode = 1;
+  if (!desktop.sourceHealth.includes('운영 판단')) process.exitCode = 1;
   if (!desktop.opsActions.includes('오늘 공식 미완료 조치가 없습니다')) process.exitCode = 1;
   if (!desktop.overdueExceptions.includes('과거 미종결 예외 7건')) process.exitCode = 1;
   if (!dialogOpen || result.dialog.expandedWhileOpen !== 'true' || result.dialog.expanded !== 'false' || !result.dialog.focusReturned) process.exitCode = 1;
   if (!result.dialog.hasVulnerabilitySection || !result.dialog.drainageZeroHandled || !result.dialog.hidesSourceUrl) process.exitCode = 1;
+  if (!result.routeFilter.dataTabVisible || result.routeFilter.activePanel !== 'overview') process.exitCode = 1;
   if (responsive.some((item) => item.scrollWidth > item.clientWidth || item.clippedText)) process.exitCode = 1;
   if (consoleErrors.length) process.exitCode = 1;
 } finally {
