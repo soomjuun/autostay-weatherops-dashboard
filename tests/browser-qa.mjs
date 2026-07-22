@@ -113,6 +113,28 @@ const signalStores = storeSpecs.map((spec, index) => ({
   }
 }));
 
+const recoveryQueue = storeSpecs.slice(0, 6).map((spec, index) => ({
+  storeId: spec.id,
+  store: spec.name,
+  status: '회복 조치 필요',
+  stage: index % 2 === 0 ? 'D+1 회복 점검' : 'D+2 재조치 판단',
+  processedRecoveryRate: -43 - index,
+  revenueRecoveryRate: -17 - index,
+  crmAllowed: true,
+  nextAction: index % 2 === 0
+    ? '사업운영팀 확인 후 고객 안내·피크 대응·장비 병목 중 원인별 추가 조치'
+    : 'D+2까지 회복 미달 시 수요·처리량·장비·고객 안내 원인 분류'
+}));
+
+const marketingActions = storeSpecs.slice(0, 5).map((spec, index) => ({
+  store: spec.name,
+  priority: 'P1',
+  action: '비 종료 후 차량 오염 제거·재방문 안내 검토',
+  owner: '마케팅팀',
+  due: index % 2 === 0 ? '16:30' : '10:30',
+  approvalStatus: '승인 검토 후보'
+}));
+
 const payload = {
   version: 'v2.16.4',
   dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
@@ -122,7 +144,7 @@ const payload = {
   summary: { overallStatus: 'Green', headline: '운영 원장은 정상이며 기상 사전점검 2개 지점입니다.', immediateCount: 0, asBlockedCount: 0, recoveryActionCount: 0, dataWaitCount: 0, crmReadyCount: 0 },
   stores,
   weatherSignal: { mode: 'shadow', generatedAt: now, observedAt: now, overallStatus: 'Yellow', summary: { totalStores: 7, normal: 5, watch: 2, actionRequired: 0, dataCheck: 0 }, stores: signalStores },
-  recovery: {}, visuals: {}, opsActions: [], marketingActions: [], weatherTimeline: [],
+  recovery: { queue: recoveryQueue }, visuals: {}, opsActions: [], marketingActions, weatherTimeline: [],
   system: {
     scriptBuildId: '2026-07-22-sheet-handoff-date-ux.11',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
@@ -224,7 +246,33 @@ try {
     activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || ''
   }));
 
+  await page.reload({ waitUntil: 'networkidle' });
+  await page.waitForFunction(() => document.getElementById('loadingOverlay')?.style.display === 'none');
+  await page.locator('#tab-stores').click();
+  const storeDensity = await page.evaluate(() => {
+    const heights = (selector) => [...document.querySelectorAll(selector)].map((node) => Math.round(node.getBoundingClientRect().height));
+    return {
+      activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
+      actionCards: heights('.action-item'),
+      tableRows: heights('#storeTable tr'),
+      marketingColumns: getComputedStyle(document.getElementById('marketingActions')).gridTemplateColumns.split(' ').length
+    };
+  });
+  await page.screenshot({ path: path.join(OUTPUT, '05-stores-density.png'), fullPage: true });
+
+  await page.locator('#tab-recovery').click();
+  const recoveryDensity = await page.evaluate(() => {
+    const heights = (selector) => [...document.querySelectorAll(selector)].map((node) => Math.round(node.getBoundingClientRect().height));
+    return {
+      activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
+      queueHeader: heights('.queue-table-head'),
+      queueRows: heights('.queue-item')
+    };
+  });
+  await page.screenshot({ path: path.join(OUTPUT, '06-recovery-density.png'), fullPage: true });
+
   const responsive = [];
+  let mobileTabs = {};
   for (const [name, width, height] of [['tablet', 768, 1100], ['mobile', 390, 844]]) {
     await page.setViewportSize({ width, height });
     await page.reload({ waitUntil: 'networkidle' });
@@ -238,6 +286,25 @@ try {
     }));
     responsive.push({ name, ...metrics });
     await page.screenshot({ path: path.join(OUTPUT, name === 'tablet' ? '03-tablet-768.png' : '04-mobile-390.png'), fullPage: true });
+    if (name === 'mobile') {
+      await page.locator('#tab-stores').click();
+      const storesMobile = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        actionColumns: getComputedStyle(document.getElementById('marketingActions')).gridTemplateColumns.split(' ').length,
+        tableCards: document.querySelectorAll('#storeTable tr').length
+      }));
+      await page.screenshot({ path: path.join(OUTPUT, '07-mobile-stores.png'), fullPage: true });
+      await page.locator('#tab-recovery').click();
+      const recoveryMobile = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        queueRows: document.querySelectorAll('.queue-item').length,
+        queueHeaderVisible: getComputedStyle(document.querySelector('.queue-table-head')).display !== 'none'
+      }));
+      await page.screenshot({ path: path.join(OUTPUT, '08-mobile-recovery.png'), fullPage: true });
+      mobileTabs = { stores: storesMobile, recovery: recoveryMobile };
+    }
   }
 
   const result = {
@@ -253,6 +320,8 @@ try {
       hidesSourceUrl: !dialogText.includes('example.invalid')
     },
     routeFilter: { dataTabVisible, ...routeFilter },
+    density: { stores: storeDensity, recovery: recoveryDensity },
+    mobileTabs,
     responsive,
     consoleErrors
   };
@@ -269,6 +338,13 @@ try {
   if (!dialogOpen || result.dialog.expandedWhileOpen !== 'true' || result.dialog.expanded !== 'false' || !result.dialog.focusReturned) process.exitCode = 1;
   if (!result.dialog.hasVulnerabilitySection || !result.dialog.drainageZeroHandled || !result.dialog.hidesSourceUrl) process.exitCode = 1;
   if (!result.routeFilter.dataTabVisible || result.routeFilter.activePanel !== 'overview') process.exitCode = 1;
+  if (storeDensity.activePanel !== 'stores' || storeDensity.marketingColumns !== 3) process.exitCode = 1;
+  if (!storeDensity.tableRows.length || Math.max(...storeDensity.tableRows) - Math.min(...storeDensity.tableRows) > 1) process.exitCode = 1;
+  if (!storeDensity.actionCards.length || Math.max(...storeDensity.actionCards) - Math.min(...storeDensity.actionCards) > 1) process.exitCode = 1;
+  if (recoveryDensity.activePanel !== 'recovery' || recoveryDensity.queueHeader[0] !== 44) process.exitCode = 1;
+  if (!recoveryDensity.queueRows.length || Math.max(...recoveryDensity.queueRows) - Math.min(...recoveryDensity.queueRows) > 1) process.exitCode = 1;
+  if (mobileTabs.stores?.scrollWidth > mobileTabs.stores?.clientWidth || mobileTabs.stores?.actionColumns !== 1 || mobileTabs.stores?.tableCards !== 7) process.exitCode = 1;
+  if (mobileTabs.recovery?.scrollWidth > mobileTabs.recovery?.clientWidth || mobileTabs.recovery?.queueRows !== 6 || mobileTabs.recovery?.queueHeaderVisible) process.exitCode = 1;
   if (responsive.some((item) => item.scrollWidth > item.clientWidth || item.clippedText)) process.exitCode = 1;
   if (consoleErrors.length) process.exitCode = 1;
 } finally {

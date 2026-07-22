@@ -892,13 +892,27 @@ function updateSectionVisibility() {
   const queuePanel = $('recoveryQueuePanel');
   const visualGrid = $('visualGrid');
   const primaryGrid = $('primaryDashboardGrid');
+  const hasRenderedRows = (target) => Boolean(target && Array.from(target.children).some((child) => !child.classList.contains('empty-state')));
+  const funnelVisible = recoveryActive && hasRenderedRows($('recoveryFunnel'));
+  const stageVisible = recoveryActive && (hasRenderedRows($('recoveryStageHeatmap')) || hasRenderedRows($('processedBulletList')));
+  const gapVisible = recoveryActive && hasRenderedRows($('recoveryComparison'));
 
-  if (actionSection) actionSection.hidden = opsRows.length + marketingRows.length + overdueCount === 0;
+  if (actionSection) {
+    actionSection.hidden = opsRows.length + marketingRows.length + overdueCount === 0;
+    actionSection.classList.toggle('marketing-only', opsRows.length === 0 && overdueCount === 0 && marketingRows.length > 0);
+    actionSection.classList.toggle('ops-summary-only', opsRows.length === 0 && overdueCount > 0 && marketingRows.length > 0);
+  }
   if (queuePanel) queuePanel.hidden = queueRows.length === 0;
-  if ($('recoveryFunnelPanel')) $('recoveryFunnelPanel').hidden = !recoveryActive;
-  if ($('recoveryStagePanel')) $('recoveryStagePanel').hidden = !recoveryActive;
-  if ($('recoveryGapPanel')) $('recoveryGapPanel').hidden = !recoveryActive;
-  if (visualGrid) visualGrid.classList.toggle('single-panel', !recoveryActive);
+  if ($('recoveryFunnelPanel')) $('recoveryFunnelPanel').hidden = !funnelVisible;
+  if ($('recoveryStagePanel')) $('recoveryStagePanel').hidden = !stageVisible;
+  if ($('recoveryGapPanel')) $('recoveryGapPanel').hidden = !gapVisible;
+  if (visualGrid) {
+    const visibleCount = [funnelVisible, stageVisible, gapVisible].filter(Boolean).length;
+    visualGrid.hidden = visibleCount === 0;
+    visualGrid.classList.toggle('single-panel', visibleCount === 1);
+    visualGrid.classList.toggle('two-panels', visibleCount === 2);
+    visualGrid.classList.toggle('three-panels', visibleCount === 3);
+  }
   if (primaryGrid) primaryGrid.classList.toggle('queue-hidden', queueRows.length === 0);
 }
 
@@ -2015,7 +2029,7 @@ function renderCommandMatrixRow(store) {
       <span class="command-state cs" data-label="CS"><span class="gate-state ${escapeAttr(customer.state)}">${escapeHtml(customer.primary)}</span></span>
       <span class="command-state recovery" data-label="회복"><span class="gate-state ${escapeAttr(recoveryView.className)}">${escapeHtml(recoveryView.label)}</span></span>
       <span class="command-mobile-gates" data-label="실행 게이트">${escapeHtml(mobileGateSummary(store, asView, customer, recoveryView))}</span>
-      <span class="command-next" data-label="다음 행동">${escapeHtml(nextAction)}</span>
+      <span class="command-next" data-label="다음 행동" title="${escapeAttr(nextAction)}">${escapeHtml(nextAction)}</span>
     </button>
   `;
 }
@@ -2064,6 +2078,8 @@ function renderPriorityQueue() {
   }
   target.innerHTML = rows.slice(0, 3).map((row) => `
     <button class="priority-item" type="button" data-store="${escapeAttr(row.storeId || '')}"
+      title="${escapeAttr(`${row.reason} · ${row.meta} · ${row.action}`)}"
+      aria-label="${escapeAttr(`${row.scope} ${row.storeName}. ${row.reason}. ${row.meta}. 다음 행동 ${row.action}`)}"
       ${row.storeId ? 'aria-haspopup="dialog" aria-controls="storeDialog" aria-expanded="false"' : ''}>
       <span class="priority-topline">
         <span class="badge ${escapeAttr(row.status)}">${escapeHtml(row.scope)}</span>
@@ -2735,28 +2751,43 @@ function renderRecoveryQueue() {
     $('recoveryQueue').innerHTML = '<div class="empty-state">현재 필터 기준 미완료 회복 기록이 없습니다.</div>';
     return;
   }
-  $('recoveryQueue').innerHTML = filtered.map((item) => {
+  const rows = filtered.map((item) => {
     const status = firstPresent(item, ['status', 'recoveryStatus', 'recovery_status']) || '-';
     const processed = firstPresent(item, ['processedRecoveryRate', 'processed_recovery_rate', 'washRecoveryRate', 'wash_recovery_rate']);
     const revenue = firstPresent(item, ['revenueRecoveryRate', 'revenue_recovery_rate', 'recoveryRate', 'recovery_rate']);
-    const revenueText = revenue !== null ? ` · 매출 회복률 ${formatPercent(revenue)}` : '';
+    const revenueText = revenue !== null ? `매출 ${formatPercent(revenue)}` : '매출 -';
     const crm = formatCrmAllowed(firstPresent(item, ['crmAllowed', 'crm_allowed', 'crm_allowed_yn']));
+    const storeName = firstPresent(item, ['store', 'storeName', 'store_name']) || '-';
+    const stage = firstPresent(item, ['stage', 'recoveryStage', 'recovery_stage']) || '-';
+    const nextAction = firstPresent(item, ['next', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-';
     return `
-      <div class="queue-item">
-        <div class="queue-main">
-          <div class="queue-top">
-            <span class="queue-store">${escapeHtml(firstPresent(item, ['store', 'storeName', 'store_name']) || '-')}</span>
-            <span class="badge ${queueStatusClass(status)}" title="${escapeAttr('회복 큐 상태입니다. AS 차단 또는 조치 필요는 CRM·재방문 실행 전에 정상화 확인이 필요합니다.')}">${escapeHtml(status)}</span>
-          </div>
-          <div class="queue-body">${escapeHtml(firstPresent(item, ['stage', 'recoveryStage', 'recovery_stage']) || '-')} · 처리대수 회복률 ${formatPercent(processed)}${revenueText}</div>
+      <div class="queue-item" role="row">
+        <div class="queue-store-cell" role="cell" data-label="지점">
+          <strong>${escapeHtml(storeName)}</strong>
+          <span class="badge ${queueStatusClass(status)}" title="${escapeAttr('회복 큐 상태입니다. AS 차단 또는 조치 필요는 CRM·재방문 실행 전에 정상화 확인이 필요합니다.')}">${escapeHtml(status)}</span>
         </div>
-        <div class="queue-side">
+        <div class="queue-progress-cell" role="cell" data-label="회복 단계">
+          <strong title="${escapeAttr(stage)}">${escapeHtml(stage)}</strong>
+          <span>처리대수 ${formatPercent(processed)} · ${revenueText}</span>
+        </div>
+        <div class="queue-crm-cell" role="cell" data-label="CRM">
           <span class="queue-chip ${escapeAttr(crm.className)}" title="${escapeAttr('CRM 가능은 AS 정상화와 회복 판단을 통과해 승인 검토 후보가 될 수 있다는 뜻이며 자동 발송을 의미하지 않습니다.')}">CRM ${escapeHtml(crm.label)}</span>
-          <span class="queue-next">${escapeHtml(firstPresent(item, ['next', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-')}</span>
         </div>
+        <span class="queue-next" role="cell" data-label="다음 조치" title="${escapeAttr(nextAction)}">${escapeHtml(nextAction)}</span>
       </div>
     `;
   }).join('');
+  $('recoveryQueue').innerHTML = `
+    <div class="queue-table" role="table" aria-label="지점별 회복 큐">
+      <div class="queue-table-head" role="row">
+        <span role="columnheader">지점</span>
+        <span role="columnheader">회복 단계·회복률</span>
+        <span role="columnheader">CRM</span>
+        <span role="columnheader">다음 조치</span>
+      </div>
+      ${rows}
+    </div>
+  `;
 }
 
 function renderProcessedBulletList() {
@@ -2807,46 +2838,51 @@ function renderProcessedBulletList() {
 function renderStoreTable() {
   const rows = filteredStores();
   $('storeTable').innerHTML = rows.map((store) => {
-    const weatherChips = renderCombinedWeatherMetricChips(store, 5);
     const customer = customerStatusView(store);
+    const asView = compactAsStatus(store);
+    const recoveryView = compactRecoveryStatus(store);
     const nextAction = storeNextActionText(store);
+    const weatherDetail = weatherDetailText(store);
+    const enhancedLine = enhancedStoreLine(store);
+    const asDetail = downtimeDetailText(store);
     const nextActionHelp = nextAction !== store.nextAction
       ? renderInfoTip('운영 원장은 정상이지만 최신 기상 신호가 없어 현재 기상 정상 판정을 확정할 수 없습니다. weatherSignal 연동을 확인한 뒤 정상 운영 유지 여부를 판단합니다.', '다음 액션 기준')
       : '';
     return `
-      <tr>
-        <td data-label="지점"><strong>${escapeHtml(store.name)}</strong><br><span class="muted">${escapeHtml(store.region)}</span></td>
-        <td data-label="운영/신호">
-          <span class="status-pair"><span class="badge ${store.prodStatus}" title="${escapeAttr(statusHelpText(store.prodStatus))}">운영 ${escapeHtml(levelLabel(store.prodStatus))}</span><span class="badge ${store.signalStatus}" title="${escapeAttr(signalStatusHelpText(store))}">신호 ${escapeHtml(levelLabel(store.signalStatus))}</span></span>
-          <br><span class="muted score-line">운영 점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span>
+      <tr class="store-summary-row">
+        <td class="cell-store" data-label="지점">
+          <span class="table-cell-stack"><strong>${escapeHtml(store.name)}</strong><span class="table-subline">${escapeHtml(store.region)}</span></span>
         </td>
-        <td data-label="기상/트리거">
-          <span class="table-main-line">운영 ${escapeHtml(store.weather)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><br>
-          <span class="muted">${escapeHtml(weatherDetailText(store))}</span>
-          ${renderTableSignalLine(store)}
-          ${weatherChips ? `<div class="weather-chip-row table-weather">${weatherChips}</div>` : ''}
-          <span class="enhanced-table-line">${escapeHtml(enhancedStoreLine(store))}${renderInfoTip(enhancedStoreDetail(store), '신규 원천 검증')}</span>
+        <td class="cell-operation" data-label="운영/신호">
+          <span class="table-cell-stack"><span class="status-pair"><span class="badge ${store.prodStatus}" title="${escapeAttr(statusHelpText(store.prodStatus))}">운영 ${escapeHtml(levelLabel(store.prodStatus))}</span><span class="badge ${store.signalStatus}" title="${escapeAttr(signalStatusHelpText(store))}">신호 ${escapeHtml(levelLabel(store.signalStatus))}</span></span><span class="table-subline score-line">운영 점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span></span>
         </td>
-        <td data-label="AS"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span>${renderDowntimeDetail(store)}</td>
-        <td data-label="CS/고객">
-          <span class="table-main-line customer-status is-${escapeAttr(customer.state)}">${escapeHtml(customer.primary)}${renderInfoTip(customerStatusHelpText(store), 'CS/고객 기준')}</span>
-          ${customer.detail ? `<span class="customer-detail"><span class="customer-detail-label">영향</span>${escapeHtml(customer.detail)}</span>` : ''}
+        <td class="cell-weather" data-label="기상/트리거">
+          <span class="table-cell-stack"><span class="table-main-line">${escapeHtml(store.weather)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><span class="table-subline clamp-1" title="${escapeAttr(weatherDetail)}">${escapeHtml(weatherDetail)}</span><span class="table-subline enhanced-compact clamp-1" title="${escapeAttr(enhancedStoreDetail(store))}">${escapeHtml(enhancedLine)}</span></span>
         </td>
-        <td data-label="회복"><span class="table-main-line">${escapeHtml(store.recoveryStatus)}${renderInfoTip(recoveryStatusHelpText(store), '회복 기준')}</span><br><span class="muted score-line">CRM ${store.crmReady ? '가능' : '대기'}${renderInfoTip(crmHelpText(store), 'CRM 기준')}</span></td>
-        <td data-label="담당">${escapeHtml(store.dri)}</td>
-        <td data-label="다음 액션"><span class="table-main-line">${escapeHtml(nextAction)}${nextActionHelp}</span></td>
+        <td class="cell-as is-${escapeAttr(asView.className)}" data-label="AS"><span class="table-cell-stack"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span>${asDetail ? `<span class="table-subline clamp-1" title="${escapeAttr(asDetail)}">${escapeHtml(asDetail)}</span>` : ''}</span></td>
+        <td class="cell-cs is-${escapeAttr(customer.state)}" data-label="CS/고객">
+          <span class="table-cell-stack"><span class="table-main-line customer-status is-${escapeAttr(customer.state)}">${escapeHtml(customer.primary)}${renderInfoTip(customerStatusHelpText(store), 'CS/고객 기준')}</span>${customer.detail ? `<span class="table-subline clamp-1" title="${escapeAttr(customer.detail)}">${escapeHtml(customer.detail)}</span>` : ''}</span>
+        </td>
+        <td class="cell-recovery is-${escapeAttr(recoveryView.className)}" data-label="회복"><span class="table-cell-stack"><span class="table-main-line">${escapeHtml(store.recoveryStatus)}${renderInfoTip(recoveryStatusHelpText(store), '회복 기준')}</span><span class="table-subline score-line">CRM ${store.crmReady ? '가능' : '대기'}${renderInfoTip(crmHelpText(store), 'CRM 기준')}</span></span></td>
+        <td class="cell-owner" data-label="담당"><span class="table-cell-stack"><strong>${escapeHtml(store.dri)}</strong></span></td>
+        <td class="cell-next" data-label="다음 액션"><span class="table-cell-stack"><span class="table-main-line clamp-2" title="${escapeAttr(nextAction)}">${escapeHtml(nextAction)}${nextActionHelp}</span></span></td>
       </tr>
     `;
   }).join('') || '<tr><td colspan="8">현재 필터 기준 지점이 없습니다.</td></tr>';
 }
 
-function renderDowntimeDetail(store) {
+function downtimeDetailText(store) {
   const details = [];
   if (store.downtimeMinutes !== null) details.push(`다운타임 ${missionLongestDowntime([store])}`);
   if (store.vendorStatus) details.push(store.vendorStatus);
   if (store.vendorEta) details.push(`ETA ${formatActionDue(store.vendorEta)}`);
   if (store.normalizationBlocker) details.push(store.normalizationBlocker);
-  return details.length ? `<br><span class="muted">${escapeHtml(details.join(' · '))}</span>` : '';
+  return details.join(' · ');
+}
+
+function renderDowntimeDetail(store) {
+  const detail = downtimeDetailText(store);
+  return detail ? `<span class="table-subline">${escapeHtml(detail)}</span>` : '';
 }
 
 function customerStatusText(store) {
