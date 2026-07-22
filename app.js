@@ -1508,17 +1508,25 @@ function enhancedCoverageValue(available, total) {
 function enhancedSourceDetail(label, rows, type) {
   const available = rows.filter(type === 'aws' ? enhancedAwsAvailable : enhancedRadarAvailable).length;
   const errors = uniqueTextParts(rows.flatMap((row) => [...arrayFrom(row.sourceErrors), row.sourceError]))
-    .filter((text) => type === 'aws' ? /aws|지점 목록|매분자료/i.test(text) : /레이더|radar|no_data/i.test(text));
+    .filter((text) => enhancedMessageMatchesSource(text, type));
   const warnings = uniqueTextParts(rows.flatMap((row) => [...arrayFrom(row.sourceWarningItems), row.sourceWarnings]))
-    .filter((text) => type === 'aws' ? /aws|지점 목록|매분자료/i.test(text) : /레이더|radar|no_data/i.test(text));
-  const fallbackNotices = uniqueTextParts(rows.flatMap((row) => arrayFrom(row.fallbackNotices)))
-    .concat(warnings.filter(isEnhancedFallbackNotice));
+    .filter((text) => enhancedMessageMatchesSource(text, type));
+  const fallbackNotices = uniqueTextParts([
+    ...rows.flatMap((row) => arrayFrom(row.fallbackNotices)),
+    ...warnings.filter(isEnhancedFallbackNotice)
+  ]).filter((text) => enhancedMessageMatchesSource(text, type));
   const fallbackCount = rows.filter((row) => type === 'aws' ? row.awsCacheFallback === true : row.radarCacheFallback === true).length;
   const parts = [`${label} 확인 ${available}/${rows.length}개점`];
   if (fallbackCount) parts.push(`캐시 대체 ${fallbackCount}개점`);
   if (errors.length) parts.push(`오류 ${errors.join(' · ')}`);
-  if (fallbackNotices.length) parts.push(`대체 안내 ${uniqueTextParts(fallbackNotices).join(' · ')}`);
+  if (fallbackNotices.length) parts.push(`대체 안내 ${summarizeEnhancedFallbackNotices(rows, fallbackNotices)}`);
   return parts.join(' · ');
+}
+
+function enhancedMessageMatchesSource(value, type) {
+  const text = String(value || '');
+  if (type === 'aws') return /aws|지점 목록|매분자료|관측소 월보/i.test(text);
+  return /레이더|radar|no_data|시군구 코드|광역 행정코드|district|province/i.test(text);
 }
 
 function isEnhancedFallbackNotice(value) {

@@ -452,6 +452,12 @@ test('신규 검증 오류와 정상 fallback 안내를 분리한다', () => {
   const details = api.weatherSourceDetailRows([], rows);
   assert.equal(details.find((row) => row.label === '신규 검증 오류').value, '없음');
   assert.equal(details.find((row) => row.label === '대체 사용 안내').value, 'AWS 월보 2026-06 · 레이더 시·도 광역 대표 사용 1개점');
+  const awsDetail = api.enhancedSourceDetail('AWS', rows, 'aws');
+  const radarDetail = api.enhancedSourceDetail('레이더', rows, 'radar');
+  assert.match(awsDetail, /대체 안내 AWS 월보 2026-06/);
+  assert.doesNotMatch(awsDetail, /레이더|4100000000/);
+  assert.match(radarDetail, /대체 안내 레이더 시·도 광역 대표 사용 1개점/);
+  assert.doesNotMatch(radarDetail, /AWS 월보|2026-06/);
 });
 
 test('최신 현장 취약정보 계약을 운영 지점과 기상 신호 양쪽에서 보존한다', () => {
