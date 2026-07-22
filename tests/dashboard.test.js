@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceContractText, enhancedSignals, enhancedStoreLine, enhancedOperationalImpactText, renderActionList, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -111,9 +111,11 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-21-3/);
-  assert.match(html, /style\.css\?v=2026-07-21-3/);
+  assert.match(html, /app\.js\?v=2026-07-22-1/);
+  assert.match(html, /style\.css\?v=2026-07-22-1/);
   assert.match(html, /id="weatherSourceStrip"/);
+  assert.match(html, /id="siteVulnerabilitySummary"/);
+  assert.match(html, /id="siteVulnerabilityContractStatus"/);
   assert.match(html, /승인 검토 후보/);
   assert.match(html, /<caption class="sr-only">/);
   assert.match(html, /<th scope="col">CS\/고객<\/th>/);
@@ -422,14 +424,140 @@ test('최신 payload와 build 식별자를 프런트 계약에 보존한다', ()
   const normalized = api.normalize({
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    buildId: '2026-07-21-enhanced-weather-validation.3',
+    buildId: '2026-07-22-site-vulnerability-radar-diagnostics.6',
     summary: {},
     stores: [],
     weatherSignal: {},
     system: {}
   });
   assert.equal(normalized.dashboardPayloadVersion, 'v2.16.4-weather-signal.2');
-  assert.equal(normalized.buildId, '2026-07-21-enhanced-weather-validation.3');
+  assert.equal(normalized.buildId, '2026-07-22-site-vulnerability-radar-diagnostics.6');
+});
+
+test('신규 검증 오류와 정상 fallback 안내를 분리한다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.data = { system: {}, weatherSignal: { mode: 'shadow', generatedAt: new Date().toISOString(), summary: {} }, stores: [] };
+  const rows = [api.normalizeEnhancedSignal({
+    sourceStatus: 'warning',
+    sourceError: '',
+    sourceWarnings: 'AWS 지점목록 월보 대체 사용: 2026-06 | 레이더 광역 행정코드 대체 사용: 4100000000',
+    fallbackNotices: ['AWS 지점목록 월보 대체 사용: 2026-06', '레이더 광역 행정코드 대체 사용: 4100000000'],
+    awsStationReferenceMonth: '2026-06',
+    awsObservedAt: '2026-07-21T17:43:00+09:00',
+    radarObservedAt: '2026-07-21T17:40:00+09:00',
+    radarRainRate: 0,
+    radarSpatialScope: 'province_fallback',
+    radarFallbackUsed: true
+  })];
+  const details = api.weatherSourceDetailRows([], rows);
+  assert.equal(details.find((row) => row.label === '신규 검증 오류').value, '없음');
+  assert.equal(details.find((row) => row.label === '대체 사용 안내').value, 'AWS 월보 2026-06 · 레이더 시·도 광역 대표 사용 1개점');
+});
+
+test('최신 현장 취약정보 계약을 운영 지점과 기상 신호 양쪽에서 보존한다', () => {
+  const { api } = loadDashboardLogic();
+  const normalized = api.normalize({
+    version: 'v2.16.4',
+    dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
+    system: { scriptBuildId: '2026-07-22-site-vulnerability-radar-diagnostics.6' },
+    stores: [{
+      storeId: 'hanam',
+      storeName: '하남 미사',
+      prodStatus: 'Green',
+      siteVulnerability: {
+        rainPoolingPoints: '입구·롤스크린·세차 출구',
+        rainDrainageMinMinutes: 0,
+        rainDrainageMaxMinutes: 60,
+        rainRouteRisk: true,
+        rainEquipmentRisk: '전기·방수 점검',
+        rainPriorityActions: ['입구 배수 확인', '전기함 방수 확인'],
+        source: 'https://example.invalid/internal',
+        updatedAt: '2026-07-22T09:10:00+09:00'
+      }
+    }],
+    weatherSignal: {
+      mode: 'shadow',
+      stores: [{
+        storeId: 'hanam',
+        storeName: '하남 미사',
+        status: 'Yellow',
+        riskType: '강수',
+        siteVulnerability: { windPriorityActions: ['롤스크린 고정'] }
+      }]
+    }
+  });
+  const store = normalized.stores[0];
+  assert.equal(normalized.buildId, '2026-07-22-site-vulnerability-radar-diagnostics.6');
+  assert.equal(store.siteVulnerability.provided, true);
+  assert.equal(store.siteVulnerability.rainPoolingPoints, '입구·롤스크린·세차 출구');
+  assert.deepEqual([...store.siteVulnerability.windPriorityActions], ['롤스크린 고정']);
+  assert.equal(api.formatRainDrainage(0, 60), '최대 60분');
+  assert.equal(api.siteVulnerabilityDetailRows(store).some((row) => String(row.value).includes('example.invalid')), false);
+});
+
+test('현장 취약정보 계약 누락은 정상 0건이 아니라 배포 확인 경고로 분리한다', () => {
+  const { api } = loadDashboardLogic();
+  const store = api.normalizeStore({ storeId: 'hanam', storeName: '하남 미사', prodStatus: 'Green' }, {
+    hanam: { storeId: 'hanam', status: 'Yellow', riskType: '강수' }
+  });
+  api.state.data = { stores: [store], system: {}, summary: {}, weatherSignal: {} };
+  assert.equal(store.siteVulnerability.provided, false);
+  assert.match(api.siteVulnerabilityContractText(), /0\/1개점 수신/);
+  assert.equal(api.siteVulnerabilityContractWarning(), '현장 취약정보 계약 0/1개점 수신');
+});
+
+test('현장 취약정보는 관련 기상 신호에서만 요약과 최대 두 개 조치로 노출한다', () => {
+  const { api } = loadDashboardLogic();
+  const siteVulnerability = api.normalizeSiteVulnerability({
+    rainPoolingPoints: '출구 동선',
+    rainDrainageMinMinutes: 0,
+    rainDrainageMaxMinutes: 60,
+    rainRouteRisk: true,
+    rainPriorityActions: ['출구 배수 확인', '진입 동선 통제', '전기 설비 방수 확인'],
+    windPriorityActions: ['스피드도어 고정']
+  });
+  const green = { signalStatus: 'Green', signalRiskType: '-', weatherValues: {}, enhancedSignal: {}, siteVulnerability };
+  const rain = { signalStatus: 'Yellow', signalRiskType: '강수', weatherValues: {}, enhancedSignal: {}, siteVulnerability };
+  const wind = { signalStatus: 'Yellow', signalRiskType: '강풍', weatherValues: {}, enhancedSignal: {}, siteVulnerability };
+  assert.equal(api.siteVulnerabilityContext(green).visible, false);
+  assert.equal(api.siteVulnerabilityContext(rain).visible, true);
+  assert.equal(api.siteVulnerabilityContext(rain).actions.length, 2);
+  assert.match(api.siteVulnerabilityContext(rain).summary, /출구 동선/);
+  assert.deepEqual([...api.siteVulnerabilityContext(wind).actions], ['스피드도어 고정']);
+});
+
+test('현장 취약정보 집계와 레이더 대체자료 범위를 사람이 이해하는 표현으로 분리한다', () => {
+  const { api } = loadDashboardLogic();
+  const stores = [
+    {
+      siteVulnerability: api.normalizeSiteVulnerability({
+        rainPoolingPoints: '입구',
+        rainRouteRisk: true,
+        rainEquipmentRisk: '전기 설비 점검',
+        rainPriorityActions: ['분전반 방수 확인']
+      }),
+      enhancedSignal: api.normalizeEnhancedSignal({
+        radarRainRate: 0,
+        radarSpatialScope: 'province_fallback',
+        radarFallbackUsed: true,
+        sourceErrors: ['AWS 응답 실패']
+      }),
+      signalSourceStatus: 'ok',
+      signalSourceError: ''
+    },
+    {
+      siteVulnerability: api.normalizeSiteVulnerability({}),
+      enhancedSignal: api.normalizeEnhancedSignal({ radarRainRate: 0, radarSpatialScope: 'store' }),
+      signalSourceStatus: 'ok',
+      signalSourceError: ''
+    }
+  ];
+  const counts = Object.fromEntries(api.siteVulnerabilitySummaryRows(stores).map((row) => [row.id, row.count]));
+  assert.deepEqual(counts, { rain: 1, route: 1, equipment: 1, radarFallback: 1, sourceError: 1 });
+  assert.equal(api.humanizeRadarSpatialScope('province_fallback'), '시·도 광역 대표 자료');
+  assert.equal(api.humanizeRadarSpatialScope('district_fallback'), '시·군·구 대표 자료');
+  assert.equal(api.humanizeRadarSpatialScope('store'), '지점 인근 자료');
+  assert.equal(api.humanizeRadarFallbackType('province'), '시·도 광역 대표 자료');
 });
 
 test('마케팅 상태는 기한으로 중복 표기하지 않는다', () => {
@@ -461,7 +589,7 @@ test('enhancedSignal 미제공은 AWS와 레이더를 정상으로 추정하지 
     }],
     weatherSignal: {
       mode: 'prod',
-      generatedAt: '2026-07-21T15:00:00+09:00',
+      generatedAt: new Date().toISOString(),
       overallStatus: 'Yellow',
       summary: { watch: 1 },
       stores: [{ storeId: 'seongsu', status: 'Yellow' }]
@@ -535,5 +663,5 @@ test('기대 버전은 환경변수 설정 시에만 고정 비교한다', () =>
   assert.doesNotMatch(proxySource, /WEATHER_OPS_EXPECTED_VERSION \|\| 'v2\.16\.4'/);
   assert.match(proxySource, /buildId: data\.buildId \|\| data\.build_id/);
   assert.match(proxySource, /v2\.16\.4-weather-signal\.2/);
-  assert.match(proxySource, /2026-07-21-enhanced-weather-validation\.3/);
+  assert.match(proxySource, /2026-07-22-site-vulnerability-radar-diagnostics\.6/);
 });

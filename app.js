@@ -2,10 +2,12 @@ const state = {
   data: null,
   risk: 'all',
   store: 'all',
+  vulnerability: 'all',
   chart: null,
   loading: false,
   lastLoadedAt: 0,
-  refreshTimer: null
+  refreshTimer: null,
+  dialogTrigger: null
 };
 const EXPECTED_PACK_VERSION = '';
 const DASHBOARD_CACHE_KEY = 'weatherOpsDashboard:lastSuccess:v2';
@@ -69,15 +71,32 @@ function bindEvents() {
   $('copyBriefBtn').addEventListener('click', copyBrief);
   $('storeFilter').addEventListener('change', (event) => {
     state.store = event.target.value;
+    state.vulnerability = 'all';
     render();
   });
   $('riskFilter').querySelectorAll('button').forEach((button) => {
     button.addEventListener('click', () => {
       state.risk = button.dataset.risk;
+      state.vulnerability = 'all';
       updateRiskFilterState();
       render();
     });
   });
+  const vulnerabilitySummary = $('siteVulnerabilitySummary');
+  if (vulnerabilitySummary) {
+    vulnerabilitySummary.addEventListener('click', (event) => {
+      const button = event.target.closest('[data-vulnerability-filter]');
+      if (!button) return;
+      const selected = button.dataset.vulnerabilityFilter || 'all';
+      state.vulnerability = state.vulnerability === selected ? 'all' : selected;
+      state.risk = 'all';
+      state.store = 'all';
+      $('storeFilter').value = 'all';
+      updateRiskFilterState();
+      render();
+      $('metroMap').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     if (!state.lastLoadedAt || Date.now() - state.lastLoadedAt >= AUTO_REFRESH_INTERVAL_MS) {
@@ -86,6 +105,12 @@ function bindEvents() {
   });
   window.addEventListener('online', () => loadDashboard({ fresh: true, silent: true }));
   $('dialogClose').addEventListener('click', () => $('storeDialog').close());
+  $('storeDialog').addEventListener('close', () => {
+    if (!state.dialogTrigger) return;
+    state.dialogTrigger.setAttribute('aria-expanded', 'false');
+    state.dialogTrigger.focus();
+    state.dialogTrigger = null;
+  });
   updateRiskFilterState();
 }
 
@@ -225,6 +250,10 @@ function renderFatalErrorState(message) {
   if (sourceStrip) sourceStrip.innerHTML = '';
   if (sourceDetail) sourceDetail.innerHTML = `<div class="source-detail-row"><b>연결 오류</b><span>${escapeHtml(text)}</span></div>`;
   if (sourceMode) sourceMode.textContent = '연결 실패';
+  const vulnerabilitySummary = $('siteVulnerabilitySummary');
+  if (vulnerabilitySummary) vulnerabilitySummary.innerHTML = '';
+  const vulnerabilityContract = $('siteVulnerabilityContractStatus');
+  if (vulnerabilityContract) vulnerabilityContract.innerHTML = '';
   $('mapCount').textContent = '0개 지점';
   $('metroMap').innerHTML = `<div class="empty-state filter-empty">대시보드 데이터를 불러오지 못했습니다. 새로고침으로 다시 시도하세요.</div>`;
   $('opsActions').innerHTML = '<div class="empty-state compact">데이터 연결 후 조치 항목을 표시합니다.</div>';
@@ -334,6 +363,10 @@ function normalizeWeatherSignal(signal) {
         || firstPresent(weatherValues, ['enhancedSignal', 'enhanced_signal']),
       Object.assign({}, weatherValues, row)
     );
+    const siteVulnerability = normalizeSiteVulnerability(
+      firstPresent(row, ['siteVulnerability', 'site_vulnerability'])
+        || firstPresent(weatherValues, ['siteVulnerability', 'site_vulnerability'])
+    );
     return {
       storeId: firstPresent(row, ['storeId', 'store_id', 'id']) || slug(firstPresent(row, ['storeName', 'store_name', 'name', 'store']) || ''),
       storeName: firstPresent(row, ['storeName', 'store_name', 'name', 'store']) || '-',
@@ -352,6 +385,7 @@ function normalizeWeatherSignal(signal) {
       sourceDetails: objectFrom(firstPresent(row, ['sourceDetails', 'source_details'])),
       consistency: objectFrom(firstPresent(row, ['consistency'])),
       enhancedSignal,
+      siteVulnerability,
       operationStatus: firstPresent(row, ['operationStatus', 'operation_status']) || '',
       prodActionEventId: firstPresent(row, ['prodActionEventId', 'prod_action_event_id']) || ''
     };
@@ -411,6 +445,11 @@ function normalizeStore(store, signalByStore = {}) {
         || firstPresent(weatherValues, ['enhancedSignal', 'enhanced_signal']),
       Object.assign({}, weatherValues, store)
     );
+  const storeSiteVulnerability = objectFrom(firstPresent(store, ['siteVulnerability', 'site_vulnerability']));
+  const signalSiteVulnerability = signal.siteVulnerability && signal.siteVulnerability.provided
+    ? signal.siteVulnerability
+    : {};
+  const siteVulnerability = normalizeSiteVulnerability(Object.assign({}, signalSiteVulnerability, storeSiteVulnerability));
   return {
     id,
     name,
@@ -436,6 +475,7 @@ function normalizeStore(store, signalByStore = {}) {
       || firstPresent(signal, ['metricStatus', 'metric_status']) || signalStatus),
     signalConsistency: objectFrom(firstPresent(store, ['signalConsistency', 'signal_consistency', 'consistency']) || signal.consistency),
     enhancedSignal,
+    siteVulnerability,
     weather: normalizeWeatherLabel(store),
     weatherDetail: normalizeWeatherDetail(store),
     weatherData: normalizeWeatherData(store),
@@ -456,6 +496,43 @@ function normalizeStore(store, signalByStore = {}) {
     crmReady: normalizeBoolean(firstPresent(store, ['crmReady', 'crm_ready', 'crmReadyYn', 'crm_ready_yn', 'crmAllowed', 'crm_allowed', 'crm_allowed_yn'])),
     nextAction: firstPresent(store, ['nextAction', 'next_action', 'recommendedAction', 'recommended_action', 'action', '다음액션']) || '-'
   };
+}
+
+function normalizeSiteVulnerability(value) {
+  const row = objectFrom(value);
+  const provided = row.provided === true || Object.keys(row).some((key) => key !== 'provided');
+  const actionList = (keys) => {
+    const raw = firstPresent(row, keys);
+    if (Array.isArray(raw)) return uniqueTextParts(raw);
+    if (typeof raw === 'string') return uniqueTextParts(raw.split(/\r?\n|\s*\|\s*/));
+    return [];
+  };
+  const rainDrainageMinMinutes = numericOrNull(firstPresent(row, ['rainDrainageMinMinutes', 'rain_drainage_min_minutes']));
+  const rainDrainageMaxMinutes = numericOrNull(firstPresent(row, ['rainDrainageMaxMinutes', 'rain_drainage_max_minutes']));
+  const normalized = {
+    provided,
+    rainPoolingPoints: String(firstPresent(row, ['rainPoolingPoints', 'rain_pooling_points']) || '').trim(),
+    rainDrainageMinMinutes,
+    rainDrainageMaxMinutes,
+    rainRouteRisk: normalizeBoolean(firstPresent(row, ['rainRouteRisk', 'rain_route_risk'])),
+    rainEquipmentRisk: String(firstPresent(row, ['rainEquipmentRisk', 'rain_equipment_risk']) || '').trim(),
+    rainOperationalHistory: String(firstPresent(row, ['rainOperationalHistory', 'rain_operational_history']) || '').trim(),
+    rainPriorityActions: actionList(['rainPriorityActions', 'rain_priority_actions']),
+    windPriorityActions: actionList(['windPriorityActions', 'wind_priority_actions']),
+    source: String(firstPresent(row, ['source']) || '').trim(),
+    updatedAt: String(firstPresent(row, ['updatedAt', 'updated_at']) || '').trim()
+  };
+  normalized.available = Boolean(
+    normalized.rainPoolingPoints
+    || normalized.rainDrainageMinMinutes !== null
+    || normalized.rainDrainageMaxMinutes !== null
+    || normalized.rainRouteRisk
+    || meaningfulEquipmentRisk(normalized.rainEquipmentRisk)
+    || normalized.rainOperationalHistory
+    || normalized.rainPriorityActions.length
+    || normalized.windPriorityActions.length
+  );
+  return normalized;
 }
 
 function normalizeVisuals(visuals, recovery) {
@@ -550,12 +627,17 @@ function normalizeEnhancedSignal(value, fallback = {}) {
   const compatibilityKeys = [
     'enhancedValidationMode', 'enhanced_validation_mode', 'enhancedSourceStatus', 'enhanced_source_status',
     'enhancedSourceError', 'enhanced_source_error', 'enhancedSourceWarnings', 'enhanced_source_warnings',
+    'enhancedFallbackNotices', 'enhanced_fallback_notices',
     'enhancedFusionStatus', 'enhanced_fusion_status', 'enhancedFusionReason', 'enhanced_fusion_reason',
     'awsStationId', 'aws_station_id', 'awsStationName', 'aws_station_name', 'awsDistanceKm', 'aws_distance_km',
     'awsRain15m', 'aws_rain_15m', 'awsRain1h', 'aws_rain_1h', 'awsRainDay', 'aws_rain_day',
     'awsTemperature', 'aws_temperature', 'awsWind', 'aws_wind', 'awsObservedAt', 'aws_observed_at',
+    'awsStationReferenceMonth', 'aws_station_reference_month', 'awsStationCatalogAgeDays', 'aws_station_catalog_age_days',
+    'awsStationCatalogFreshness', 'aws_station_catalog_freshness',
     'awsCacheFallback', 'aws_cache_fallback', 'radarRainRate', 'radar_rain_rate', 'radarUnit', 'radar_unit',
     'radarDistanceKm', 'radar_distance_km', 'radarObservedAt', 'radar_observed_at',
+    'radarAreaCode', 'radar_area_code', 'radarSpatialScope', 'radar_spatial_scope',
+    'radarFallbackUsed', 'radar_fallback_used', 'radarFallbackType', 'radar_fallback_type',
     'radarCacheFallback', 'radar_cache_fallback', 'weatherWarningSummary', 'weather_warning_summary',
     'weatherWarningIssuedAt', 'weather_warning_issued_at', 'weatherWarningActiveSevere', 'weather_warning_active_severe',
     'operationalImpact', 'operational_impact', 'managerInputRequired', 'manager_input_required',
@@ -573,13 +655,31 @@ function normalizeEnhancedSignal(value, fallback = {}) {
     return null;
   };
   const validationPolicy = objectFrom(pick(['validationPolicy', 'validation_policy'], ['validationPolicy', 'validation_policy']));
+  const sourceError = String(pick(['sourceError', 'source_error'], ['enhancedSourceError', 'enhanced_source_error']) || '').trim();
+  const sourceWarnings = String(pick(['sourceWarnings', 'source_warnings'], ['enhancedSourceWarnings', 'enhanced_source_warnings']) || '').trim();
+  const sourceErrors = uniqueTextParts([
+    ...arrayFrom(pick(['sourceErrors', 'source_errors'])),
+    sourceError
+  ]);
+  const sourceWarningItems = uniqueTextParts([
+    ...arrayFrom(pick(['sourceWarningItems', 'source_warning_items'])),
+    sourceWarnings
+  ]);
+  const fallbackNotices = uniqueTextParts([
+    ...arrayFrom(pick(['fallbackNotices', 'fallback_notices'], ['enhancedFallbackNotices', 'enhanced_fallback_notices']))
+  ]);
   return {
     available,
     validationMode: String(pick(['validationMode', 'validation_mode'], ['enhancedValidationMode', 'enhanced_validation_mode']) || '').trim(),
     validationStartedAt: String(pick(['validationStartedAt', 'validation_started_at'], ['enhancedValidationStartedAt', 'enhanced_validation_started_at']) || '').trim(),
     sourceStatus: normalizeSignalSourceStatus(pick(['sourceStatus', 'source_status'], ['enhancedSourceStatus', 'enhanced_source_status'])),
-    sourceError: String(pick(['sourceError', 'source_error'], ['enhancedSourceError', 'enhanced_source_error']) || '').trim(),
-    sourceWarnings: String(pick(['sourceWarnings', 'source_warnings'], ['enhancedSourceWarnings', 'enhanced_source_warnings']) || '').trim(),
+    sourceError,
+    sourceErrors,
+    sourceWarnings,
+    sourceWarningItems,
+    fallbackNotices,
+    hasSourceError: sourceErrors.length > 0,
+    hasFallbackNotice: fallbackNotices.length > 0,
     sourceConfidence: String(pick(['sourceConfidence', 'source_confidence'], ['enhancedSourceConfidence', 'enhanced_source_confidence']) || '').trim(),
     awsStationId: String(pick(['awsStationId', 'aws_station_id']) || '').trim(),
     awsStationName: String(pick(['awsStationName', 'aws_station_name']) || '').trim(),
@@ -591,11 +691,18 @@ function normalizeEnhancedSignal(value, fallback = {}) {
     awsWind: numericOrNull(pick(['awsWind', 'aws_wind'])),
     awsObservedAt: String(pick(['awsObservedAt', 'aws_observed_at']) || '').trim(),
     awsCacheFallback: booleanOrNull(pick(['awsCacheFallback', 'aws_cache_fallback'])),
+    awsStationReferenceMonth: String(pick(['awsStationReferenceMonth', 'aws_station_reference_month']) || '').trim(),
+    awsStationCatalogAgeDays: numericOrNull(pick(['awsStationCatalogAgeDays', 'aws_station_catalog_age_days'])),
+    awsStationCatalogFreshness: String(pick(['awsStationCatalogFreshness', 'aws_station_catalog_freshness']) || '').trim(),
     radarRainRate: numericOrNull(pick(['radarRainRate', 'radar_rain_rate'])),
     radarUnit: String(pick(['radarUnit', 'radar_unit']) || '').trim(),
     radarDistanceKm: numericOrNull(pick(['radarDistanceKm', 'radar_distance_km'])),
     radarObservedAt: String(pick(['radarObservedAt', 'radar_observed_at']) || '').trim(),
     radarCacheFallback: booleanOrNull(pick(['radarCacheFallback', 'radar_cache_fallback'])),
+    radarAreaCode: String(pick(['radarAreaCode', 'radar_area_code']) || '').trim(),
+    radarSpatialScope: String(pick(['radarSpatialScope', 'radar_spatial_scope']) || '').trim(),
+    radarFallbackUsed: booleanOrNull(pick(['radarFallbackUsed', 'radar_fallback_used'])),
+    radarFallbackType: String(pick(['radarFallbackType', 'radar_fallback_type']) || '').trim(),
     weatherWarningSummary: String(pick(['weatherWarningSummary', 'weather_warning_summary']) || '').trim(),
     weatherWarningIssuedAt: String(pick(['weatherWarningIssuedAt', 'weather_warning_issued_at']) || '').trim(),
     weatherWarningActiveSevere: booleanOrNull(pick(['weatherWarningActiveSevere', 'weather_warning_active_severe'])),
@@ -697,6 +804,7 @@ function render() {
   renderKpis();
   renderDecisionBanner();
   renderWeatherSources();
+  renderSiteVulnerabilitySummary();
   renderMap();
   renderActions();
   renderRecoveryChart();
@@ -755,7 +863,8 @@ function filteredStores() {
   return state.data.stores.filter((store) => {
     const riskMatch = state.risk === 'all' || store.status === state.risk;
     const storeMatch = state.store === 'all' || store.id === state.store;
-    return riskMatch && storeMatch;
+    const vulnerabilityMatch = state.vulnerability === 'all' || siteVulnerabilityFilterMatch(store, state.vulnerability);
+    return riskMatch && storeMatch && vulnerabilityMatch;
   });
 }
 
@@ -1136,6 +1245,85 @@ function renderWeatherSources() {
   `).join('');
 }
 
+function renderSiteVulnerabilitySummary() {
+  const target = $('siteVulnerabilitySummary');
+  const contractTarget = $('siteVulnerabilityContractStatus');
+  if (!target) return;
+  const stores = state.data.stores || [];
+  const providedCount = stores.filter((store) => store.siteVulnerability && store.siteVulnerability.provided).length;
+  if (contractTarget) {
+    const complete = stores.length > 0 && providedCount === stores.length;
+    contractTarget.className = `vulnerability-contract-status ${complete ? 'ok' : 'warning'}`;
+    contractTarget.innerHTML = complete
+      ? `<strong>현장 취약정보 ${providedCount}/${stores.length}개점 수신</strong><span>관련 강수·강풍 신호가 있는 카드에만 조치를 표시합니다.</span>`
+      : `<strong>현장 취약정보 ${providedCount}/${stores.length}개점 수신</strong><span>최신 Apps Script 배포 계약 확인이 필요합니다.</span>`;
+  }
+  const rows = siteVulnerabilitySummaryRows(stores);
+  target.innerHTML = rows.map((row) => {
+    const active = state.vulnerability === row.id;
+    return `
+      <button class="vulnerability-summary-item ${escapeAttr(row.className)}${active ? ' active' : ''}" type="button"
+        data-vulnerability-filter="${escapeAttr(row.id)}" aria-pressed="${active ? 'true' : 'false'}"
+        ${row.count ? '' : 'disabled'} aria-label="${escapeAttr(`${row.label} ${row.count}개 지점 필터`)}">
+        <span>${escapeHtml(row.label)}</span>
+        <strong>${row.count}<small>개점</small></strong>
+      </button>
+    `;
+  }).join('');
+}
+
+function siteVulnerabilitySummaryRows(stores) {
+  const rows = Array.isArray(stores) ? stores : [];
+  const definitions = [
+    { id: 'rain', label: '강수 취약정보', className: 'rain' },
+    { id: 'route', label: '출입·동선 확인', className: 'route' },
+    { id: 'equipment', label: '방수·전기·설비', className: 'equipment' },
+    { id: 'radarFallback', label: '시·도 레이더 대체', className: 'fallback' },
+    { id: 'sourceError', label: '실제 원천 오류', className: 'error' }
+  ];
+  return definitions.map((item) => Object.assign({}, item, {
+    count: rows.filter((store) => siteVulnerabilityFilterMatch(store, item.id)).length
+  }));
+}
+
+function siteVulnerabilityFilterMatch(store, filter) {
+  const site = store && store.siteVulnerability ? store.siteVulnerability : {};
+  const enhanced = store && store.enhancedSignal ? store.enhancedSignal : {};
+  if (filter === 'rain') return hasRainVulnerability(site);
+  if (filter === 'route') return site.rainRouteRisk === true;
+  if (filter === 'equipment') {
+    return meaningfulEquipmentRisk(site.rainEquipmentRisk)
+      || arrayFrom(site.rainPriorityActions).some((action) => /방수|전기|누전|설비|장비|조명|보일러|에어컨/i.test(action));
+  }
+  if (filter === 'radarFallback') {
+    return String(enhanced.radarSpatialScope || '').toLowerCase() === 'province_fallback'
+      || String(enhanced.radarFallbackType || '').toLowerCase() === 'province';
+  }
+  if (filter === 'sourceError') {
+    return enhanced.hasSourceError === true
+      || (store.signalSourceStatus === 'error' && Boolean(store.signalSourceError));
+  }
+  return true;
+}
+
+function hasRainVulnerability(site) {
+  const row = site || {};
+  return Boolean(row.available && (
+    row.rainPoolingPoints
+    || row.rainDrainageMinMinutes !== null
+    || row.rainDrainageMaxMinutes !== null
+    || row.rainRouteRisk
+    || meaningfulEquipmentRisk(row.rainEquipmentRisk)
+    || row.rainOperationalHistory
+    || arrayFrom(row.rainPriorityActions).length
+  ));
+}
+
+function meaningfulEquipmentRisk(value) {
+  const text = String(value || '').trim();
+  return Boolean(text && !/^(?:-|없음|해당\s*없음|미입력|확인\s*전|미확인|n\/?a|null|undefined)$/i.test(text));
+}
+
 function weatherSourceRows() {
   const stores = state.data.stores || [];
   const total = stores.length;
@@ -1229,7 +1417,19 @@ function weatherSourceRows() {
 
 function weatherSourceDetailRows(sourceRows, enhancedRows) {
   const airRow = sourceRows.find((row) => row.id === 'air');
-  const enhancedErrors = uniqueTextParts(enhancedRows.flatMap((row) => [row.sourceError, row.sourceWarnings]));
+  const enhancedErrors = uniqueTextParts(enhancedRows.flatMap((row) => [
+    ...arrayFrom(row.sourceErrors),
+    row.sourceError
+  ]));
+  const enhancedWarnings = uniqueTextParts(enhancedRows.flatMap((row) => [
+    ...arrayFrom(row.sourceWarningItems),
+    row.sourceWarnings
+  ]));
+  const fallbackNotices = uniqueTextParts(enhancedRows.flatMap((row) => [
+    ...arrayFrom(row.fallbackNotices),
+    ...uniqueTextParts([row.sourceWarnings]).filter(isEnhancedFallbackNotice)
+  ]));
+  const nonFallbackWarnings = enhancedWarnings.filter((text) => !isEnhancedFallbackNotice(text));
   const enhancedReason = uniqueTextParts(enhancedRows.flatMap((row) => [row.fusionReason]));
   const cacheRows = sourceRows
     .filter((row) => String(row.meta || '').includes('캐시'))
@@ -1237,6 +1437,7 @@ function weatherSourceDetailRows(sourceRows, enhancedRows) {
   const rows = [
     { label: '공식 운영 신호', value: `${weatherSignalModeLabel()} · ${weatherSignalSummaryText()} · ${formatDateTime(weatherSignalTimestamp())}` },
     { label: '계약 버전', value: weatherSourceContractText(enhancedRows) },
+    { label: '현장 취약정보 계약', value: siteVulnerabilityContractText() },
     { label: '에어코리아', value: airRow ? `${airRow.value} · ${airRow.detail}` : '상태 확인 불가' }
   ];
   if (!enhancedRows.length) {
@@ -1245,7 +1446,12 @@ function weatherSourceDetailRows(sourceRows, enhancedRows) {
       value: 'weatherSignal.stores[].enhancedSignal 또는 enhanced 호환 필드가 운영 endpoint에 없습니다. 공식 prod 운영 판단은 계속 가능하지만 AWS·레이더·특보 검증 상태는 확인할 수 없습니다.'
     });
   } else {
-    rows.push({ label: '신규 검증 오류', value: enhancedErrors.length ? enhancedErrors.join(' · ') : '반복 원천 오류 없음' });
+    rows.push({ label: '신규 검증 오류', value: enhancedErrors.length ? enhancedErrors.join(' · ') : '없음' });
+    rows.push({
+      label: '대체 사용 안내',
+      value: fallbackNotices.length ? summarizeEnhancedFallbackNotices(enhancedRows, fallbackNotices) : '없음'
+    });
+    if (nonFallbackWarnings.length) rows.push({ label: '신규 검증 경고', value: nonFallbackWarnings.join(' · ') });
     rows.push({ label: '융합 판단 근거', value: enhancedReason.length ? enhancedReason.join(' · ') : '근거 필드 미제공' });
   }
   if (cacheRows.length) rows.push({ label: '캐시 대체', value: cacheRows.join(' · ') });
@@ -1267,6 +1473,14 @@ function weatherSourceContractText(enhancedRows) {
     enhancedRows.length ? `enhanced ${enhancedRows.length}개점` : 'enhanced 미제공'
   ];
   return parts.join(' · ');
+}
+
+function siteVulnerabilityContractText() {
+  const stores = state.data && Array.isArray(state.data.stores) ? state.data.stores : [];
+  const provided = stores.filter((store) => store.siteVulnerability && store.siteVulnerability.provided).length;
+  if (!stores.length) return '지점 데이터 없음';
+  if (provided === stores.length) return `${provided}/${stores.length}개점 수신 · 운영등급 자동 변경 없음`;
+  return `${provided}/${stores.length}개점 수신 · 최신 Apps Script 배포 또는 payload 필드 확인 필요`;
 }
 
 function enhancedSignals() {
@@ -1293,13 +1507,49 @@ function enhancedCoverageValue(available, total) {
 
 function enhancedSourceDetail(label, rows, type) {
   const available = rows.filter(type === 'aws' ? enhancedAwsAvailable : enhancedRadarAvailable).length;
-  const errors = uniqueTextParts(rows.flatMap((row) => [row.sourceError, row.sourceWarnings]))
+  const errors = uniqueTextParts(rows.flatMap((row) => [...arrayFrom(row.sourceErrors), row.sourceError]))
     .filter((text) => type === 'aws' ? /aws|지점 목록|매분자료/i.test(text) : /레이더|radar|no_data/i.test(text));
+  const warnings = uniqueTextParts(rows.flatMap((row) => [...arrayFrom(row.sourceWarningItems), row.sourceWarnings]))
+    .filter((text) => type === 'aws' ? /aws|지점 목록|매분자료/i.test(text) : /레이더|radar|no_data/i.test(text));
+  const fallbackNotices = uniqueTextParts(rows.flatMap((row) => arrayFrom(row.fallbackNotices)))
+    .concat(warnings.filter(isEnhancedFallbackNotice));
   const fallbackCount = rows.filter((row) => type === 'aws' ? row.awsCacheFallback === true : row.radarCacheFallback === true).length;
   const parts = [`${label} 확인 ${available}/${rows.length}개점`];
   if (fallbackCount) parts.push(`캐시 대체 ${fallbackCount}개점`);
-  if (errors.length) parts.push(errors.join(' · '));
+  if (errors.length) parts.push(`오류 ${errors.join(' · ')}`);
+  if (fallbackNotices.length) parts.push(`대체 안내 ${uniqueTextParts(fallbackNotices).join(' · ')}`);
   return parts.join(' · ');
+}
+
+function isEnhancedFallbackNotice(value) {
+  return /(대체|fallback|예비 관측소|월보|시군구 코드|광역 행정코드|district_fallback|province_fallback)/i.test(String(value || ''));
+}
+
+function summarizeEnhancedFallbackNotices(rows, notices) {
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  const normalizedNotices = uniqueTextParts(notices);
+  const parts = [];
+  const awsFallbackNotices = normalizedNotices.filter((text) => /aws.*월보|월보.*aws/i.test(text));
+  const awsMonths = uniqueTextParts(normalizedRows.map((row) => row.awsStationReferenceMonth));
+  if (awsFallbackNotices.length) {
+    parts.push(`AWS 월보${awsMonths.length ? ` ${awsMonths.join(', ')}` : ''}`);
+  }
+  const radarFallbackNotices = normalizedNotices.filter((text) => /레이더.*(?:광역|시군구)|(?:광역|시군구).*레이더|province_fallback|district_fallback/i.test(text));
+  const districtFallbackCount = normalizedRows.filter((row) => (
+    row.radarSpatialScope === 'district_fallback' || row.radarFallbackType === 'district'
+  )).length;
+  const provinceFallbackCount = normalizedRows.filter((row) => (
+    row.radarSpatialScope === 'province_fallback' || row.radarFallbackType === 'province'
+  )).length;
+  if (radarFallbackNotices.length) {
+    if (districtFallbackCount) parts.push(`레이더 시·군·구 대표 사용 ${districtFallbackCount}개점`);
+    if (provinceFallbackCount) parts.push(`레이더 시·도 광역 대표 사용 ${provinceFallbackCount}개점`);
+    if (!districtFallbackCount && !provinceFallbackCount) parts.push('레이더 대표 자료 사용');
+  }
+  const residualNotices = normalizedNotices.filter((text) => (
+    !awsFallbackNotices.includes(text) && !radarFallbackNotices.includes(text)
+  ));
+  return [...parts, ...residualNotices].join(' · ') || '없음';
 }
 
 function enhancedLatestTime(rows, key) {
@@ -1601,9 +1851,12 @@ function renderMap() {
     const weatherChips = renderCombinedWeatherMetricChips(store, 4);
     const signalLine = storeSignalLine(store);
     const enhancedLine = enhancedStoreLine(store);
+    const vulnerability = siteVulnerabilityContext(store);
     const nextAction = storeNextActionText(store);
     return `
-      <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}" aria-label="${escapeAttr(`${store.name} ${levelLabel(store.status)}. ${store.weather}. 다음 액션: ${nextAction}`)}">
+      <button class="store-pin status-${store.status}" type="button" data-store="${escapeAttr(store.id)}"
+        aria-haspopup="dialog" aria-controls="storeDialog" aria-expanded="false"
+        aria-label="${escapeAttr(`${store.name} ${levelLabel(store.status)}. ${store.weather}. 다음 액션: ${nextAction}. 상세 보기`)}">
         <span class="pin-top">
           <strong>${escapeHtml(store.name)}</strong>
           <span class="badge ${store.status}">${escapeHtml(levelLabel(store.status))}</span>
@@ -1612,12 +1865,13 @@ function renderMap() {
         <span class="pin-meta signal-${escapeAttr(store.signalStatus)}">${escapeHtml(signalLine)}</span>
         ${weatherChips ? `<span class="weather-chip-row">${weatherChips}</span>` : ''}
         <span class="pin-meta enhanced-line">${escapeHtml(enhancedLine)}</span>
+        ${vulnerability.visible ? renderSiteVulnerabilityCard(vulnerability) : ''}
         <span class="pin-action">${escapeHtml(nextAction)}</span>
       </button>
     `;
   }).join('');
   $('metroMap').querySelectorAll('.store-pin').forEach((button) => {
-    button.addEventListener('click', () => openStoreDialog(button.dataset.store));
+    button.addEventListener('click', () => openStoreDialog(button.dataset.store, button));
   });
 }
 
@@ -1637,8 +1891,10 @@ function enhancedStoreLine(store) {
   const radarAvailable = enhancedRadarAvailable(row);
   if (!awsAvailable && !radarAvailable) return `신규 검증 ${mode} · AWS·레이더 확인 불가`;
   const parts = [`신규 검증 ${mode}`];
-  parts.push(awsAvailable ? 'AWS 확인' : 'AWS 확인 불가');
-  parts.push(radarAvailable ? '레이더 확인' : '레이더 확인 불가');
+  parts.push(awsAvailable ? `AWS 1시간 ${formatEnhancedMetric(row.awsRain1h, 'mm', '확인')}` : 'AWS 확인 불가');
+  parts.push(radarAvailable ? `레이더 ${formatEnhancedMetric(row.radarRainRate, row.radarUnit || 'mm/h', '확인')}` : '레이더 확인 불가');
+  const radarScope = humanizeRadarSpatialScope(row.radarSpatialScope) || humanizeRadarFallbackType(row.radarFallbackType);
+  if (radarScope) parts.push(radarScope);
   return parts.join(' · ');
 }
 
@@ -1647,14 +1903,174 @@ function enhancedStoreDetail(store) {
   if (!row.available) {
     return '운영 dashboard payload에 enhancedSignal이 없어 신규 AWS·레이더·특보 검증 상태를 확인할 수 없습니다. 공식 운영 상태와 액션은 prod 신호 기준으로 계속 판단합니다.';
   }
-  const parts = [enhancedStoreLine(store)];
-  if (row.sourceError) parts.push(row.sourceError);
-  if (row.sourceWarnings) parts.push(row.sourceWarnings);
-  if (row.fusionReason) parts.push(`융합 근거: ${row.fusionReason}`);
-  if (row.awsCacheFallback === true) parts.push(`AWS 캐시 · ${formatDateTime(row.awsObservedAt) || '기준 시각 미제공'}`);
-  if (row.radarCacheFallback === true) parts.push(`레이더 캐시 · ${formatDateTime(row.radarObservedAt) || '기준 시각 미제공'}`);
-  parts.push(`운영 영향: ${enhancedOperationalImpactText([row])}`);
-  return uniqueTextParts(parts).join(' · ');
+  return enhancedStoreDetailRows(store).map((item) => `${item.label}: ${item.value}`).join(' · ');
+}
+
+function enhancedStoreDetailRows(store) {
+  const row = store && store.enhancedSignal ? store.enhancedSignal : {};
+  if (!row.available) return [{ label: '신규 검증', value: 'enhancedSignal 미제공 · 공식 운영은 prod 기준 유지' }];
+  const sourceErrors = uniqueTextParts([...arrayFrom(row.sourceErrors), row.sourceError]);
+  const fallbackNotices = uniqueTextParts([
+    ...arrayFrom(row.fallbackNotices),
+    ...uniqueTextParts([row.sourceWarnings]).filter(isEnhancedFallbackNotice)
+  ]);
+  const warnings = uniqueTextParts([...arrayFrom(row.sourceWarningItems), row.sourceWarnings])
+    .filter((text) => !isEnhancedFallbackNotice(text));
+  const rows = [
+    { label: 'AWS', value: enhancedAwsDetail(row) },
+    { label: '레이더', value: enhancedRadarDetail(row) },
+    { label: '기상특보', value: enhancedWarningDetail(row) },
+    { label: '융합 검증', value: [row.fusionStatus || '상태 미제공', row.fusionReason].filter(Boolean).join(' · ') },
+    { label: '검증 정책', value: `${row.validationMode || 'shadow'} · 운영 영향 ${enhancedOperationalImpactText([row])} · 관리자 입력 ${row.managerInputRequired === true ? '필요' : '불필요'}` },
+    { label: '신규 검증 오류', value: sourceErrors.length ? sourceErrors.join(' · ') : '없음' },
+    { label: '대체자료 안내', value: fallbackNotices.length ? summarizeEnhancedFallbackNotices([row], fallbackNotices) : '없음' }
+  ];
+  if (warnings.length) rows.push({ label: '신규 검증 경고', value: warnings.join(' · ') });
+  return rows;
+}
+
+function enhancedAwsDetail(row) {
+  if (!enhancedAwsAvailable(row)) return '확인 불가';
+  const station = row.awsStationName || row.awsStationId || '인근 관측소';
+  const metrics = [
+    `1시간 강수 ${formatEnhancedMetric(row.awsRain1h, 'mm', '미제공')}`,
+    row.awsWind !== null ? `풍속 ${formatEnhancedMetric(row.awsWind, 'm/s', '미제공')}` : '',
+    row.awsObservedAt ? `기준 ${formatDateTime(row.awsObservedAt)}` : ''
+  ].filter(Boolean);
+  return `${station} · ${metrics.join(' · ')}`;
+}
+
+function enhancedRadarDetail(row) {
+  if (!enhancedRadarAvailable(row)) return '확인 불가';
+  const scope = humanizeRadarSpatialScope(row.radarSpatialScope) || humanizeRadarFallbackType(row.radarFallbackType);
+  return [
+    `강우강도 ${formatEnhancedMetric(row.radarRainRate, row.radarUnit || 'mm/h', '미제공')}`,
+    scope,
+    row.radarObservedAt ? `기준 ${formatDateTime(row.radarObservedAt)}` : ''
+  ].filter(Boolean).join(' · ');
+}
+
+function enhancedWarningDetail(row) {
+  if (row.weatherWarningSummary) {
+    return `${row.weatherWarningSummary}${row.weatherWarningIssuedAt ? ` · ${formatDateTime(row.weatherWarningIssuedAt)}` : ''}`;
+  }
+  if (row.weatherWarningActiveSevere === false) return '활성 중대특보 없음';
+  if (row.weatherWarningActiveSevere === true) return '활성 중대특보 있음';
+  return '확인 불가';
+}
+
+function humanizeRadarSpatialScope(value) {
+  const scope = String(value || '').trim().toLowerCase();
+  if (!scope) return '';
+  if (['store', 'store_exact', 'exact_store', 'dong', 'dong_exact', 'exact_dong'].includes(scope)) return '지점 인근 자료';
+  if (scope === 'district_fallback') return '시·군·구 대표 자료';
+  if (scope === 'province_fallback') return '시·도 광역 대표 자료';
+  return '대표 관측자료';
+}
+
+function humanizeRadarFallbackType(value) {
+  const type = String(value || '').trim().toLowerCase();
+  if (!type) return '';
+  if (type === 'district') return '시·군·구 대표 자료';
+  if (type === 'province') return '시·도 광역 대표 자료';
+  return '대체 관측자료';
+}
+
+function formatEnhancedMetric(value, unit, fallback) {
+  if (value === null || value === undefined || value === '') return fallback;
+  const number = Number(value);
+  if (!Number.isFinite(number)) return String(value);
+  return `${number.toLocaleString('ko-KR', { maximumFractionDigits: 1 })}${unit}`;
+}
+
+function siteVulnerabilityContext(store) {
+  const site = store && store.siteVulnerability ? store.siteVulnerability : {};
+  if (!site.available) return { visible: false, summary: '', actions: [], signalTypes: [] };
+  const rainRelevant = hasRelevantRainSignal(store);
+  const windRelevant = hasRelevantWindSignal(store);
+  if (!rainRelevant && !windRelevant) return { visible: false, summary: '', actions: [], signalTypes: [] };
+
+  const summaryParts = [];
+  const actions = [];
+  const signalTypes = [];
+  if (rainRelevant) {
+    signalTypes.push('강수');
+    if (site.rainPoolingPoints) summaryParts.push(`침수 취약 ${site.rainPoolingPoints}`);
+    const drainage = formatRainDrainage(site.rainDrainageMinMinutes, site.rainDrainageMaxMinutes);
+    if (drainage) summaryParts.push(`배수 ${drainage}`);
+    if (site.rainRouteRisk) summaryParts.push('출입·진입 동선 확인');
+    if (meaningfulEquipmentRisk(site.rainEquipmentRisk)) summaryParts.push(`설비 ${site.rainEquipmentRisk}`);
+    actions.push(...arrayFrom(site.rainPriorityActions));
+    if (site.rainRouteRisk) actions.push('출입·진입 동선 사전 확인');
+  }
+  if (windRelevant) {
+    signalTypes.push('강풍');
+    summaryParts.push('강풍 취약 구조물 확인');
+    actions.push(...arrayFrom(site.windPriorityActions));
+  }
+  return {
+    visible: true,
+    summary: uniqueTextParts(summaryParts).slice(0, 2).join(' · ') || `${signalTypes.join('·')} 현장 취약정보 확인`,
+    actions: uniqueTextParts(actions).slice(0, 2),
+    signalTypes
+  };
+}
+
+function renderSiteVulnerabilityCard(context) {
+  return `
+    <span class="site-vulnerability">
+      <span class="site-vulnerability-label">현장 취약 · ${escapeHtml(context.signalTypes.join('·'))}</span>
+      <span class="site-vulnerability-summary">${escapeHtml(context.summary)}</span>
+      ${context.actions.length ? `<span class="site-vulnerability-actions">${context.actions.map((action) => `<span>${escapeHtml(action)}</span>`).join('')}</span>` : ''}
+    </span>
+  `;
+}
+
+function hasRelevantRainSignal(store) {
+  const text = `${store.signalRiskType || ''} ${store.signalReason || ''} ${store.trigger || ''} ${store.weather || ''}`;
+  const weather = store.weatherValues || {};
+  const enhanced = store.enhancedSignal || {};
+  const liveRain = [weather.observedRain1h, weather.forecastMaxPcp1h, enhanced.awsRain1h, enhanced.radarRainRate]
+    .map(numericOrNull).some((value) => value !== null && value > 0);
+  return liveRain || (/(강수|호우|폭우|침수|비|rain|precip)/i.test(text)
+    && ['Yellow', 'Orange', 'Red'].includes(normalizeStatus(store.signalStatus)));
+}
+
+function hasRelevantWindSignal(store) {
+  const text = `${store.signalRiskType || ''} ${store.signalReason || ''} ${store.trigger || ''} ${store.weather || ''}`;
+  const weather = store.weatherValues || {};
+  const enhanced = store.enhancedSignal || {};
+  const wind = [weather.observedWind, weather.forecastMaxWind, enhanced.awsWind]
+    .map(numericOrNull).filter((value) => value !== null);
+  const strongWind = wind.some((value) => value >= 7);
+  return strongWind || (/(강풍|풍속|돌풍|wind)/i.test(text)
+    && ['Yellow', 'Orange', 'Red'].includes(normalizeStatus(store.signalStatus)));
+}
+
+function formatRainDrainage(minValue, maxValue) {
+  const min = numericOrNull(minValue);
+  const max = numericOrNull(maxValue);
+  if (max !== null && (min === null || min <= 0)) return `최대 ${max}분`;
+  if (min !== null && max !== null && min !== max) return `${min}~${max}분`;
+  if (max !== null) return `${max}분`;
+  if (min !== null) return `${min}분 이상`;
+  return '';
+}
+
+function siteVulnerabilityDetailRows(store) {
+  const site = store && store.siteVulnerability ? store.siteVulnerability : {};
+  if (!site.available) return [];
+  const rows = [];
+  if (site.rainPoolingPoints) rows.push({ label: '침수 취약 지점', value: site.rainPoolingPoints });
+  const drainage = formatRainDrainage(site.rainDrainageMinMinutes, site.rainDrainageMaxMinutes);
+  if (drainage) rows.push({ label: '배수 예상', value: drainage });
+  if (site.rainRouteRisk) rows.push({ label: '출입·진입 동선', value: '우천 시 사전 확인 필요' });
+  if (meaningfulEquipmentRisk(site.rainEquipmentRisk)) rows.push({ label: '방수·전기·설비', value: site.rainEquipmentRisk });
+  if (site.rainOperationalHistory) rows.push({ label: '과거 운영 이력', value: site.rainOperationalHistory });
+  if (arrayFrom(site.rainPriorityActions).length) rows.push({ label: '강수 우선 조치', value: site.rainPriorityActions.join(' · ') });
+  if (arrayFrom(site.windPriorityActions).length) rows.push({ label: '강풍 우선 조치', value: site.windPriorityActions.join(' · ') });
+  if (site.updatedAt) rows.push({ label: '취약정보 갱신', value: formatDateTime(site.updatedAt) });
+  return rows;
 }
 
 function hasStoreSignalData(store) {
@@ -2872,21 +3288,21 @@ function recoveryCellLevel(value) {
   return 'Green';
 }
 
-function openStoreDialog(storeId) {
+function openStoreDialog(storeId, trigger = null) {
   const store = state.data.stores.find((item) => item.id === storeId);
   if (!store) return;
   $('dialogTitle').textContent = store.name;
-  $('dialogBody').innerHTML = [
+  const operatingRows = [
     ['화면 상태', levelLabel(store.status)],
     ['운영 상태', levelLabel(store.prodStatus)],
     ['기상 신호', `${levelLabel(store.signalStatus)} · ${store.signalActionLevel} · ${store.signalMode || '-'}`],
     ['신호 근거', signalWeatherText(store)],
     ['기상 원천 상태', signalSourceNotice(store) ? `${signalSourceNotice(store)} · ${signalSourceDetail(store)}` : '정상'],
-    ['신규 원천 검증', enhancedStoreLine(store)],
-    ['신규 검증 상세', enhancedStoreDetail(store)],
     ['운영 기상/트리거', `${store.weather} · ${store.weatherDetail || store.trigger}`],
     ['운영 기상 수치', weatherMetricText(store)],
-    ['신호 기상 수치', signalWeatherMetricText(store)],
+    ['신호 기상 수치', signalWeatherMetricText(store)]
+  ];
+  const responseRows = [
     ['DRI', store.dri],
     ['AS 상태', store.asStatus],
     ['AS 차단/ETA', [store.normalizationBlocker, store.vendorStatus, store.vendorEta].filter(Boolean).join(' · ') || '-'],
@@ -2895,11 +3311,37 @@ function openStoreDialog(storeId) {
     ['회복 상태', store.recoveryStatus],
     ['CRM 가능 여부', store.crmReady ? '가능' : '대기'],
     ['다음 액션', storeNextActionText(store)]
-  ].map(([label, value]) => `
-    <div class="detail-row"><b>${escapeHtml(label)}</b><span>${escapeHtml(value)}</span></div>
-  `).join('');
+  ];
+  const enhancedRows = enhancedStoreDetailRows(store).map((row) => [row.label, row.value]);
+  const vulnerabilityRows = siteVulnerabilityDetailRows(store).map((row) => [row.label, row.value]);
+  $('dialogBody').innerHTML = [
+    renderStoreDetailSection('운영·기상 판단', operatingRows),
+    renderStoreDetailSection('신규 원천 검증', enhancedRows, 'shadow 검증 정보이며 공식 운영등급과 액션을 자동 변경하지 않습니다.'),
+    vulnerabilityRows.length
+      ? renderStoreDetailSection('현장 취약정보', vulnerabilityRows, '기상 신호가 관련될 때 현장 조치 맥락으로 사용하며 운영등급을 높이지 않습니다.')
+      : '',
+    renderStoreDetailSection('대응·회복', responseRows)
+  ].filter(Boolean).join('');
+  state.dialogTrigger = trigger;
+  if (state.dialogTrigger) state.dialogTrigger.setAttribute('aria-expanded', 'true');
   $('storeDialog').showModal();
   $('dialogClose').focus();
+}
+
+function renderStoreDetailSection(title, rows, note = '') {
+  return `
+    <section class="detail-section" aria-labelledby="detail-${escapeAttr(slug(title))}">
+      <div class="detail-section-head">
+        <h3 id="detail-${escapeAttr(slug(title))}">${escapeHtml(title)}</h3>
+        ${note ? `<p>${escapeHtml(note)}</p>` : ''}
+      </div>
+      <dl class="detail-list">
+        ${rows.map(([label, value]) => `
+          <div class="detail-row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>
+        `).join('')}
+      </dl>
+    </section>
+  `;
 }
 
 async function copyBrief() {
@@ -3158,6 +3600,8 @@ function freshnessWarnings(options = {}) {
   if (generatedAge !== null && generatedAge > 4) warnings.push('대시보드 데이터 생성 4시간 초과');
   const signalWarning = weatherSignalFreshnessWarning();
   if (signalWarning) warnings.push(signalWarning);
+  const siteContractWarning = siteVulnerabilityContractWarning();
+  if (siteContractWarning) warnings.push(siteContractWarning);
   if (includeOperationalAdvisory && systemErrorCount > 0 && !warnings.some((warning) => String(warning || '').includes('시스템 오류'))) {
     warnings.push(`시스템 오류 ${systemErrorCount}건`);
   }
@@ -3167,6 +3611,13 @@ function freshnessWarnings(options = {}) {
 
 function topBannerWarnings() {
   return freshnessWarnings({ includeOperationalAdvisory: false });
+}
+
+function siteVulnerabilityContractWarning() {
+  const stores = state.data && Array.isArray(state.data.stores) ? state.data.stores : [];
+  if (!stores.length) return '';
+  const provided = stores.filter((store) => store.siteVulnerability && store.siteVulnerability.provided).length;
+  return provided === stores.length ? '' : `현장 취약정보 계약 ${provided}/${stores.length}개점 수신`;
 }
 
 function isOperationalAdvisoryWarning(warning) {

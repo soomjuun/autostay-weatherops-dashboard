@@ -450,7 +450,7 @@ function samplePayload(source) {
   return {
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    buildId: '2026-07-21-enhanced-weather-validation.3',
+    buildId: '2026-07-22-site-vulnerability-radar-diagnostics.6',
     generatedAt: iso,
     source,
     summary: {
@@ -540,7 +540,7 @@ function samplePayload(source) {
       packVersion: 'v2.16.4',
       sheetVersion: 'v2.16.4',
       dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-      scriptBuildId: '2026-07-21-enhanced-weather-validation.3',
+      scriptBuildId: '2026-07-22-site-vulnerability-radar-diagnostics.6',
       decisionReadiness: 'shadow_only',
       nextSummaryDueAt: iso,
       systemError24h: 0,

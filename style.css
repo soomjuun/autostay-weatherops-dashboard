@@ -471,6 +471,80 @@ select { min-width: 180px; }
   word-break: keep-all;
   overflow-wrap: anywhere;
 }
+.vulnerability-contract-status {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.vulnerability-contract-status strong { color: var(--ink); font-size: 12px; }
+.vulnerability-contract-status.ok strong { color: var(--green); }
+.vulnerability-contract-status.warning strong { color: #9a4d08; }
+.vulnerability-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin-top: 12px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.vulnerability-summary-item {
+  display: flex;
+  min-width: 0;
+  min-height: 54px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 9px 11px;
+  border: 0;
+  border-right: 1px solid var(--line);
+  border-radius: 0;
+  background: #fff;
+  color: var(--ink);
+  text-align: left;
+}
+.vulnerability-summary-item:last-child { border-right: 0; }
+.vulnerability-summary-item:hover:not(:disabled) { background: #f8fafc; }
+.vulnerability-summary-item.active {
+  background: #eef6ff;
+  box-shadow: inset 0 -3px 0 var(--blue);
+}
+.vulnerability-summary-item:disabled {
+  cursor: default;
+  opacity: .62;
+}
+.vulnerability-summary-item span {
+  min-width: 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.3;
+  word-break: keep-all;
+}
+.vulnerability-summary-item strong {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  color: var(--ink);
+  font-size: 19px;
+  line-height: 1;
+}
+.vulnerability-summary-item strong small {
+  margin-left: 2px;
+  color: var(--muted);
+  font-size: 10px;
+}
+.vulnerability-summary-item.rain strong,
+.vulnerability-summary-item.route strong,
+.vulnerability-summary-item.equipment strong { color: #9a4d08; }
+.vulnerability-summary-item.fallback strong { color: var(--blue); }
+.vulnerability-summary-item.error strong { color: var(--red); }
 .source-status-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -723,6 +797,51 @@ select { min-width: 180px; }
   border-top: 1px dashed var(--line);
   color: #475569;
   font-weight: 800;
+}
+.site-vulnerability {
+  display: block;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #fed7aa;
+  color: #713f12;
+}
+.site-vulnerability-label,
+.site-vulnerability-summary,
+.site-vulnerability-actions,
+.site-vulnerability-actions > span {
+  display: block;
+  min-width: 0;
+}
+.site-vulnerability-label {
+  color: #9a4d08;
+  font-size: 10px;
+  font-weight: 900;
+}
+.site-vulnerability-summary {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.4;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.site-vulnerability-actions {
+  margin-top: 4px;
+  color: #475569;
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+.site-vulnerability-actions > span {
+  position: relative;
+  padding-left: 9px;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
+}
+.site-vulnerability-actions > span::before {
+  position: absolute;
+  left: 0;
+  content: "·";
+  font-weight: 900;
 }
 .weather-chip-row {
   display: flex;
@@ -1673,10 +1792,33 @@ tbody tr:hover {
   border-radius: 6px;
   padding: 0 10px;
 }
-.dialog-body { padding: 18px; display: grid; gap: 10px; }
-.detail-row { display: grid; grid-template-columns: 130px 1fr; gap: 12px; padding: 10px; background: #f8fafc; border-radius: 6px; }
-.detail-row b { color: var(--muted); font-size: 12px; }
-.detail-row span {
+.dialog-body {
+  max-height: min(72vh, 760px);
+  overflow-y: auto;
+  padding: 18px;
+  display: grid;
+  gap: 20px;
+}
+.detail-section + .detail-section { padding-top: 18px; border-top: 1px solid var(--line); }
+.detail-section-head h3 { margin: 0; font-size: 14px; }
+.detail-section-head p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+.detail-list { margin: 10px 0 0; }
+.detail-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 12px;
+  padding: 9px 0;
+  border-top: 1px dashed var(--line);
+}
+.detail-row dt { color: var(--muted); font-size: 12px; font-weight: 800; }
+.detail-row dd {
+  min-width: 0;
+  margin: 0;
   font-size: 13px;
   line-height: 1.5;
   word-break: keep-all;
@@ -1700,6 +1842,9 @@ tbody tr:hover {
   .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metro-map { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .source-status-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vulnerability-summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .vulnerability-summary-item:nth-child(3) { border-right: 0; }
+  .vulnerability-summary-item:nth-child(n+4) { border-top: 1px solid var(--line); }
   .source-status-item:nth-child(3n) { border-right: 0; }
   .source-status-item:nth-child(n+4) { border-top: 1px solid var(--line); }
   .panel-head {
@@ -1723,6 +1868,11 @@ tbody tr:hover {
   .source-strip { padding: 14px; }
   .source-strip-head { align-items: flex-start; }
   .source-decision-summary { grid-template-columns: 1fr; }
+  .vulnerability-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .vulnerability-summary-item,
+  .vulnerability-summary-item:nth-child(3) { border-right: 1px solid var(--line); }
+  .vulnerability-summary-item:nth-child(2n) { border-right: 0; }
+  .vulnerability-summary-item:nth-child(n+3) { border-top: 1px solid var(--line); }
   .source-decision-item + .source-decision-item { border-top: 1px solid var(--line); }
   .source-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .source-status-item:nth-child(3n) { border-right: 1px solid var(--line); }
@@ -1836,6 +1986,7 @@ tbody tr:hover {
     min-width: 0;
     border-bottom: 0;
   }
+  .detail-row { grid-template-columns: 1fr; gap: 4px; }
 }
 
 @media (max-width: 420px) {
@@ -1855,6 +2006,13 @@ tbody tr:hover {
   }
   .meta-pill.wide { grid-column: 1 / -1; }
   .source-strip-head { display: grid; }
+  .vulnerability-summary-grid { grid-template-columns: 1fr; }
+  .vulnerability-summary-item,
+  .vulnerability-summary-item:nth-child(2n),
+  .vulnerability-summary-item:nth-child(3) {
+    border-right: 0;
+  }
+  .vulnerability-summary-item:nth-child(n+2) { border-top: 1px solid var(--line); }
   .source-status-grid { grid-template-columns: 1fr; }
   .source-status-item,
   .source-status-item:nth-child(2n),
