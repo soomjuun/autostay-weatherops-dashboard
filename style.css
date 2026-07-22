@@ -948,6 +948,32 @@ select { min-width: 180px; }
   display: grid;
   gap: 10px;
 }
+.overdue-exceptions {
+  margin-top: 10px;
+  padding: 11px 12px;
+  border: 1px dashed #cbd5e1;
+  border-radius: var(--r);
+  background: #f8fafc;
+}
+.overdue-exceptions[hidden] { display: none; }
+.overdue-exception-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.overdue-exception-head strong {
+  color: #334155;
+  font-size: 12px;
+}
+.overdue-exception-head span,
+.overdue-exceptions p {
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+.overdue-exceptions p { margin: 5px 0 0; }
 .action-item,
 .queue-item,
 .timeline-item,

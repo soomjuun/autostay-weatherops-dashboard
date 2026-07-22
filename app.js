@@ -104,7 +104,7 @@ function bindEvents() {
     }
   });
   window.addEventListener('online', () => loadDashboard({ fresh: true, silent: true }));
-  $('dialogClose').addEventListener('click', () => $('storeDialog').close());
+  $('dialogClose').addEventListener('click', closeStoreDialog);
   $('storeDialog').addEventListener('close', () => {
     if (!state.dialogTrigger) return;
     state.dialogTrigger.setAttribute('aria-expanded', 'false');
@@ -112,6 +112,15 @@ function bindEvents() {
     state.dialogTrigger = null;
   });
   updateRiskFilterState();
+}
+
+function closeStoreDialog() {
+  const dialog = $('storeDialog');
+  const trigger = state.dialogTrigger;
+  if (trigger) trigger.setAttribute('aria-expanded', 'false');
+  state.dialogTrigger = null;
+  if (dialog && dialog.open) dialog.close();
+  if (trigger) trigger.focus();
 }
 
 function startAutoRefresh() {
@@ -323,6 +332,7 @@ function normalize(payload) {
     stores,
     weatherSignal,
     opsActions: arrayFrom(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
+    overdueExceptions: arrayFrom(data.overdueExceptions || data.overdue_exceptions || data.historicalOverdueExceptions || data.historical_overdue_exceptions),
     marketingActions: arrayFrom(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
     recovery: objectFrom(data.recovery),
     system,
@@ -825,13 +835,14 @@ function updateSectionVisibility() {
   const queueRows = arrayFrom(state.data.recovery && state.data.recovery.queue).filter(matchesSelectedStore);
   const opsRows = arrayFrom(state.data.opsActions).filter(matchesSelectedStore);
   const marketingRows = arrayFrom(state.data.marketingActions).filter(matchesSelectedStore);
+  const overdueCount = historicalOverdueSummary().count;
   const recoveryActive = hasActiveRecoveryData();
   const actionSection = $('actionSection');
   const queuePanel = $('recoveryQueuePanel');
   const visualGrid = $('visualGrid');
   const primaryGrid = $('primaryDashboardGrid');
 
-  if (actionSection) actionSection.hidden = opsRows.length + marketingRows.length === 0;
+  if (actionSection) actionSection.hidden = opsRows.length + marketingRows.length + overdueCount === 0;
   if (queuePanel) queuePanel.hidden = queueRows.length === 0;
   if ($('recoveryFunnelPanel')) $('recoveryFunnelPanel').hidden = !recoveryActive;
   if ($('recoveryStagePanel')) $('recoveryStagePanel').hidden = !recoveryActive;
@@ -1200,6 +1211,7 @@ function renderWeatherSources() {
     || !enhancedRadarAvailable(row)
   ));
   const operationalImpact = enhancedOperationalImpactText(enhancedRows);
+  const enhancedDistribution = enhancedSignalDistribution(enhancedRows);
   const summaryRows = [
     {
       label: '운영 판단',
@@ -1207,10 +1219,12 @@ function renderWeatherSources() {
       className: decisionReadinessClass()
     },
     {
-      label: '신규 원천 검증',
+      label: '신규 검증 신호',
       value: !hasEnhanced
         ? '확인 불가 · enhancedSignal 미제공'
-        : (enhancedLimited ? '제한됨 · AWS/레이더 확인 불가' : `검증 중 · ${enhancedMode}`),
+        : (enhancedLimited
+          ? `제한됨 · AWS/레이더 확인 불가${enhancedDistribution ? ` · ${enhancedDistribution}` : ''}`
+          : `검증 중 · ${enhancedMode}${enhancedDistribution ? ` · ${enhancedDistribution}` : ''}`),
       className: enhancedLimited ? 'warning' : 'info'
     },
     {
@@ -1487,6 +1501,19 @@ function enhancedSignals() {
   return (state.data.stores || [])
     .map((store) => store.enhancedSignal)
     .filter((row) => row && row.available);
+}
+
+function enhancedSignalDistribution(rows) {
+  const counts = (Array.isArray(rows) ? rows : []).reduce((result, row) => {
+    const status = normalizeStatus(row && row.fusionStatus);
+    if (!['Error', 'Red', 'Orange', 'Yellow', 'Green'].includes(status)) return result;
+    result[status] = (result[status] || 0) + 1;
+    return result;
+  }, {});
+  return ['Error', 'Red', 'Orange', 'Yellow', 'Green']
+    .filter((status) => counts[status])
+    .map((status) => `${status} ${counts[status]}`)
+    .join(' / ');
 }
 
 function enhancedAwsAvailable(row) {
@@ -2096,13 +2123,46 @@ function storeNextActionText(store) {
 
 function renderActions() {
   $('opsActions').innerHTML = renderActionList(state.data.opsActions, '사업운영팀', 'operations');
+  renderOverdueExceptions();
   $('marketingActions').innerHTML = renderActionList(state.data.marketingActions, '마케팅팀', 'marketing');
+}
+
+function renderOverdueExceptions() {
+  const target = $('overdueExceptions');
+  if (!target) return;
+  const summary = historicalOverdueSummary();
+  target.hidden = summary.count <= 0;
+  target.innerHTML = summary.count > 0 ? `
+    <div class="overdue-exception-head">
+      <strong>과거 미종결 예외 ${summary.count}건</strong>
+      <span>${escapeHtml(summary.scope)}</span>
+    </div>
+    <p>오늘 공식 미완료 조치와 분리된 사업운영팀 이력 점검 대상입니다.</p>
+  ` : '';
+}
+
+function historicalOverdueSummary() {
+  const system = state.data.system || {};
+  const efficiency = objectFrom(firstPresent(system, ['operatingEfficiency', 'operating_efficiency']));
+  const records = arrayFrom(state.data.overdueExceptions);
+  const filtered = records.filter(matchesSelectedStore);
+  const reported = metricFromKeysNumber(efficiency, ['historicalOverdueCount', 'historical_overdue_count']) || 0;
+  if (state.store !== 'all' && !records.length) {
+    return { count: 0, scope: '지점별 예외 상세 미제공' };
+  }
+  if (state.store !== 'all' && records.length) {
+    return { count: filtered.length, scope: '선택 지점 기준' };
+  }
+  return {
+    count: records.length ? Math.max(records.length, reported) : reported,
+    scope: records.length ? '전체 예외 상세 기준' : '전체 지점 집계 기준'
+  };
 }
 
 function renderActionList(items, fallbackTeam, kind) {
   const filtered = (items || []).filter(matchesSelectedStore);
   if (!filtered.length) {
-    return `<div class="empty-state compact">현재 필터 기준 ${kind === 'marketing' ? '승인 검토 후보' : '오늘 실행 항목'}이 없습니다.</div>`;
+    return `<div class="empty-state compact">현재 필터 기준 ${kind === 'marketing' ? '승인 검토 후보가' : '오늘 공식 미완료 조치가'} 없습니다.</div>`;
   }
   return filtered.map((item) => {
     const priority = firstPresent(item, ['priority', 'level', 'actionLevel', 'action_level']) || 'P1';

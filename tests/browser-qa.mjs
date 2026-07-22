@@ -86,7 +86,7 @@ const stores = storeSpecs.map((spec, index) => ({
   siteVulnerability: { ...spec.site, source: 'https://example.invalid/internal', updatedAt: now }
 }));
 
-const signalStores = storeSpecs.map((spec) => ({
+const signalStores = storeSpecs.map((spec, index) => ({
   storeId: spec.id,
   storeName: spec.name,
   status: spec.status,
@@ -107,7 +107,7 @@ const signalStores = storeSpecs.map((spec) => ({
     radarSpatialScope: spec.radarSpatialScope || 'store', radarFallbackUsed: Boolean(spec.radarFallbackUsed),
     radarFallbackType: spec.radarSpatialScope === 'province_fallback' ? 'province' : '',
     weatherWarningSummary: '활성 중대특보 없음', weatherWarningActiveSevere: false,
-    fusionStatus: 'validated', fusionReason: 'AWS·레이더 교차검증',
+    fusionStatus: index === 0 ? 'Orange' : 'Yellow', fusionReason: 'AWS·레이더 교차검증',
     operationalImpact: 'none_validation_only', managerInputRequired: false,
     validationPolicy: { affectsOperationalLevel: false }
   }
@@ -116,14 +116,21 @@ const signalStores = storeSpecs.map((spec) => ({
 const payload = {
   version: 'v2.16.4',
   dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-  buildId: '2026-07-22-site-vulnerability-radar-diagnostics.6',
+  buildId: '2026-07-22-sheet-handoff-date-ux.11',
   generatedAt: now,
   source: 'apps_script',
   summary: { overallStatus: 'Green', headline: '운영 원장은 정상이며 기상 사전점검 2개 지점입니다.', immediateCount: 0, asBlockedCount: 0, recoveryActionCount: 0, dataWaitCount: 0, crmReadyCount: 0 },
   stores,
   weatherSignal: { mode: 'shadow', generatedAt: now, observedAt: now, overallStatus: 'Yellow', summary: { totalStores: 7, normal: 5, watch: 2, actionRequired: 0, dataCheck: 0 }, stores: signalStores },
   recovery: {}, visuals: {}, opsActions: [], marketingActions: [], weatherTimeline: [],
-  system: { scriptBuildId: '2026-07-22-site-vulnerability-radar-diagnostics.6', dashboardPayloadVersion: 'v2.16.4-weather-signal.2', decisionReadiness: 'prod_ready', summaryStatus: 'ok', salesSyncStatus: 'ok' }
+  system: {
+    scriptBuildId: '2026-07-22-sheet-handoff-date-ux.11',
+    dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
+    decisionReadiness: 'prod_ready',
+    summaryStatus: 'ok',
+    salesSyncStatus: 'ok',
+    operatingEfficiency: { todayOpenCount: 0, historicalOverdueCount: 7 }
+  }
 };
 
 function contentType(file) {
@@ -184,7 +191,10 @@ try {
     visibleVulnerabilityCards: document.querySelectorAll('.site-vulnerability').length,
     summaryButtons: document.querySelectorAll('[data-vulnerability-filter]').length,
     vulnerabilityContract: document.getElementById('siteVulnerabilityContractStatus')?.innerText || '',
-    sourceErrors: [...document.querySelectorAll('[data-vulnerability-filter]')].find((node) => node.dataset.vulnerabilityFilter === 'sourceError')?.innerText || ''
+    sourceErrors: [...document.querySelectorAll('[data-vulnerability-filter]')].find((node) => node.dataset.vulnerabilityFilter === 'sourceError')?.innerText || '',
+    sourceDecision: document.getElementById('sourceDecisionSummary')?.innerText || '',
+    opsActions: document.getElementById('opsActions')?.innerText || '',
+    overdueExceptions: document.getElementById('overdueExceptions')?.innerText || ''
   }));
   await page.screenshot({ path: path.join(OUTPUT, '01-desktop-1440.png'), fullPage: true });
 
@@ -239,6 +249,9 @@ try {
   console.log(JSON.stringify(result, null, 2));
   if (desktop.cards !== 7 || desktop.visibleVulnerabilityCards !== 2 || desktop.summaryButtons !== 5) process.exitCode = 1;
   if (!desktop.vulnerabilityContract.includes('7/7개점 수신')) process.exitCode = 1;
+  if (!desktop.sourceDecision.includes('Orange 1 / Yellow 6')) process.exitCode = 1;
+  if (!desktop.opsActions.includes('오늘 공식 미완료 조치가 없습니다')) process.exitCode = 1;
+  if (!desktop.overdueExceptions.includes('과거 미종결 예외 7건')) process.exitCode = 1;
   if (!dialogOpen || result.dialog.expandedWhileOpen !== 'true' || result.dialog.expanded !== 'false' || !result.dialog.focusReturned) process.exitCode = 1;
   if (!result.dialog.hasVulnerabilitySection || !result.dialog.drainageZeroHandled || !result.dialog.hidesSourceUrl) process.exitCode = 1;
   if (responsive.some((item) => item.scrollWidth > item.clientWidth || item.clippedText)) process.exitCode = 1;

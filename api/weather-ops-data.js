@@ -207,6 +207,7 @@ function normalizePayload(payload, source) {
     decisionReadiness: data.decisionReadiness || data.decision_readiness || system.decisionReadiness || system.decision_readiness || '',
     dashboardPayloadVersion: data.dashboardPayloadVersion || data.dashboard_payload_version || '',
     opsActions: arrayOrEmpty(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
+    overdueExceptions: arrayOrEmpty(data.overdueExceptions || data.overdue_exceptions || data.historicalOverdueExceptions || data.historical_overdue_exceptions),
     marketingActions: arrayOrEmpty(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
     recovery,
     system,
@@ -450,7 +451,7 @@ function samplePayload(source) {
   return {
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    buildId: '2026-07-22-site-vulnerability-radar-diagnostics.6',
+    buildId: '2026-07-22-sheet-handoff-date-ux.11',
     generatedAt: iso,
     source,
     summary: {
@@ -540,7 +541,7 @@ function samplePayload(source) {
       packVersion: 'v2.16.4',
       sheetVersion: 'v2.16.4',
       dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-      scriptBuildId: '2026-07-22-site-vulnerability-radar-diagnostics.6',
+      scriptBuildId: '2026-07-22-sheet-handoff-date-ux.11',
       decisionReadiness: 'shadow_only',
       nextSummaryDueAt: iso,
       systemError24h: 0,

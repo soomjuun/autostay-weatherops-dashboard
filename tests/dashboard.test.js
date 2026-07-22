@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -424,14 +424,25 @@ test('최신 payload와 build 식별자를 프런트 계약에 보존한다', ()
   const normalized = api.normalize({
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    buildId: '2026-07-22-site-vulnerability-radar-diagnostics.6',
+    buildId: '2026-07-22-sheet-handoff-date-ux.11',
     summary: {},
     stores: [],
     weatherSignal: {},
+    overdueExceptions: [{ store: '하남 미사', status: '미종결' }],
     system: {}
   });
   assert.equal(normalized.dashboardPayloadVersion, 'v2.16.4-weather-signal.2');
-  assert.equal(normalized.buildId, '2026-07-22-site-vulnerability-radar-diagnostics.6');
+  assert.equal(normalized.buildId, '2026-07-22-sheet-handoff-date-ux.11');
+  assert.equal(normalized.overdueExceptions.length, 1);
+});
+
+test('shadow 검증 신호는 공식 상태와 별도로 색상 분포를 집계한다', () => {
+  const { api } = loadDashboardLogic();
+  const rows = [
+    api.normalizeEnhancedSignal({ fusionStatus: 'Orange' }),
+    ...Array.from({ length: 6 }, () => api.normalizeEnhancedSignal({ fusionStatus: 'Yellow' }))
+  ];
+  assert.equal(api.enhancedSignalDistribution(rows), 'Orange 1 / Yellow 6');
 });
 
 test('신규 검증 오류와 정상 fallback 안내를 분리한다', () => {
@@ -465,7 +476,7 @@ test('최신 현장 취약정보 계약을 운영 지점과 기상 신호 양쪽
   const normalized = api.normalize({
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    system: { scriptBuildId: '2026-07-22-site-vulnerability-radar-diagnostics.6' },
+    system: { scriptBuildId: '2026-07-22-sheet-handoff-date-ux.11' },
     stores: [{
       storeId: 'hanam',
       storeName: '하남 미사',
@@ -493,7 +504,7 @@ test('최신 현장 취약정보 계약을 운영 지점과 기상 신호 양쪽
     }
   });
   const store = normalized.stores[0];
-  assert.equal(normalized.buildId, '2026-07-22-site-vulnerability-radar-diagnostics.6');
+  assert.equal(normalized.buildId, '2026-07-22-sheet-handoff-date-ux.11');
   assert.equal(store.siteVulnerability.provided, true);
   assert.equal(store.siteVulnerability.rainPoolingPoints, '입구·롤스크린·세차 출구');
   assert.deepEqual([...store.siteVulnerability.windPriorityActions], ['롤스크린 고정']);
@@ -652,6 +663,19 @@ test('회복 집계는 성과 대기를 현재 조치 건수에 합산하지 않
   assert.match(recoveryCard.note, /CRM 후보 27/);
 });
 
+test('오늘 공식 조치와 과거 미종결 예외를 분리한다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.store = 'all';
+  api.state.data = {
+    overdueExceptions: [],
+    system: { operatingEfficiency: { todayOpenCount: 0, historicalOverdueCount: 7 } }
+  };
+  assert.match(api.renderActionList([], '사업운영팀', 'operations'), /오늘 공식 미완료 조치가 없습니다/);
+  const overdue = api.historicalOverdueSummary();
+  assert.equal(overdue.count, 7);
+  assert.equal(overdue.scope, '전체 지점 집계 기준');
+});
+
 test('시스템 비차단 경고 상세를 payload 메시지로 노출한다', () => {
   const { api } = loadDashboardLogic();
   api.state.data = {
@@ -668,6 +692,7 @@ test('기대 버전은 환경변수 설정 시에만 고정 비교한다', () =>
   assert.match(proxySource, /WEATHER_OPS_EXPECTED_VERSION \|\| ''/);
   assert.doesNotMatch(proxySource, /WEATHER_OPS_EXPECTED_VERSION \|\| 'v2\.16\.4'/);
   assert.match(proxySource, /buildId: data\.buildId \|\| data\.build_id/);
+  assert.match(proxySource, /overdueExceptions: arrayOrEmpty/);
   assert.match(proxySource, /v2\.16\.4-weather-signal\.2/);
-  assert.match(proxySource, /2026-07-22-site-vulnerability-radar-diagnostics\.6/);
+  assert.match(proxySource, /2026-07-22-sheet-handoff-date-ux\.11/);
 });
