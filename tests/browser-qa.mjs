@@ -135,6 +135,27 @@ const marketingActions = storeSpecs.slice(0, 5).map((spec, index) => ({
   approvalStatus: '승인 검토 후보'
 }));
 
+const recoveryStoreSeries = Object.fromEntries(storeSpecs.map((spec, index) => [spec.id, {
+  processedRate: [72 + index, 84 + index, 94 + index],
+  revenueRate: [61 + index, 76 + index, 87 + index]
+}]));
+
+const processedBulletByStore = storeSpecs.map((spec, index) => ({
+  storeId: spec.id,
+  store: spec.name,
+  actual: 82 + index,
+  baseline: 100,
+  rate: 82 + index,
+  status: index < 3 ? '조치 필요' : '관찰'
+}));
+
+const weatherTimeline = [
+  { time: '07:30', title: '오픈 전 점검', status: '주의' },
+  { time: '09:10', title: '종합 요약', status: '정상' },
+  { time: '17:00', title: '위험 상승 시간 알림', status: '정상' },
+  { time: '마감-1h', title: '조건부 마감점검', status: '주의' }
+];
+
 const payload = {
   version: 'v2.16.4',
   dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
@@ -144,7 +165,11 @@ const payload = {
   summary: { overallStatus: 'Green', headline: '운영 원장은 정상이며 기상 사전점검 2개 지점입니다.', immediateCount: 0, asBlockedCount: 0, recoveryActionCount: 0, dataWaitCount: 0, crmReadyCount: 0 },
   stores,
   weatherSignal: { mode: 'shadow', generatedAt: now, observedAt: now, overallStatus: 'Yellow', summary: { totalStores: 7, normal: 5, watch: 2, actionRequired: 0, dataCheck: 0 }, stores: signalStores },
-  recovery: { queue: recoveryQueue }, visuals: {}, opsActions: [], marketingActions, weatherTimeline: [],
+  recovery: { queue: recoveryQueue, labels: ['D-day', 'D+1', 'D+2'], storeSeries: recoveryStoreSeries },
+  visuals: { processedBulletByStore },
+  opsActions: [],
+  marketingActions,
+  weatherTimeline,
   system: {
     scriptBuildId: '2026-07-22-sheet-handoff-date-ux.11',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
@@ -206,24 +231,35 @@ page.on('pageerror', (error) => consoleErrors.push(error.message));
 try {
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => document.getElementById('loadingOverlay')?.style.display === 'none');
-  const desktop = await page.evaluate(() => ({
-    viewport: [document.documentElement.clientWidth, window.innerHeight],
-    scrollWidth: document.documentElement.scrollWidth,
-    scrollHeight: document.documentElement.scrollHeight,
-    cards: document.querySelectorAll('.command-matrix-row').length,
-    matrixColumns: document.querySelectorAll('.command-matrix-head > span').length,
-    priorityItems: document.querySelectorAll('.priority-item').length,
-    tabs: document.querySelectorAll('[role="tab"]').length,
-    activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
-    summaryButtons: document.querySelectorAll('[data-vulnerability-filter]').length,
-    vulnerabilityContract: document.getElementById('siteVulnerabilityContractStatus')?.textContent || '',
-    sourceErrors: [...document.querySelectorAll('[data-vulnerability-filter]')].find((node) => node.dataset.vulnerabilityFilter === 'sourceError')?.textContent || '',
-    sourceDecision: document.getElementById('sourceDecisionSummary')?.textContent || '',
-    sourceHealth: document.getElementById('sourceHealthCompact')?.innerText || '',
-    weatherComparisonRows: document.querySelectorAll('.weather-compare-row').length,
-    opsActions: document.getElementById('opsActions')?.textContent || '',
-    overdueExceptions: document.getElementById('overdueExceptions')?.textContent || ''
-  }));
+  const desktop = await page.evaluate(() => {
+    const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect();
+    const gap = (first, second) => Math.round((rect(second)?.top || 0) - (rect(first)?.bottom || 0));
+    const matrix = rect('.command-matrix-panel');
+    const source = rect('.source-health-panel');
+    return {
+      viewport: [document.documentElement.clientWidth, window.innerHeight],
+      scrollWidth: document.documentElement.scrollWidth,
+      scrollHeight: document.documentElement.scrollHeight,
+      cards: document.querySelectorAll('.command-matrix-row').length,
+      matrixColumns: document.querySelectorAll('.command-matrix-head > span').length,
+      priorityItems: document.querySelectorAll('.priority-item').length,
+      tabs: document.querySelectorAll('[role="tab"]').length,
+      activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
+      summaryButtons: document.querySelectorAll('[data-vulnerability-filter]').length,
+      vulnerabilityContract: document.getElementById('siteVulnerabilityContractStatus')?.textContent || '',
+      sourceErrors: [...document.querySelectorAll('[data-vulnerability-filter]')].find((node) => node.dataset.vulnerabilityFilter === 'sourceError')?.textContent || '',
+      sourceDecision: document.getElementById('sourceDecisionSummary')?.textContent || '',
+      sourceHealth: document.getElementById('sourceHealthCompact')?.innerText || '',
+      weatherComparisonRows: document.querySelectorAll('.weather-compare-row').length,
+      opsActions: document.getElementById('opsActions')?.textContent || '',
+      overdueExceptions: document.getElementById('overdueExceptions')?.textContent || '',
+      overviewLayout: {
+        mainGap: gap('.command-matrix-panel', '.weather-comparison-panel'),
+        sideGap: gap('.priority-panel', '.source-health-panel'),
+        sourceStartsBeforeMatrixEnds: Boolean(source && matrix && source.top < matrix.bottom)
+      }
+    };
+  });
   await page.screenshot({ path: path.join(OUTPUT, '01-desktop-1440.png'), fullPage: true });
 
   await page.locator('.command-matrix-row[data-store="hanam-misa"]').click();
@@ -251,11 +287,17 @@ try {
   await page.locator('#tab-stores').click();
   const storeDensity = await page.evaluate(() => {
     const heights = (selector) => [...document.querySelectorAll(selector)].map((node) => Math.round(node.getBoundingClientRect().height));
+    const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect();
+    const gap = (first, second) => Math.round((rect(second)?.top || 0) - (rect(first)?.bottom || 0));
+    const teamSections = [...document.querySelectorAll('.action-columns > section')].filter((node) => getComputedStyle(node).display !== 'none');
     return {
       activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
       actionCards: heights('.action-item'),
       tableRows: heights('#storeTable tr'),
-      marketingColumns: getComputedStyle(document.getElementById('marketingActions')).gridTemplateColumns.split(' ').length
+      marketingColumns: getComputedStyle(document.getElementById('marketingActions')).gridTemplateColumns.split(' ').length,
+      actionToRiskGap: gap('#actionSection', '#riskPanel'),
+      riskToTableGap: gap('#riskPanel', '.table-panel'),
+      teamGap: teamSections.length > 1 ? Math.round(teamSections[1].getBoundingClientRect().top - teamSections[0].getBoundingClientRect().bottom) : null
     };
   });
   await page.screenshot({ path: path.join(OUTPUT, '05-stores-density.png'), fullPage: true });
@@ -266,10 +308,40 @@ try {
     return {
       activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
       queueHeader: heights('.queue-table-head'),
-      queueRows: heights('.queue-item')
+      queueRows: heights('.queue-item'),
+      visualPanels: document.querySelectorAll('#visualGrid .panel:not([hidden])').length
     };
   });
   await page.screenshot({ path: path.join(OUTPUT, '06-recovery-density.png'), fullPage: true });
+
+  await page.locator('#storeFilter').selectOption('hanam-misa');
+  await page.waitForTimeout(150);
+  const recoveryStack = await page.evaluate(() => {
+    const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect();
+    const queue = rect('#recoveryQueuePanel');
+    const chart = rect('#recoveryChartPanel');
+    const visualPanels = [...document.querySelectorAll('#visualGrid .panel:not([hidden])')]
+      .map((node) => ({ top: node.getBoundingClientRect().top, bottom: node.getBoundingClientRect().bottom }))
+      .sort((a, b) => a.top - b.top);
+    return {
+      chartVisible: !document.getElementById('recoveryChartPanel')?.hidden,
+      queueToChartGap: queue && chart ? Math.round(chart.top - queue.bottom) : null,
+      visualPanelGaps: visualPanels.slice(1).map((panel, index) => Math.round(panel.top - visualPanels[index].bottom))
+    };
+  });
+  await page.screenshot({ path: path.join(OUTPUT, '09-recovery-all-panels.png'), fullPage: true });
+
+  await page.locator('#tab-data').click();
+  const dataLayout = await page.evaluate(() => {
+    const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect();
+    const gap = (first, second) => Math.round((rect(second)?.top || 0) - (rect(first)?.bottom || 0));
+    return {
+      activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
+      sourceToTimelineGap: gap('#weatherSourcePanel', '.timeline-panel'),
+      timelineToSystemGap: gap('.timeline-panel', '.system-panel')
+    };
+  });
+  await page.screenshot({ path: path.join(OUTPUT, '10-data-layout.png'), fullPage: true });
 
   const responsive = [];
   let mobileTabs = {};
@@ -282,7 +354,13 @@ try {
       scrollWidth: document.documentElement.scrollWidth,
       cardCount: document.querySelectorAll('.command-matrix-row').length,
       activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
-      clippedText: [...document.querySelectorAll('.command-matrix-row, .source-health-panel, .toolbar')].some((node) => node.scrollWidth > node.clientWidth + 1)
+      clippedText: [...document.querySelectorAll('.command-matrix-row, .source-health-panel, .toolbar')].some((node) => node.scrollWidth > node.clientWidth + 1),
+      overviewOrder: [
+        ['priority', document.querySelector('.priority-panel')],
+        ['matrix', document.querySelector('.command-matrix-panel')],
+        ['weather', document.querySelector('.weather-comparison-panel')],
+        ['source', document.querySelector('.source-health-panel')]
+      ].filter(([, node]) => node).sort((a, b) => a[1].getBoundingClientRect().top - b[1].getBoundingClientRect().top).map(([name]) => name)
     }));
     responsive.push({ name, ...metrics });
     await page.screenshot({ path: path.join(OUTPUT, name === 'tablet' ? '03-tablet-768.png' : '04-mobile-390.png'), fullPage: true });
@@ -300,10 +378,19 @@ try {
         scrollWidth: document.documentElement.scrollWidth,
         clientWidth: document.documentElement.clientWidth,
         queueRows: document.querySelectorAll('.queue-item').length,
-        queueHeaderVisible: getComputedStyle(document.querySelector('.queue-table-head')).display !== 'none'
+        queueHeaderVisible: getComputedStyle(document.querySelector('.queue-table-head')).display !== 'none',
+        visualPanels: document.querySelectorAll('#visualGrid .panel:not([hidden])').length,
+        visualColumnCount: new Set([...document.querySelectorAll('#visualGrid .panel:not([hidden])')].map((node) => Math.round(node.getBoundingClientRect().left))).size
       }));
       await page.screenshot({ path: path.join(OUTPUT, '08-mobile-recovery.png'), fullPage: true });
-      mobileTabs = { stores: storesMobile, recovery: recoveryMobile };
+      await page.locator('#tab-data').click();
+      const dataMobile = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+        activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || ''
+      }));
+      await page.screenshot({ path: path.join(OUTPUT, '11-mobile-data.png'), fullPage: true });
+      mobileTabs = { stores: storesMobile, recovery: recoveryMobile, data: dataMobile };
     }
   }
 
@@ -321,6 +408,8 @@ try {
     },
     routeFilter: { dataTabVisible, ...routeFilter },
     density: { stores: storeDensity, recovery: recoveryDensity },
+    recoveryStack,
+    dataLayout,
     mobileTabs,
     responsive,
     consoleErrors
@@ -328,6 +417,7 @@ try {
   console.log(JSON.stringify(result, null, 2));
   if (desktop.cards !== 7 || desktop.matrixColumns !== 8 || desktop.tabs !== 4 || desktop.activePanel !== 'overview') process.exitCode = 1;
   if (desktop.priorityItems < 1 || desktop.priorityItems > 3 || desktop.weatherComparisonRows !== 7) process.exitCode = 1;
+  if (desktop.overviewLayout.mainGap !== 12 || desktop.overviewLayout.sideGap !== 12 || !desktop.overviewLayout.sourceStartsBeforeMatrixEnds) process.exitCode = 1;
   if (desktop.scrollHeight > desktop.viewport[1] * 2) process.exitCode = 1;
   if (desktop.summaryButtons !== 5) process.exitCode = 1;
   if (!desktop.vulnerabilityContract.includes('7/7개점 수신')) process.exitCode = 1;
@@ -339,13 +429,17 @@ try {
   if (!result.dialog.hasVulnerabilitySection || !result.dialog.drainageZeroHandled || !result.dialog.hidesSourceUrl) process.exitCode = 1;
   if (!result.routeFilter.dataTabVisible || result.routeFilter.activePanel !== 'overview') process.exitCode = 1;
   if (storeDensity.activePanel !== 'stores' || storeDensity.marketingColumns !== 3) process.exitCode = 1;
+  if (storeDensity.actionToRiskGap !== 12 || storeDensity.riskToTableGap !== 12 || storeDensity.teamGap !== 12) process.exitCode = 1;
   if (!storeDensity.tableRows.length || Math.max(...storeDensity.tableRows) - Math.min(...storeDensity.tableRows) > 1) process.exitCode = 1;
   if (!storeDensity.actionCards.length || Math.max(...storeDensity.actionCards) - Math.min(...storeDensity.actionCards) > 1) process.exitCode = 1;
   if (recoveryDensity.activePanel !== 'recovery' || recoveryDensity.queueHeader[0] !== 44) process.exitCode = 1;
+  if (recoveryDensity.visualPanels !== 3 || !recoveryStack.chartVisible || recoveryStack.queueToChartGap !== 12 || recoveryStack.visualPanelGaps.some((gap) => gap !== 12)) process.exitCode = 1;
   if (!recoveryDensity.queueRows.length || Math.max(...recoveryDensity.queueRows) - Math.min(...recoveryDensity.queueRows) > 1) process.exitCode = 1;
+  if (dataLayout.activePanel !== 'data' || dataLayout.sourceToTimelineGap !== 16 || dataLayout.timelineToSystemGap !== 16) process.exitCode = 1;
   if (mobileTabs.stores?.scrollWidth > mobileTabs.stores?.clientWidth || mobileTabs.stores?.actionColumns !== 1 || mobileTabs.stores?.tableCards !== 7) process.exitCode = 1;
-  if (mobileTabs.recovery?.scrollWidth > mobileTabs.recovery?.clientWidth || mobileTabs.recovery?.queueRows !== 6 || mobileTabs.recovery?.queueHeaderVisible) process.exitCode = 1;
-  if (responsive.some((item) => item.scrollWidth > item.clientWidth || item.clippedText)) process.exitCode = 1;
+  if (mobileTabs.recovery?.scrollWidth > mobileTabs.recovery?.clientWidth || mobileTabs.recovery?.queueRows !== 6 || mobileTabs.recovery?.queueHeaderVisible || mobileTabs.recovery?.visualPanels !== 3 || mobileTabs.recovery?.visualColumnCount !== 1) process.exitCode = 1;
+  if (mobileTabs.data?.scrollWidth > mobileTabs.data?.clientWidth || mobileTabs.data?.activePanel !== 'data') process.exitCode = 1;
+  if (responsive.some((item) => item.scrollWidth > item.clientWidth || item.clippedText || item.overviewOrder.join(',') !== 'priority,matrix,weather,source')) process.exitCode = 1;
   if (consoleErrors.length) process.exitCode = 1;
 } finally {
   await browser.close();
