@@ -1832,19 +1832,17 @@ tbody tr:hover {
 .table-subline {
   display: block;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
   color: var(--muted);
   font-size: 10.5px;
   line-height: 1.35;
-  text-overflow: ellipsis;
+  text-overflow: clip;
 }
 .enhanced-compact { color: #475569; }
-.clamp-1 { white-space: nowrap; }
+.clamp-1 { white-space: normal; }
 .clamp-2 {
-  display: -webkit-box;
-  overflow: hidden;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  display: block;
+  overflow: visible;
 }
 .system-item.ok { border-color: #bbf7d0; background: #f0fdf4; }
 .system-item.info { border-color: #bfdbfe; background: #eff6ff; }
@@ -2197,7 +2195,7 @@ tbody tr:hover {
   font-weight: 750;
   line-height: var(--density-line);
   -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
+  -webkit-line-clamp: 2;
 }
 
 .priority-list {
@@ -2423,7 +2421,9 @@ tbody tr:hover {
       "funnel gap";
   }
   .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .priority-list { grid-template-columns: minmax(0, 1fr); }
+  .priority-list,
+  .priority-list[data-item-count="2"],
+  .priority-list[data-item-count="3"] { grid-template-columns: minmax(0, 1fr); }
   .priority-item { border-right: 0; border-bottom: 1px solid var(--line); }
   .priority-item:last-of-type { border-bottom: 0; }
   .source-health-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
@@ -2468,10 +2468,38 @@ tbody tr:hover {
 
 @media (max-width: 720px) {
   .app-shell { width: min(100vw - 20px, 1440px); padding-top: 10px; }
-  .hero { padding: 16px; }
-  .command-hero .hero-main { grid-template-columns: 1fr; }
+  .hero { padding: 14px; }
+  .command-hero .hero-main {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
   .command-hero h1 { font-size: 24px; }
-  .command-hero .command-card { padding: 12px; }
+  .hero-actions {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 8px;
+  }
+  .command-hero .logout-link { margin: 0; }
+  .hero-meta {
+    min-width: 0;
+    flex-wrap: nowrap;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .hero-meta::-webkit-scrollbar { display: none; }
+  .meta-pill,
+  .meta-pill.wide {
+    flex: 0 0 auto;
+    width: auto;
+    justify-content: flex-start;
+    white-space: nowrap;
+    text-align: left;
+    word-break: normal;
+    overflow-wrap: normal;
+  }
+  .command-hero .command-card { padding: 10px 12px; }
   .command-hero .status-word { font-size: 24px; }
   .dashboard-tabs {
     overflow-x: auto;
@@ -2480,14 +2508,20 @@ tbody tr:hover {
   }
   .dashboard-tabs::-webkit-scrollbar { display: none; }
   .dashboard-tab { flex: 0 0 auto; min-width: 92px; padding: 0 10px; }
-  .toolbar { align-items: stretch; flex-direction: column; }
+  .toolbar {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
   .segmented {
+    grid-column: 1 / -1;
     overflow-x: auto;
     scrollbar-width: none;
     -ms-overflow-style: none;
   }
   .segmented::-webkit-scrollbar { display: none; }
   .segmented button { min-width: 76px; }
+  #storeFilter { grid-column: 1 / -1; }
   .icon-btn, .icon-btn.secondary, select { width: 100%; margin-left: 0; }
   .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .source-strip { padding: 14px; }
@@ -2507,11 +2541,19 @@ tbody tr:hover {
   .source-detail-row { grid-template-columns: 1fr; gap: 4px; }
   .decision-banner {
     grid-template-columns: 1fr;
+    gap: 6px;
     align-items: start;
+    padding: 10px 12px;
   }
   .decision-meta {
+    flex-wrap: nowrap;
     justify-content: flex-start;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
+  .decision-meta::-webkit-scrollbar { display: none; }
+  .decision-meta span { flex: 0 0 auto; white-space: nowrap; }
   .command-matrix-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     min-height: 0;
@@ -2690,22 +2732,6 @@ tbody tr:hover {
 
 @media (max-width: 420px) {
   .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .hero-meta {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 6px;
-  }
-  .meta-pill {
-    width: auto;
-    justify-content: center;
-    white-space: normal;
-    text-align: center;
-    word-break: keep-all;
-    overflow-wrap: anywhere;
-  }
-  .meta-pill.wide { grid-column: 1 / -1; }
-  .hero-actions { display: block; }
-  .command-hero .logout-link { margin-bottom: 8px; }
   .source-health-note { display: grid; }
   .source-strip-head { display: grid; }
   .vulnerability-summary-grid { grid-template-columns: 1fr; }

@@ -112,7 +112,7 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
   assert.match(html, /app\.js\?v=2026-07-23-2/);
-  assert.match(html, /style\.css\?v=2026-07-23-2/);
+  assert.match(html, /style\.css\?v=2026-07-23-3/);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);
   assert.match(css, /--density-row:\s*56px/);
@@ -136,7 +136,9 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(css, /\.pin-meta\s*\{[^}]*word-break:\s*keep-all;/s);
   assert.match(css, /\.command-matrix-row\s*\.store-pin|\.command-matrix-row\.store-pin/);
   assert.match(css, /\.weather-compare-row/);
-  assert.match(css, /\.meta-pill\.wide\s*\{\s*grid-column:\s*1\s*\/\s*-1;/);
+  assert.match(css, /\.hero-meta\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s);
+  assert.match(css, /\.meta-pill,\s*\.meta-pill\.wide\s*\{[^}]*white-space:\s*nowrap;/s);
+  assert.match(css, /\.priority-list\[data-item-count="3"\]\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/s);
   assert.match(app, /wide:\s*true/);
   assert.match(app, /<td colspan="8">데이터 연결 후 지점별 상태를 표시합니다\.<\/td>/);
   assert.match(packageJson.scripts.check, /node --check middleware\.js/);
