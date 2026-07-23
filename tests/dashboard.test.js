@@ -111,11 +111,10 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-22-4/);
-  assert.match(html, /style\.css\?v=2026-07-22-4/);
+  assert.match(html, /app\.js\?v=2026-07-23-1/);
+  assert.match(html, /style\.css\?v=2026-07-23-1/);
   assert.match(html, /overview-command-layout/);
-  assert.match(html, /overview-command-stack overview-command-main/);
-  assert.match(html, /overview-command-stack overview-command-side/);
+  assert.doesNotMatch(html, /overview-command-stack/);
   assert.match(css, /--density-row:\s*56px/);
   assert.match(css, /\.queue-table-head/);
   assert.match(css, /\.overview-command-layout\s*\{[^}]*grid-template-columns:/s);

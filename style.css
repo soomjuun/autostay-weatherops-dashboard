@@ -672,7 +672,11 @@ select { min-width: 180px; }
   margin-top: 16px;
   margin-bottom: var(--density-gap);
 }
-.lower-grid { grid-template-columns: minmax(0, 1fr); }
+.lower-grid {
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--density-gap);
+  margin-top: var(--density-gap);
+}
 .panel {
   background: var(--surface);
   border: 1px solid var(--line);
@@ -2090,17 +2094,11 @@ tbody tr:hover {
 }
 .dashboard-tab-panel { min-width: 0; }
 
-.overview-command-layout,
-.overview-command-stack {
+.overview-command-layout {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--density-gap);
   align-items: start;
-}
-.overview-command-layout { grid-template-columns: minmax(0, 2fr) minmax(300px, .78fr); }
-.overview-command-stack {
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  min-width: 0;
 }
 .compact-head { margin-bottom: 8px; }
 .compact-head h2 { font-size: 16px; }
@@ -2204,7 +2202,10 @@ tbody tr:hover {
 
 .priority-list {
   display: grid;
-  border-top: 1px solid var(--line);
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  overflow: hidden;
 }
 .priority-item {
   display: grid;
@@ -2212,13 +2213,14 @@ tbody tr:hover {
   gap: 3px;
   width: 100%;
   min-height: var(--density-summary-row);
-  padding: 8px 2px;
+  padding: 9px 12px;
   border: 0;
-  border-bottom: 1px solid var(--line);
+  border-right: 1px solid var(--line);
   background: transparent;
   color: var(--ink);
   text-align: left;
 }
+.priority-item:last-of-type { border-right: 0; }
 .priority-item:hover { background: #f8fafc; }
 .priority-topline {
   display: grid;
@@ -2240,11 +2242,13 @@ tbody tr:hover {
 .priority-meta { color: var(--muted); font-size: 10.5px; }
 .priority-action { display: none; }
 .priority-more {
+  grid-column: 1 / -1;
   padding: 9px 0 2px;
   color: var(--muted);
   font-size: 10.5px;
   font-weight: 750;
 }
+.priority-list > .empty-state { grid-column: 1 / -1; }
 .panel-link {
   width: 100%;
   min-height: var(--density-control);
@@ -2346,7 +2350,7 @@ tbody tr:hover {
 .source-health-summary small { grid-column: 1 / -1; color: var(--muted); font-size: 10px; }
 .source-health-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
@@ -2358,10 +2362,10 @@ tbody tr:hover {
   min-width: 0;
   padding: 8px;
   border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
+  border-bottom: 0;
 }
-.source-health-segment:nth-child(3n) { border-right: 0; }
-.source-health-segment:nth-child(n+4) { border-bottom: 0; }
+.source-health-segment:nth-child(3n) { border-right: 1px solid var(--line); }
+.source-health-segment:last-child { border-right: 0; }
 .source-health-segment .source-dot { grid-row: span 2; }
 .source-health-segment b,
 .source-health-segment small {
@@ -2417,12 +2421,18 @@ tbody tr:hover {
       "funnel gap";
   }
   .kpi-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .overview-command-layout { grid-template-columns: minmax(0, 1fr); }
-  .overview-command-stack { display: contents; }
-  .overview-command-layout .priority-panel { order: 1; }
-  .overview-command-layout .command-matrix-panel { order: 2; }
-  .overview-command-layout .weather-comparison-panel { order: 3; }
-  .overview-command-layout .source-health-panel { order: 4; }
+  .priority-list { grid-template-columns: minmax(0, 1fr); }
+  .priority-item { border-right: 0; border-bottom: 1px solid var(--line); }
+  .priority-item:last-of-type { border-bottom: 0; }
+  .source-health-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .source-health-segment,
+  .source-health-segment:nth-child(3n),
+  .source-health-segment:last-child {
+    border-right: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+  }
+  .source-health-segment:nth-child(3n) { border-right: 0; }
+  .source-health-segment:nth-child(n+4) { border-bottom: 0; }
   #opsActions,
   #marketingActions,
   .action-section.ops-summary-only #marketingActions { grid-template-columns: repeat(2, minmax(0, 1fr)); }

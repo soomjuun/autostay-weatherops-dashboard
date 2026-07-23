@@ -6,7 +6,7 @@
   <title>[OPS] Weather Ops Dashboard</title>
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/variable/pretendardvariable.css">
-  <link rel="stylesheet" href="style.css?v=2026-07-22-4">
+  <link rel="stylesheet" href="style.css?v=2026-07-23-1">
   <script
     src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"
     integrity="sha384-e6nUZLBkQ86NJ6TVVKAeSaK8jWa3NhkYWZFomE39AvDbQWeie9PlQqM3pmYW5d1g"
@@ -69,53 +69,49 @@
 
     <section id="panel-overview" class="dashboard-tab-panel" role="tabpanel" aria-labelledby="tab-overview" data-tab-panel="overview">
       <section class="overview-command-layout" aria-label="오늘 운영 판단 핵심 영역">
-        <div class="overview-command-stack overview-command-main">
-          <article class="panel map-panel command-matrix-panel">
-            <div class="panel-head compact-head">
-              <div>
-                <h2>지점 운영 매트릭스</h2>
-                <p>공식 운영, 기상 신호와 실행 게이트를 한 행에서 비교합니다.</p>
-              </div>
-              <span id="mapCount" class="tag">7개 지점</span>
+        <article class="panel priority-panel">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>우선 확인 큐</h2>
+              <p>지금 확인할 항목만 위험도순으로 최대 3건 표시합니다.</p>
             </div>
-            <div class="command-matrix" id="metroMap" aria-label="직영점 운영 매트릭스"></div>
-          </article>
+            <span id="priorityCount" class="tag">0건</span>
+          </div>
+          <div id="priorityQueue" class="priority-list"></div>
+          <button class="panel-link" type="button" data-open-tab="stores">전체 지점 상세</button>
+        </article>
 
-          <article class="panel weather-comparison-panel">
-            <div class="panel-head compact-head">
-              <div>
-                <h2>현재 강수 vs 예보 최대</h2>
-                <p>실황과 오늘 예보 피크의 차이가 큰 지점을 먼저 확인합니다.</p>
-              </div>
+        <article class="panel map-panel command-matrix-panel">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>지점 운영 매트릭스</h2>
+              <p>공식 운영, 기상 신호와 실행 게이트를 한 행에서 비교합니다.</p>
             </div>
-            <div id="weatherComparison" class="weather-comparison"></div>
-          </article>
-        </div>
+            <span id="mapCount" class="tag">7개 지점</span>
+          </div>
+          <div class="command-matrix" id="metroMap" aria-label="직영점 운영 매트릭스"></div>
+        </article>
 
-        <div class="overview-command-stack overview-command-side">
-          <article class="panel priority-panel">
-            <div class="panel-head compact-head">
-              <div>
-                <h2>우선 확인 큐</h2>
-                <p>지금 확인할 항목만 위험도순으로 최대 3건 표시합니다.</p>
-              </div>
-              <span id="priorityCount" class="tag">0건</span>
+        <article class="panel weather-comparison-panel">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>현재 강수 vs 예보 최대</h2>
+              <p>실황과 오늘 예보 피크의 차이가 큰 지점을 먼저 확인합니다.</p>
             </div>
-            <div id="priorityQueue" class="priority-list"></div>
-            <button class="panel-link" type="button" data-open-tab="stores">전체 지점 상세</button>
-          </article>
+          </div>
+          <div id="weatherComparison" class="weather-comparison"></div>
+        </article>
 
-          <article class="panel source-health-panel">
-            <div class="panel-head compact-head">
-              <div>
-                <h2>데이터 상태</h2>
-                <p>운영 판단에 필요한 원천 가용성과 부분 결측만 요약합니다.</p>
-              </div>
+        <article class="panel source-health-panel">
+          <div class="panel-head compact-head">
+            <div>
+              <h2>데이터 상태</h2>
+              <p>운영 판단에 필요한 원천 가용성과 부분 결측만 요약합니다.</p>
             </div>
-            <div id="sourceHealthCompact" class="source-health-compact"></div>
-            <button class="panel-link" type="button" data-open-tab="data">원천·시스템 상세</button>
-          </article>
-        </div>
+          </div>
+          <div id="sourceHealthCompact" class="source-health-compact"></div>
+          <button class="panel-link" type="button" data-open-tab="data">원천·시스템 상세</button>
+        </article>
       </section>
     </section>
 
@@ -296,6 +292,6 @@
     <div id="dialogBody" class="dialog-body"></div>
   </dialog>
 
-  <script src="app.js?v=2026-07-22-4"></script>
+  <script src="app.js?v=2026-07-23-1"></script>
 </body>
 </html>

@@ -232,10 +232,17 @@ try {
   await page.goto(baseUrl, { waitUntil: 'networkidle' });
   await page.waitForFunction(() => document.getElementById('loadingOverlay')?.style.display === 'none');
   const desktop = await page.evaluate(() => {
-    const rect = (selector) => document.querySelector(selector)?.getBoundingClientRect();
-    const gap = (first, second) => Math.round((rect(second)?.top || 0) - (rect(first)?.bottom || 0));
-    const matrix = rect('.command-matrix-panel');
-    const source = rect('.source-health-panel');
+    const overviewPanels = [
+      ['priority', document.querySelector('.priority-panel')],
+      ['matrix', document.querySelector('.command-matrix-panel')],
+      ['weather', document.querySelector('.weather-comparison-panel')],
+      ['source', document.querySelector('.source-health-panel')]
+    ].filter(([, node]) => node).map(([name, node]) => {
+      const bounds = node.getBoundingClientRect();
+      return { name, left: Math.round(bounds.left), top: Math.round(bounds.top), right: Math.round(bounds.right), bottom: Math.round(bounds.bottom) };
+    }).sort((a, b) => a.top - b.top);
+    const priorityItems = [...document.querySelectorAll('.priority-item')].map((node) => node.getBoundingClientRect());
+    const sourceSegments = [...document.querySelectorAll('.source-health-segment')].map((node) => node.getBoundingClientRect());
     return {
       viewport: [document.documentElement.clientWidth, window.innerHeight],
       scrollWidth: document.documentElement.scrollWidth,
@@ -254,9 +261,13 @@ try {
       opsActions: document.getElementById('opsActions')?.textContent || '',
       overdueExceptions: document.getElementById('overdueExceptions')?.textContent || '',
       overviewLayout: {
-        mainGap: gap('.command-matrix-panel', '.weather-comparison-panel'),
-        sideGap: gap('.priority-panel', '.source-health-panel'),
-        sourceStartsBeforeMatrixEnds: Boolean(source && matrix && source.top < matrix.bottom)
+        order: overviewPanels.map((panel) => panel.name),
+        gaps: overviewPanels.slice(1).map((panel, index) => panel.top - overviewPanels[index].bottom),
+        leftSpread: Math.max(...overviewPanels.map((panel) => panel.left)) - Math.min(...overviewPanels.map((panel) => panel.left)),
+        rightSpread: Math.max(...overviewPanels.map((panel) => panel.right)) - Math.min(...overviewPanels.map((panel) => panel.right)),
+        priorityRows: new Set(priorityItems.map((bounds) => Math.round(bounds.top))).size,
+        priorityWidthSpread: priorityItems.length ? Math.max(...priorityItems.map((bounds) => Math.round(bounds.width))) - Math.min(...priorityItems.map((bounds) => Math.round(bounds.width))) : 0,
+        sourceRows: new Set(sourceSegments.map((bounds) => Math.round(bounds.top))).size
       }
     };
   });
@@ -417,7 +428,9 @@ try {
   console.log(JSON.stringify(result, null, 2));
   if (desktop.cards !== 7 || desktop.matrixColumns !== 8 || desktop.tabs !== 4 || desktop.activePanel !== 'overview') process.exitCode = 1;
   if (desktop.priorityItems < 1 || desktop.priorityItems > 3 || desktop.weatherComparisonRows !== 7) process.exitCode = 1;
-  if (desktop.overviewLayout.mainGap !== 12 || desktop.overviewLayout.sideGap !== 12 || !desktop.overviewLayout.sourceStartsBeforeMatrixEnds) process.exitCode = 1;
+  if (desktop.overviewLayout.order.join(',') !== 'priority,matrix,weather,source') process.exitCode = 1;
+  if (desktop.overviewLayout.gaps.some((gap) => gap !== 12) || desktop.overviewLayout.leftSpread > 1 || desktop.overviewLayout.rightSpread > 1) process.exitCode = 1;
+  if (desktop.overviewLayout.priorityRows !== 1 || desktop.overviewLayout.priorityWidthSpread > 1 || desktop.overviewLayout.sourceRows !== 1) process.exitCode = 1;
   if (desktop.scrollHeight > desktop.viewport[1] * 2) process.exitCode = 1;
   if (desktop.summaryButtons !== 5) process.exitCode = 1;
   if (!desktop.vulnerabilityContract.includes('7/7개점 수신')) process.exitCode = 1;
@@ -435,7 +448,7 @@ try {
   if (recoveryDensity.activePanel !== 'recovery' || recoveryDensity.queueHeader[0] !== 44) process.exitCode = 1;
   if (recoveryDensity.visualPanels !== 3 || !recoveryStack.chartVisible || recoveryStack.queueToChartGap !== 12 || recoveryStack.visualPanelGaps.some((gap) => gap !== 12)) process.exitCode = 1;
   if (!recoveryDensity.queueRows.length || Math.max(...recoveryDensity.queueRows) - Math.min(...recoveryDensity.queueRows) > 1) process.exitCode = 1;
-  if (dataLayout.activePanel !== 'data' || dataLayout.sourceToTimelineGap !== 16 || dataLayout.timelineToSystemGap !== 16) process.exitCode = 1;
+  if (dataLayout.activePanel !== 'data' || dataLayout.sourceToTimelineGap !== 12 || dataLayout.timelineToSystemGap !== 12) process.exitCode = 1;
   if (mobileTabs.stores?.scrollWidth > mobileTabs.stores?.clientWidth || mobileTabs.stores?.actionColumns !== 1 || mobileTabs.stores?.tableCards !== 7) process.exitCode = 1;
   if (mobileTabs.recovery?.scrollWidth > mobileTabs.recovery?.clientWidth || mobileTabs.recovery?.queueRows !== 6 || mobileTabs.recovery?.queueHeaderVisible || mobileTabs.recovery?.visualPanels !== 3 || mobileTabs.recovery?.visualColumnCount !== 1) process.exitCode = 1;
   if (mobileTabs.data?.scrollWidth > mobileTabs.data?.clientWidth || mobileTabs.data?.activePanel !== 'data') process.exitCode = 1;
