@@ -2071,8 +2071,14 @@ function renderPriorityQueue() {
   const countTarget = $('priorityCount');
   if (!target || !countTarget) return;
   const rows = priorityQueueRows();
+  const detailButton = target.closest('.priority-panel')?.querySelector('[data-open-tab="stores"]');
   target.dataset.itemCount = String(Math.min(rows.length, 3));
   countTarget.textContent = `${rows.length}건`;
+  if (detailButton) {
+    detailButton.textContent = rows.length > 3
+      ? `전체 지점 상세 · ${rows.length - 3}건 더보기`
+      : '전체 지점 상세';
+  }
   if (!rows.length) {
     target.innerHTML = '<div class="empty-state compact">현재 즉시 확인할 항목이 없습니다.</div>';
     return;
@@ -2091,7 +2097,7 @@ function renderPriorityQueue() {
       <span class="priority-meta">${escapeHtml(row.meta)}</span>
       <span class="priority-action">${escapeHtml(row.action)}</span>
     </button>
-  `).join('') + (rows.length > 3 ? `<div class="priority-more">추가 ${rows.length - 3}건은 지점 상세에서 확인</div>` : '');
+  `).join('');
   target.querySelectorAll('.priority-item[data-store]').forEach((button) => {
     if (!button.dataset.store) return;
     button.addEventListener('click', () => openStoreDialog(button.dataset.store, button));

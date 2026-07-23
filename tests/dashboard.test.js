@@ -111,8 +111,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-23-2/);
-  assert.match(html, /style\.css\?v=2026-07-23-4/);
+  assert.match(html, /app\.js\?v=2026-07-23-3/);
+  assert.match(html, /style\.css\?v=2026-07-23-5/);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);
   assert.match(css, /--density-row:\s*56px/);
@@ -139,6 +139,11 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(css, /\.hero-meta\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*overflow-x:\s*auto;/s);
   assert.match(css, /\.meta-pill,\s*\.meta-pill\.wide\s*\{[^}]*white-space:\s*nowrap;/s);
   assert.match(css, /\.priority-list\[data-item-count="3"\]\s*\{\s*grid-template-columns:\s*minmax\(0,\s*1fr\);/s);
+  assert.match(app, /전체 지점 상세 · \$\{rows\.length - 3\}건 더보기/);
+  assert.doesNotMatch(app, /건은 지점 상세에서 확인/);
+  assert.match(css, /\.command-next\s*\{[^}]*word-break:\s*keep-all;[^}]*text-wrap:\s*balance;/s);
+  assert.match(css, /\.queue-next\s*\{[^}]*white-space:\s*normal;[^}]*word-break:\s*keep-all;[^}]*text-wrap:\s*balance;/s);
+  assert.match(css, /@media \(max-width:\s*720px\)[\s\S]*?\.queue-next\s*\{[^}]*overflow:\s*visible;[^}]*-webkit-line-clamp:\s*unset;/s);
   assert.match(app, /wide:\s*true/);
   assert.match(app, /<td colspan="8">데이터 연결 후 지점별 상태를 표시합니다\.<\/td>/);
   assert.match(packageJson.scripts.check, /node --check middleware\.js/);
