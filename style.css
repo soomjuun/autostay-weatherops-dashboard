@@ -2231,12 +2231,13 @@ tbody tr:hover {
 .priority-topline strong { min-width: 0; font-size: 13px; }
 .priority-level { color: var(--muted); font-size: 10.5px; font-weight: 850; }
 .priority-reason,
-.priority-meta,
-.priority-action {
+.priority-meta {
   display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: anywhere;
 }
 .priority-reason { font-size: 12px; font-weight: 800; }
 .priority-meta { color: var(--muted); font-size: 10.5px; }
