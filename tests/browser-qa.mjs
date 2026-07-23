@@ -242,6 +242,7 @@ try {
       return { name, left: Math.round(bounds.left), top: Math.round(bounds.top), right: Math.round(bounds.right), bottom: Math.round(bounds.bottom) };
     }).sort((a, b) => a.top - b.top);
     const priorityItems = [...document.querySelectorAll('.priority-item')].map((node) => node.getBoundingClientRect());
+    const priorityList = document.querySelector('.priority-list')?.getBoundingClientRect();
     const sourceSegments = [...document.querySelectorAll('.source-health-segment')].map((node) => node.getBoundingClientRect());
     return {
       viewport: [document.documentElement.clientWidth, window.innerHeight],
@@ -267,6 +268,8 @@ try {
         rightSpread: Math.max(...overviewPanels.map((panel) => panel.right)) - Math.min(...overviewPanels.map((panel) => panel.right)),
         priorityRows: new Set(priorityItems.map((bounds) => Math.round(bounds.top))).size,
         priorityWidthSpread: priorityItems.length ? Math.max(...priorityItems.map((bounds) => Math.round(bounds.width))) - Math.min(...priorityItems.map((bounds) => Math.round(bounds.width))) : 0,
+        priorityLeftGap: priorityItems.length && priorityList ? Math.round(Math.min(...priorityItems.map((bounds) => bounds.left)) - priorityList.left) : 0,
+        priorityRightGap: priorityItems.length && priorityList ? Math.round(priorityList.right - Math.max(...priorityItems.map((bounds) => bounds.right))) : 0,
         sourceRows: new Set(sourceSegments.map((bounds) => Math.round(bounds.top))).size
       }
     };
@@ -430,7 +433,7 @@ try {
   if (desktop.priorityItems < 1 || desktop.priorityItems > 3 || desktop.weatherComparisonRows !== 7) process.exitCode = 1;
   if (desktop.overviewLayout.order.join(',') !== 'priority,matrix,weather,source') process.exitCode = 1;
   if (desktop.overviewLayout.gaps.some((gap) => gap !== 12) || desktop.overviewLayout.leftSpread > 1 || desktop.overviewLayout.rightSpread > 1) process.exitCode = 1;
-  if (desktop.overviewLayout.priorityRows !== 1 || desktop.overviewLayout.priorityWidthSpread > 1 || desktop.overviewLayout.sourceRows !== 1) process.exitCode = 1;
+  if (desktop.overviewLayout.priorityRows !== 1 || desktop.overviewLayout.priorityWidthSpread > 1 || desktop.overviewLayout.priorityLeftGap > 1 || desktop.overviewLayout.priorityRightGap > 1 || desktop.overviewLayout.sourceRows !== 1) process.exitCode = 1;
   if (desktop.scrollHeight > desktop.viewport[1] * 2) process.exitCode = 1;
   if (desktop.summaryButtons !== 5) process.exitCode = 1;
   if (!desktop.vulnerabilityContract.includes('7/7개점 수신')) process.exitCode = 1;

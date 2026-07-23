@@ -2202,11 +2202,13 @@ tbody tr:hover {
 
 .priority-list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   border: 1px solid var(--line);
   border-radius: 6px;
   overflow: hidden;
 }
+.priority-list[data-item-count="2"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.priority-list[data-item-count="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .priority-item {
   display: grid;
   grid-template-rows: var(--density-chip) auto auto;

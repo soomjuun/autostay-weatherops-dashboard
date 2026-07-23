@@ -2071,6 +2071,7 @@ function renderPriorityQueue() {
   const countTarget = $('priorityCount');
   if (!target || !countTarget) return;
   const rows = priorityQueueRows();
+  target.dataset.itemCount = String(Math.min(rows.length, 3));
   countTarget.textContent = `${rows.length}건`;
   if (!rows.length) {
     target.innerHTML = '<div class="empty-state compact">현재 즉시 확인할 항목이 없습니다.</div>';
