@@ -206,9 +206,9 @@ function normalizePayload(payload, source) {
     weatherSignal,
     decisionReadiness: data.decisionReadiness || data.decision_readiness || system.decisionReadiness || system.decision_readiness || '',
     dashboardPayloadVersion: data.dashboardPayloadVersion || data.dashboard_payload_version || '',
-    opsActions: arrayOrEmpty(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
-    overdueExceptions: arrayOrEmpty(data.overdueExceptions || data.overdue_exceptions || data.historicalOverdueExceptions || data.historical_overdue_exceptions),
-    marketingActions: arrayOrEmpty(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
+    opsActions: normalizeActionRows(data.opsActions || data.ops_actions || data.operationsActions || data.operations_actions),
+    overdueExceptions: normalizeActionRows(data.overdueExceptions || data.overdue_exceptions || data.historicalOverdueExceptions || data.historical_overdue_exceptions),
+    marketingActions: normalizeActionRows(data.marketingActions || data.marketing_actions || data.crmActions || data.crm_actions),
     recovery,
     system,
     visuals,
@@ -248,6 +248,31 @@ function objectOrEmpty(value) {
 
 function arrayOrEmpty(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function normalizeActionRows(value) {
+  return arrayOrEmpty(value).map((row) => {
+    if (!row || typeof row !== 'object' || Array.isArray(row)) return row;
+    const normalized = Object.assign({}, row);
+    ['dueAt', 'due_at', 'nextUpdateDue', 'next_update_due'].forEach((key) => {
+      if (isSpreadsheetSentinelDateValue(normalized[key])) {
+        normalized[key] = extractClockValue(normalized[key]) || firstNonEmpty(row.due, row.due_time);
+      }
+    });
+    return normalized;
+  });
+}
+
+function isSpreadsheetSentinelDateValue(value) {
+  const text = String(value || '').trim();
+  if (!text) return false;
+  return /^1899[-/]12[-/]30(?:T|\s|$)/.test(text)
+    || /\b(?:Sat\s+)?Dec\s+30\s+1899\b/i.test(text);
+}
+
+function extractClockValue(value) {
+  const match = String(value || '').match(/(?:^|T|\s)([01]?\d|2[0-3]):([0-5]\d)/);
+  return match ? `${String(match[1]).padStart(2, '0')}:${match[2]}` : '';
 }
 
 function normalizeVersion(data, payload, system) {

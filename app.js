@@ -2040,6 +2040,26 @@ function compactRiskType(value) {
   return text.split(/[·,/]/).map((part) => part.trim()).filter(Boolean).slice(0, 2).join('·');
 }
 
+function actionRiskTypeText(item) {
+  const labels = {
+    rain: '강수',
+    heat: '폭염',
+    wind: '강풍',
+    cold: '한파',
+    snow: '적설',
+    dust: '대기질',
+    air: '대기질'
+  };
+  const raw = [
+    ...arrayFrom(firstPresent(item, ['riskTypes', 'risk_types'])),
+    ...String(firstPresent(item, ['riskType', 'risk_type']) || '').split(/[·,/]/)
+  ];
+  return uniqueTextParts(raw.map((value) => {
+    const text = String(value || '').trim();
+    return labels[text.toLowerCase()] || text;
+  })).slice(0, 2).join('·');
+}
+
 function compactAsStatus(store) {
   if (isBlockingAsStatus(store)) return { label: '차단·대기', className: 'blocked' };
   const text = String(store.asStatus || '').trim();
@@ -2106,7 +2126,10 @@ function renderPriorityQueue() {
 
 function priorityQueueRows() {
   const stores = filteredStores();
-  const storeMap = new Map(stores.map((store) => [slug(store.id || store.name), store]));
+  const storeMap = new Map();
+  stores.forEach((store) => {
+    [store.id, store.name].filter(Boolean).forEach((key) => storeMap.set(slug(key), store));
+  });
   const officialRows = arrayFrom(state.data.opsActions).filter(matchesSelectedStore).map((item) => {
     const storeName = firstPresent(item, ['store', 'storeName', 'store_name', 'name']) || '사업운영팀';
     const store = storeMap.get(slug(storeName));
@@ -2116,7 +2139,7 @@ function priorityQueueRows() {
       storeName,
       status: normalizeStatus(firstPresent(item, ['level', 'actionLevel', 'action_level', 'status']) || 'Orange'),
       scope: '공식 액션',
-      reason: firstPresent(item, ['reason', 'trigger', 'priority']) || '오늘 미완료 운영 액션',
+      reason: firstPresent(item, ['reason', 'trigger']) || actionRiskTypeText(item) || '오늘 미완료 운영 액션',
       meta: `담당 ${firstPresent(item, ['owner', 'dri', 'team']) || '사업운영팀'} · 기한 ${formatActionDue(firstPresent(item, ['due', 'dueAt', 'due_at']) || '-')}`,
       action: firstPresent(item, ['action', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-'
     };
@@ -2490,8 +2513,10 @@ function renderActionList(items, fallbackTeam, kind) {
 }
 
 function formatActionDue(value) {
-  const formatted = formatDateTime(value);
-  return formatted || String(value || '-');
+  const clock = formatClockValue(value);
+  if (clock) return clock;
+  const formatted = formatMaybeDate(value);
+  return formatted || '-';
 }
 
 function renderRecoveryChart() {
