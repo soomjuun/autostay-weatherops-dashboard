@@ -134,6 +134,7 @@ const marketingActions = storeSpecs.slice(0, 5).map((spec, index) => ({
   due: index % 2 === 0 ? '16:30' : '10:30',
   approvalStatus: '승인 검토 후보'
 }));
+marketingActions.push({ ...marketingActions[0], due: '10:30' });
 
 const recoveryStoreSeries = Object.fromEntries(storeSpecs.map((spec, index) => [spec.id, {
   processedRate: [72 + index, 84 + index, 94 + index],
@@ -166,7 +167,18 @@ const fixturePayload = {
   stores,
   weatherSignal: { mode: 'shadow', generatedAt: now, observedAt: now, overallStatus: 'Yellow', summary: { totalStores: 7, normal: 5, watch: 2, actionRequired: 0, dataCheck: 0 }, stores: signalStores },
   recovery: { queue: recoveryQueue, labels: ['D-day', 'D+1', 'D+2'], storeSeries: recoveryStoreSeries },
-  visuals: { processedBulletByStore },
+  visuals: {
+    processedBulletByStore,
+    recoveryFunnel: [
+      { key: 'detected', label: '하락 감지', count: 43 },
+      { key: 'action', label: '조치 필요', count: 74 },
+      { key: 'normalized', label: '정상화 통과', count: 83 },
+      { key: 'crmQueued', label: 'CRM 후보', count: 0 },
+      { key: 'crmSent', label: '발송/실행', count: 0 },
+      { key: 'revisited', label: '재방문 회수', count: 0 },
+      { key: 'asBlocked', label: 'AS 차단', count: 1 }
+    ]
+  },
   opsActions: [],
   marketingActions,
   weatherTimeline,
@@ -325,6 +337,8 @@ try {
       actionCards: heights('.action-item'),
       tableRows: heights('#storeTable tr'),
       marketingColumns: getComputedStyle(document.getElementById('marketingActions')).gridTemplateColumns.split(' ').length,
+      marketingCardCount: document.querySelectorAll('#marketingActions .action-item').length,
+      marketingText: document.getElementById('marketingActions')?.innerText || '',
       actionToRiskGap: gap('#actionSection', '#riskPanel'),
       riskToTableGap: gap('#riskPanel', '.table-panel'),
       teamGap: teamSections.length > 1 ? Math.round(teamSections[1].getBoundingClientRect().top - teamSections[0].getBoundingClientRect().bottom) : null
@@ -339,7 +353,9 @@ try {
       activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
       queueHeader: heights('.queue-table-head'),
       queueRows: heights('.queue-item'),
-      visualPanels: document.querySelectorAll('#visualGrid .panel:not([hidden])').length
+      visualPanels: document.querySelectorAll('#visualGrid .panel:not([hidden])').length,
+      funnelTitle: document.querySelector('#recoveryFunnelPanel h2')?.textContent?.trim() || '',
+      funnelText: document.getElementById('recoveryFunnel')?.innerText || ''
     };
   });
   await page.screenshot({ path: path.join(OUTPUT, '06-recovery-density.png'), fullPage: true });
@@ -464,10 +480,14 @@ try {
   if (!payloadPath && !result.dialog.drainageZeroHandled) process.exitCode = 1;
   if (!result.routeFilter.dataTabVisible || result.routeFilter.activePanel !== 'overview') process.exitCode = 1;
   if (storeDensity.activePanel !== 'stores' || storeDensity.marketingColumns !== 3) process.exitCode = 1;
+  if (!payloadPath && (storeDensity.marketingCardCount !== 5 || !storeDensity.marketingText.includes('동일 제안 2회'))) process.exitCode = 1;
   if (storeDensity.actionToRiskGap !== 12 || storeDensity.riskToTableGap !== 12 || storeDensity.teamGap !== 12) process.exitCode = 1;
   if (!storeDensity.tableRows.length || Math.max(...storeDensity.tableRows) - Math.min(...storeDensity.tableRows) > 4) process.exitCode = 1;
   if (!storeDensity.actionCards.length || Math.max(...storeDensity.actionCards) - Math.min(...storeDensity.actionCards) > 4) process.exitCode = 1;
   if (recoveryDensity.activePanel !== 'recovery' || recoveryDensity.queueHeader[0] !== 44) process.exitCode = 1;
+  if (!payloadPath && (!recoveryDensity.funnelTitle.startsWith('회복 단계 현황')
+    || !recoveryDensity.funnelText.includes('집계 단위가 달라 전환율 계산 제외')
+    || !recoveryDensity.funnelText.includes('현재 AS 차단은 없습니다'))) process.exitCode = 1;
   if (recoveryDensity.visualPanels < 1 || !recoveryStack.chartVisible || recoveryStack.queueToChartGap !== 12 || recoveryStack.visualPanelGaps.some((gap) => gap !== 12)) process.exitCode = 1;
   if (!recoveryDensity.queueRows.length || Math.max(...recoveryDensity.queueRows) - Math.min(...recoveryDensity.queueRows) > 1) process.exitCode = 1;
   if (dataLayout.activePanel !== 'data' || dataLayout.sourceToTimelineGap !== 12 || dataLayout.timelineToSystemGap !== 12) process.exitCode = 1;

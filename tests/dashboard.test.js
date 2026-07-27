@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, formatActionDue, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage, compactAsStatus, compactRecoveryStatus, priorityQueueRows, weatherComparisonRow, weatherComparisonSummary };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, formatActionDue, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, compactRepeatedActions, isSequentialRecoveryFlow, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage, compactAsStatus, compactRecoveryStatus, priorityQueueRows, weatherComparisonRow, weatherComparisonSummary };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -181,7 +181,7 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-24-1/);
+  assert.match(html, /app\.js\?v=2026-07-27-1/);
   assert.match(html, /style\.css\?v=2026-07-23-5/);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);
@@ -679,6 +679,38 @@ test('마케팅 상태는 기한으로 중복 표기하지 않는다', () => {
   assert.match(html, /기한 -/);
   assert.match(html, /상태 승인 대기/);
   assert.doesNotMatch(html, /기한 승인 대기/);
+});
+
+test('같은 마케팅 제안은 가장 이른 기한과 반복 횟수로 한 번만 표시한다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.store = 'all';
+  const source = [
+    { store: '하남 미사', action: '낮 피크 회피 안내 검토', owner: '마케팅팀', status: '회복 조치 필요', due: '16:30' },
+    { store: '하남 미사', action: '낮 피크 회피 안내 검토', owner: '마케팅팀', status: '회복 조치 필요', due: '10:30' }
+  ];
+  const rows = api.compactRepeatedActions(source, '마케팅팀');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].displayDue, '10:30');
+  assert.equal(rows[0].repeatCount, 2);
+
+  const html = api.renderActionList(source, '마케팅팀', 'marketing');
+  assert.match(html, /기한 10:30/);
+  assert.match(html, /동일 제안 2회/);
+});
+
+test('서로 다른 집계 단위의 회복 단계는 전환 퍼널로 계산하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  assert.equal(api.isSequentialRecoveryFlow([
+    { count: 43 },
+    { count: 74 },
+    { count: 83 }
+  ]), false);
+  assert.equal(api.isSequentialRecoveryFlow([
+    { count: 83 },
+    { count: 74 },
+    { count: 43 },
+    { count: 0 }
+  ]), true);
 });
 
 test('enhancedSignal 미제공은 AWS와 레이더를 정상으로 추정하지 않는다', () => {

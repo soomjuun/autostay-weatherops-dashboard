@@ -45,7 +45,7 @@ const STATIC_HELP_ITEMS = [
   ['#recoveryChartPanel h2', '지점 필터를 선택하면 D-day, D+1, D+2 처리대수·매출 회복률을 표시합니다. 100%는 기준선 회복, 90% 미만은 조치 검토 구간입니다.', '회복률 기준'],
   ['.action-panel h2', '오늘 조치할 항목은 미완료 운영 액션을 사업운영팀과 마케팅팀으로 나눕니다. 운영 제한·AS 차단·회복 조치가 우선입니다.', '조치 항목 기준'],
   ['.risk-panel h2', `오늘 기상 리스크는 활성 리스크 컬럼만 보여줍니다. ${WEATHER_SIGNAL_HELP} ${WEATHER_THRESHOLD_HELP}`, '기상 리스크 기준'],
-  ['.funnel-panel h2', '회복 실행 단계는 하락 감지부터 CRM 후보, 발송, 재방문 회수까지 전환 흐름을 보여줍니다. AS 차단은 정상화 전 단계로 별도 표시합니다.', '회복 실행 기준'],
+  ['.funnel-panel h2', '회복 단계 현황은 하락 감지, 조치, 정상화, CRM 실행의 집계 건수를 비교합니다. 단계별 집계 단위가 달라 건수가 증가하면 전환율을 계산하지 않습니다. AS 차단 이력은 현재 차단 상태와 분리합니다.', '회복 단계 현황 기준'],
   ['.small-multiple-panel h2', '지점별 회복 진행은 처리대수 회복률을 색상으로, 매출 회복률을 보조 수치로 표시합니다. 100% 이상 정상, 90~99% 관찰, 90% 미만 조치 기준입니다.', '회복 진행 기준'],
   ['.gap-panel h2', '처리대수 회복률과 매출 회복률의 차이를 비교합니다. 처리대수만 회복된 지점은 결제, 단가, 구독·쿠폰 믹스를 추가 확인합니다.', '회복 갭 기준'],
   ['.table-panel h2', `지점별 상태 표는 운영 상태, 기상 신호, AS·다운타임, CS·고객 안내, 회복, 담당, 다음 액션을 한 줄로 비교합니다. ${WEATHER_API_HELP}`, '지점별 상태 기준'],
@@ -2480,7 +2480,8 @@ function historicalOverdueSummary() {
 }
 
 function renderActionList(items, fallbackTeam, kind) {
-  const filtered = (items || []).filter(matchesSelectedStore);
+  const sourceRows = (items || []).filter(matchesSelectedStore);
+  const filtered = kind === 'marketing' ? compactRepeatedActions(sourceRows, fallbackTeam) : sourceRows;
   if (!filtered.length) {
     return `<div class="empty-state compact">현재 필터 기준 ${kind === 'marketing' ? '승인 검토 후보가' : '오늘 공식 미완료 조치가'} 없습니다.</div>`;
   }
@@ -2489,9 +2490,10 @@ function renderActionList(items, fallbackTeam, kind) {
     const store = firstPresent(item, ['store', 'storeName', 'store_name', 'name']) || fallbackTeam;
     const action = firstPresent(item, ['action', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action', 'customerAction', 'customer_action', 'revenueAction', 'revenue_action']) || '-';
     const owner = firstPresent(item, ['owner', 'dri', 'team', 'opsLead', 'ops_lead']) || fallbackTeam;
-    const due = firstPresent(item, ['due', 'dueAt', 'due_at', 'nextUpdateDue', 'next_update_due', 'vendorEta', 'vendor_eta']) || '-';
+    const due = firstPresent(item, ['displayDue', 'due', 'dueAt', 'due_at', 'nextUpdateDue', 'next_update_due', 'vendorEta', 'vendor_eta']) || '-';
     const audience = firstPresent(item, ['estimatedAudience', 'estimated_audience', 'audienceCount', 'audience_count']);
     const itemStatus = firstPresent(item, ['status', 'approvalStatus', 'approval_status', 'sendStatus', 'send_status']) || '';
+    const repeatCount = Number(item.repeatCount || 1);
     const scopeText = kind === 'marketing' ? '제안 · 자동 발송 아님' : '오늘 실행';
     return `
       <div class="action-item">
@@ -2505,11 +2507,44 @@ function renderActionList(items, fallbackTeam, kind) {
           <span>담당 ${escapeHtml(owner)}</span>
           <span>기한 ${escapeHtml(formatActionDue(due))}</span>
           ${kind === 'marketing' && itemStatus ? `<span>상태 ${escapeHtml(itemStatus)}</span>` : ''}
+          ${kind === 'marketing' && repeatCount > 1 ? `<span>동일 제안 ${repeatCount.toLocaleString('ko-KR')}회</span>` : ''}
           ${audience !== null && Number.isFinite(Number(audience)) ? `<span>대상 ${Number(audience).toLocaleString('ko-KR')}명</span>` : ''}
         </div>
       </div>
     `;
   }).join('');
+}
+
+function compactRepeatedActions(items, fallbackTeam) {
+  const merged = new Map();
+  arrayFrom(items).forEach((item) => {
+    const store = firstPresent(item, ['store', 'storeName', 'store_name', 'name']) || fallbackTeam;
+    const action = firstPresent(item, ['action', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action', 'customerAction', 'customer_action', 'revenueAction', 'revenue_action']) || '-';
+    const owner = firstPresent(item, ['owner', 'dri', 'team', 'opsLead', 'ops_lead']) || fallbackTeam;
+    const status = firstPresent(item, ['status', 'approvalStatus', 'approval_status', 'sendStatus', 'send_status']) || '';
+    const priority = firstPresent(item, ['priority', 'level', 'actionLevel', 'action_level']) || 'P1';
+    const due = firstPresent(item, ['due', 'dueAt', 'due_at', 'nextUpdateDue', 'next_update_due', 'vendorEta', 'vendor_eta']) || '-';
+    const key = [store, action, owner, status, priority].map(normalizeActionKeyPart).join('|');
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { ...item, displayDue: due, repeatCount: 1 });
+      return;
+    }
+    existing.repeatCount += 1;
+    if (actionDueRank(due) < actionDueRank(existing.displayDue)) existing.displayDue = due;
+  });
+  return [...merged.values()];
+}
+
+function normalizeActionKeyPart(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function actionDueRank(value) {
+  const clock = formatClockValue(value);
+  if (!clock) return Number.POSITIVE_INFINITY;
+  const [hour, minute] = clock.split(':').map(Number);
+  return hour * 60 + minute;
 }
 
 function formatActionDue(value) {
@@ -2650,29 +2685,42 @@ function renderRecoveryFunnel() {
     return;
   }
   const max = Math.max(...rows.map((row) => Number(row.count || 0)), 1);
+  const isSequential = isSequentialRecoveryFlow(rows);
   const flowHtml = rows.map((row, index) => {
     const count = Number(row.count || 0);
     const width = Math.max(8, Math.round(count / max * 100));
     const previous = index > 0 ? Number(rows[index - 1].count || 0) : null;
     const conversion = previous && previous > 0 ? Math.round(count / previous * 100) : null;
     const dropoff = previous !== null ? Math.max(0, previous - count) : null;
+    const note = index === 0
+      ? (isSequential ? '시작 단계' : '단계별 현재 집계')
+      : (isSequential
+        ? `전 단계 대비 ${conversion === null ? '-' : `${conversion}%`} 유지 · ${dropoff.toLocaleString('ko-KR')}건 이탈`
+        : '집계 단위가 달라 전환율 계산 제외');
     return `
       <div class="funnel-item">
         <div class="funnel-label"><span>${escapeHtml(row.label)}</span><b>${count.toLocaleString('ko-KR')}</b></div>
         <div class="funnel-track"><span style="width:${width}%"></span></div>
-        <div class="funnel-note">${index === 0 ? '시작 단계' : `전 단계 대비 ${conversion === null ? '-' : `${conversion}%`} 유지 · ${dropoff.toLocaleString('ko-KR')}건 이탈`}</div>
+        <div class="funnel-note">${escapeHtml(note)}</div>
       </div>
     `;
   }).join('');
+  const currentAsBlocked = metricFromKeysNumber(state.data.summary || {}, ['asBlockedCount', 'as_blocked_count']) || 0;
+  const sideCount = sideRows.reduce((sum, row) => sum + Number(row.count || 0), 0);
   const sideHtml = sideRows.length ? `
     <div class="funnel-side-note">
-      <span>전환 계산 제외</span>
-      <strong>AS 차단</strong>
-      <b>${sideRows.reduce((sum, row) => sum + Number(row.count || 0), 0).toLocaleString('ko-KR')}건</b>
-      <small>정상화 전 CRM·재방문 퍼널로 보지 않습니다.</small>
+      <span>단계 집계와 분리</span>
+      <strong>${currentAsBlocked > 0 ? '현재 AS 차단' : '집계 내 AS 차단 이력'}</strong>
+      <b>${sideCount.toLocaleString('ko-KR')}건</b>
+      <small>${currentAsBlocked > 0 ? '정상화 전 CRM·재방문 실행을 보류합니다.' : '현재 AS 차단은 없습니다. 상단 다운타임 상태를 기준으로 확인합니다.'}</small>
     </div>
   ` : '';
   $('recoveryFunnel').innerHTML = flowHtml + sideHtml;
+}
+
+function isSequentialRecoveryFlow(rows) {
+  const counts = arrayFrom(rows).map((row) => Number(row.count || 0));
+  return counts.every((count, index) => index === 0 || count <= counts[index - 1]);
 }
 
 function renderRecoveryStageHeatmap() {
