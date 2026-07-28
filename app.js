@@ -3599,12 +3599,19 @@ function activeRiskColumns(rows) {
   rows.forEach((row) => {
     (row.cells || []).forEach((cell) => {
       const key = cell.key || cell.label;
-      if (!columnsByKey.has(key)) columnsByKey.set(key, { key, label: cell.label || key });
+      if (!columnsByKey.has(key)) columnsByKey.set(key, { key, label: riskColumnLabel(cell) });
       if (normalizeStatus(cell.level) !== 'Green') activeKeys.add(key);
     });
   });
   const columns = [...columnsByKey.values()].filter((column) => activeKeys.has(column.key));
   return columns.length ? columns : [{ key: 'normal', label: '정상' }];
+}
+
+function riskColumnLabel(cell) {
+  const key = String(cell && cell.key || '').toLowerCase();
+  const label = String(cell && cell.label || cell && cell.key || '').trim();
+  if (key === 'heat' || /^(?:heat|고온|폭염|고온\s*[·,/]\s*폭염)$/i.test(label)) return '고온/폭염';
+  return label;
 }
 
 function matrixCellForColumn(row, column) {
