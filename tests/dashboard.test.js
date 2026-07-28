@@ -33,7 +33,7 @@ function loadDashboardLogic() {
       }
     }
   };
-  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, formatActionDue, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, compactRepeatedActions, isSequentialRecoveryFlow, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage, compactAsStatus, compactRecoveryStatus, priorityQueueRows, weatherComparisonRow, weatherComparisonSummary };`, context);
+  vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, formatActionDue, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, compactRepeatedActions, isSequentialRecoveryFlow, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage, compactAsStatus, compactRecoveryStatus, priorityQueueRows, weatherComparisonRow, weatherComparisonSummary, formatRiskTypeLabel, actionRiskTypeText, storeWeatherTitle, weatherDetailText };`, context);
   return { api: context.__dashboardTest, scheduled: () => scheduled };
 }
 
@@ -111,8 +111,27 @@ test('우선 확인 큐는 공식 액션 지점을 이름으로 매칭해 중복
   const rows = api.priorityQueueRows();
   assert.equal(rows.length, 7);
   assert.equal(rows.filter((row) => row.storeName === '하남 미사').length, 1);
-  assert.equal(rows.find((row) => row.storeName === '하남 미사').reason, '강수·폭염');
-  assert.equal(rows.find((row) => row.storeName === '서울 성수').reason, '폭염');
+  assert.equal(rows.find((row) => row.storeName === '하남 미사').reason, '강수·고온/폭염');
+  assert.equal(rows.find((row) => row.storeName === '서울 성수').reason, '고온/폭염');
+});
+
+test('heat 트리거와 활성 기상 신호를 고온/폭염으로 일관되게 표시한다', () => {
+  const { api } = loadDashboardLogic();
+  assert.equal(api.formatRiskTypeLabel('heat'), '고온/폭염');
+  assert.equal(api.formatRiskTypeLabel('고온, 폭염'), '고온/폭염');
+  assert.equal(api.formatRiskTypeLabel('강수·폭염'), '강수·고온/폭염');
+  assert.equal(api.actionRiskTypeText({ riskTypes: ['rain', 'heat'] }), '강수·고온/폭염');
+
+  const store = {
+    signalStatus: 'Orange',
+    signalRiskType: 'heat',
+    signalReason: '최고기온 34도',
+    weather: '정상',
+    weatherDetail: '활성 운영 기상 없음',
+    trigger: '정상'
+  };
+  assert.equal(api.storeWeatherTitle(store), '고온/폭염');
+  assert.equal(api.weatherDetailText(store), '최고기온 34도');
 });
 
 test('운영 환경에서 API 미설정은 샘플 데이터로 대체하지 않는다', async () => {
@@ -181,7 +200,7 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-27-1/);
+  assert.match(html, /app\.js\?v=2026-07-28-1/);
   assert.match(html, /style\.css\?v=2026-07-23-5/);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);

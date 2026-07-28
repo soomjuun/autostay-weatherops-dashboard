@@ -34,7 +34,7 @@ const SUMMARY_GRACE_MINUTES = 45;
 const PROD_MODE_HELP = '이 대시보드는 운영 반영 대상(prod) dashboard payload를 기준으로 집계합니다. shadow/test 실행 기록은 원장 검증에는 사용되지만 화면 집계에서는 제외됩니다.';
 const WEATHER_SIGNAL_HELP = '기상 신호는 최신 Action_Log/Alert_Log 기준의 API 감지 결과이며 2시간마다 무알림 갱신됩니다. shadow 신호도 실제 API 기반일 수 있으며, 공식 운영 액션 원장 반영 전 상태로 분리 표시합니다.';
 const WEATHER_API_HELP = '기상 수치는 현재 실황과 오늘 남은 운영시간 예보를 구분해 표시합니다. Apps Script payload에 실황 또는 예보 필드가 없는 값은 표시하지 않으며, 운영 상태와 기상 신호는 분리해서 봐야 합니다.';
-const WEATHER_THRESHOLD_HELP = '임계값: 강수 Yellow=POP 60% 또는 PCP 0.1mm+, Orange=POP 80% 또는 PCP 5mm+, Red=PCP 15mm+. 풍속 7/10/14m/s, 한파 0/-5/-10도, 적설 0.1/1/5cm, 폭염 30/33/35도, PM10 81/151/300, PM2.5 36/76/150 기준입니다.';
+const WEATHER_THRESHOLD_HELP = '임계값: 강수 Yellow=POP 60% 또는 PCP 0.1mm+, Orange=POP 80% 또는 PCP 5mm+, Red=PCP 15mm+. 풍속 7/10/14m/s, 한파 0/-5/-10도, 적설 0.1/1/5cm, 고온/폭염 30/33/35도, PM10 81/151/300, PM2.5 36/76/150 기준입니다.';
 const STATIC_HELP_ITEMS = [
   ['.source-strip h2', '단기예보·실황·대기질은 공식 prod 판단의 원천 가용성을, AWS·레이더·기상특보는 신규 shadow 검증 상태를 보여줍니다. shadow 검증 결과는 공식 운영 등급과 액션을 자동 변경하지 않습니다.', '기상 원천 상태 기준'],
   ['.map-panel h2', `지점 운영 매트릭스는 공식 prod 운영 상태, 최신 기상 신호, shadow 검증과 AS·CS·회복 게이트를 한 행에서 비교합니다. ${WEATHER_SIGNAL_HELP}`, '지점 운영 매트릭스 기준'],
@@ -2035,29 +2035,46 @@ function renderCommandMatrixRow(store) {
 }
 
 function compactRiskType(value) {
-  const text = String(value || '').trim();
-  if (!text || text === '-') return '';
-  return text.split(/[·,/]/).map((part) => part.trim()).filter(Boolean).slice(0, 2).join('·');
+  return formatRiskTypeLabel(value).split('·').filter(Boolean).slice(0, 2).join('·');
 }
 
-function actionRiskTypeText(item) {
+function formatRiskTypeLabel(value) {
+  const text = String(value || '').trim();
+  if (!text || text === '-') return '';
   const labels = {
     rain: '강수',
-    heat: '폭염',
+    heat: '고온/폭염',
     wind: '강풍',
     cold: '한파',
     snow: '적설',
     dust: '대기질',
     air: '대기질'
   };
+  const parts = text.split(/[·,/]/).map((part) => part.trim()).filter(Boolean);
+  const normalized = [];
+  parts.forEach((part) => {
+    const lower = part.toLowerCase();
+    const label = ['heat', '고온', '폭염', '더위'].includes(lower)
+      ? '고온/폭염'
+      : (labels[lower] || part);
+    if (!normalized.includes(label)) normalized.push(label);
+  });
+  return normalized.join('·');
+}
+
+function actionReasonLabel(value) {
+  const text = String(value || '').trim();
+  if (!text || text === '-') return '';
+  if (/^(?:heat|고온|폭염|더위|고온\s*[·,/]\s*폭염)$/i.test(text)) return '고온/폭염';
+  return text;
+}
+
+function actionRiskTypeText(item) {
   const raw = [
     ...arrayFrom(firstPresent(item, ['riskTypes', 'risk_types'])),
     ...String(firstPresent(item, ['riskType', 'risk_type']) || '').split(/[·,/]/)
   ];
-  return uniqueTextParts(raw.map((value) => {
-    const text = String(value || '').trim();
-    return labels[text.toLowerCase()] || text;
-  })).slice(0, 2).join('·');
+  return compactRiskType(raw.join('·'));
 }
 
 function compactAsStatus(store) {
@@ -2139,7 +2156,7 @@ function priorityQueueRows() {
       storeName,
       status: normalizeStatus(firstPresent(item, ['level', 'actionLevel', 'action_level', 'status']) || 'Orange'),
       scope: '공식 액션',
-      reason: firstPresent(item, ['reason', 'trigger']) || actionRiskTypeText(item) || '오늘 미완료 운영 액션',
+      reason: actionReasonLabel(firstPresent(item, ['reason', 'trigger'])) || actionRiskTypeText(item) || '오늘 미완료 운영 액션',
       meta: `담당 ${firstPresent(item, ['owner', 'dri', 'team']) || '사업운영팀'} · 기한 ${formatActionDue(firstPresent(item, ['due', 'dueAt', 'due_at']) || '-')}`,
       action: firstPresent(item, ['action', 'nextAction', 'next_action', 'recommendedAction', 'recommended_action']) || '-'
     };
@@ -2153,7 +2170,7 @@ function priorityQueueRows() {
       storeName: store.name,
       status: normalizeStatus(store.status),
       scope: '기상 확인',
-      reason: [store.signalRiskType, store.signalReason].filter((value) => value && value !== '-').join(' · ') || store.weather || '기상 신호 확인',
+      reason: [formatRiskTypeLabel(store.signalRiskType), store.signalReason].filter((value) => value && value !== '-').join(' · ') || formatRiskTypeLabel(store.weather) || store.weather || '기상 신호 확인',
       meta: weatherComparisonSummary(store),
       action: storeNextActionText(store)
     }));
@@ -2922,6 +2939,7 @@ function renderStoreTable() {
     const asView = compactAsStatus(store);
     const recoveryView = compactRecoveryStatus(store);
     const nextAction = storeNextActionText(store);
+    const weatherTitle = storeWeatherTitle(store);
     const weatherDetail = weatherDetailText(store);
     const enhancedLine = enhancedStoreLine(store);
     const asDetail = downtimeDetailText(store);
@@ -2937,7 +2955,7 @@ function renderStoreTable() {
           <span class="table-cell-stack"><span class="status-pair"><span class="badge ${store.prodStatus}" title="${escapeAttr(statusHelpText(store.prodStatus))}">운영 ${escapeHtml(levelLabel(store.prodStatus))}</span><span class="badge ${store.signalStatus}" title="${escapeAttr(signalStatusHelpText(store))}">신호 ${escapeHtml(levelLabel(store.signalStatus))}</span></span><span class="table-subline score-line">운영 점수 ${escapeHtml(store.riskScore)}${renderInfoTip(riskScoreHelpText(store), '위험 점수 기준')}</span></span>
         </td>
         <td class="cell-weather" data-label="기상/트리거">
-          <span class="table-cell-stack"><span class="table-main-line">${escapeHtml(store.weather)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><span class="table-subline clamp-1" title="${escapeAttr(weatherDetail)}">${escapeHtml(weatherDetail)}</span><span class="table-subline enhanced-compact clamp-1" title="${escapeAttr(enhancedStoreDetail(store))}">${escapeHtml(enhancedLine)}</span></span>
+          <span class="table-cell-stack"><span class="table-main-line">${escapeHtml(weatherTitle)}${renderInfoTip(weatherCellHelpText(store), '기상/트리거 기준')}</span><span class="table-subline clamp-1" title="${escapeAttr(weatherDetail)}">${escapeHtml(weatherDetail)}</span><span class="table-subline enhanced-compact clamp-1" title="${escapeAttr(enhancedStoreDetail(store))}">${escapeHtml(enhancedLine)}</span></span>
         </td>
         <td class="cell-as is-${escapeAttr(asView.className)}" data-label="AS"><span class="table-cell-stack"><span class="table-main-line">${escapeHtml(store.asStatus)}${renderInfoTip(asStatusHelpText(store), 'AS 기준')}</span>${asDetail ? `<span class="table-subline clamp-1" title="${escapeAttr(asDetail)}">${escapeHtml(asDetail)}</span>` : ''}</span></td>
         <td class="cell-cs is-${escapeAttr(customer.state)}" data-label="CS/고객">
@@ -3089,9 +3107,19 @@ function kpiHelpText(label) {
 }
 
 function weatherDetailText(store) {
+  if (['Error', 'Red', 'Orange', 'Yellow'].includes(normalizeStatus(store.signalStatus)) && store.signalReason) {
+    return store.signalReason;
+  }
   if (store.weatherDetail) return store.weatherDetail;
   if (store.trigger && store.trigger !== '-') return store.trigger;
   return 'prod 기준 활성 기상 수치 없음';
+}
+
+function storeWeatherTitle(store) {
+  const signalStatus = normalizeStatus(store.signalStatus);
+  const signalRisk = formatRiskTypeLabel(store.signalRiskType);
+  if (['Error', 'Red', 'Orange', 'Yellow'].includes(signalStatus) && signalRisk) return signalRisk;
+  return formatRiskTypeLabel(store.weather) || store.weather || '-';
 }
 
 function weatherCellHelpText(store) {
@@ -3601,7 +3629,7 @@ function deriveRiskMatrixRows() {
     ['cold', '한파', ['한파', '동파', '저온']],
     ['snow', '대설', ['대설', '적설', '눈', '결빙']],
     ['dust', '대기질', ['미세먼지', '황사', '대기질', 'pm']],
-    ['heat', '폭염', ['폭염', '고온', '더위']]
+    ['heat', '고온/폭염', ['폭염', '고온', '더위']]
   ];
   return state.data.stores.map((store) => {
     const text = `${store.weather} ${store.weatherDetail} ${store.trigger} ${store.nextAction}`.toLowerCase();
