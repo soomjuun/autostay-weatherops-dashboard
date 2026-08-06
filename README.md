@@ -237,7 +237,7 @@ autostay-weather-ops-dashboard
 - 신규 검증 원천은 `sourceErrors/sourceError`와 `sourceWarningItems/sourceWarnings/fallbackNotices`를 분리합니다. AWS 월보·예비 관측소·레이더 광역 대표 사용은 `대체자료 안내`, 실제 조회 실패만 `신규 검증 오류`로 표시합니다.
 - `stores[].siteVulnerability`와 `weatherSignal.stores[].siteVulnerability`를 모두 수용합니다. 강수·강풍 신호가 관련된 지점 카드에만 현장 취약 요약과 우선 조치 최대 2개를 노출하며, 상세에는 침수 지점·배수 시간·출입 동선·설비·이력·갱신 시각을 표시합니다. `source` URL은 화면에 노출하지 않습니다.
 - heat 트리거는 공식 폭염특보와 내부 최고기온 임계값을 함께 포괄하는 `고온/폭염`으로 표시합니다. prod 기상 신호는 운영 액션 원장이나 shadow 검증 신호와 합치지 않습니다.
-- 현장 취약정보는 운영 위험등급, 운영 제한, 관리자 입력 또는 별도 workflow task를 자동 변경하지 않습니다. 현재 Apps Script build 계약은 `2026-07-28-trigger-efficiency-audit.15`입니다.
+- 현장 취약정보는 운영 위험등급, 운영 제한, 관리자 입력 또는 별도 workflow task를 자동 변경하지 않습니다. 현재 Apps Script build 계약은 `2026-08-06-operational-purpose-audit.16`입니다.
 - `forecastCacheFallback`, `observationCacheFallback`, `airCacheFallback`이 참이면 기상 칩과 설명에서 캐시 대체값임을 경고합니다.
 - `generatedAt`이 없으면 현재 시각으로 대체하지 않고 `-`와 경고 배너로 표시합니다.
 - 시간 포맷은 브라우저 로컬시간이 아니라 KST 기준으로 표시합니다.
