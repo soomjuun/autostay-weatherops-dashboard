@@ -55,6 +55,8 @@ weather-ops-dashboard/
 | `WEATHER_OPS_API_TOKEN` | Apps Script API에 `token` 쿼리로 전달할 공유 토큰 |
 | `WEATHER_OPS_EXPECTED_VERSION` | 선택값. 배포본을 특정 Pack 버전에 고정 검증할 때만 설정합니다. 미설정 시 Apps Script payload의 현재 버전을 자동 표시합니다. |
 | `WEATHER_OPS_ALLOW_SAMPLE` | 샘플 데이터 표시 여부. 운영 기본값은 `false`, 데모/개발 검토 때만 `true` |
+| `WEATHER_OPS_UPSTREAM_TIMEOUT_MS` | Apps Script 응답 제한시간. 기본값 `30000`. Vercel 함수 제한 35초 안에서 cold start를 허용합니다. |
+| `WEATHER_OPS_UPSTREAM_RETRY_COUNT` | 업스트림 재시도 횟수. 기본값 `0`. `fresh=1` 계산을 중복 실행하지 않도록 운영에서는 0을 유지합니다. |
 
 Apps Script 속성:
 

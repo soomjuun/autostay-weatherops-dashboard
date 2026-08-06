@@ -840,6 +840,8 @@ test('기대 버전은 환경변수 설정 시에만 고정 비교한다', () =>
   assert.match(proxySource, /overdueExceptions: normalizeActionRows/);
   assert.match(proxySource, /v2\.16\.4-weather-signal\.2/);
   assert.match(proxySource, /2026-08-06-operational-purpose-audit\.16/);
+  assert.match(proxySource, /WEATHER_OPS_UPSTREAM_TIMEOUT_MS \|\| 30000/);
+  assert.match(proxySource, /WEATHER_OPS_UPSTREAM_RETRY_COUNT \|\| 0/);
 });
 
 test('Command Center 게이트 상태는 긴 원문을 운영 판단용 표현으로 축약한다', () => {
