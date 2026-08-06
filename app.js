@@ -72,7 +72,7 @@ function checkAuthSession() {
 
 function bindEvents() {
   bindDashboardTabs();
-  $('refreshBtn').addEventListener('click', () => loadDashboard({ fresh: true }));
+  $('refreshBtn').addEventListener('click', () => loadDashboard());
   $('copyBriefBtn').addEventListener('click', copyBrief);
   $('storeFilter').addEventListener('change', (event) => {
     state.store = event.target.value;
@@ -106,10 +106,10 @@ function bindEvents() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'visible') return;
     if (!state.lastLoadedAt || Date.now() - state.lastLoadedAt >= AUTO_REFRESH_INTERVAL_MS) {
-      loadDashboard({ fresh: true, silent: true });
+      loadDashboard({ silent: true });
     }
   });
-  window.addEventListener('online', () => loadDashboard({ fresh: true, silent: true }));
+  window.addEventListener('online', () => loadDashboard({ silent: true }));
   $('dialogClose').addEventListener('click', closeStoreDialog);
   $('storeDialog').addEventListener('close', () => {
     if (!state.dialogTrigger) return;

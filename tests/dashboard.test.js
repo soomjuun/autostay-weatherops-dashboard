@@ -201,7 +201,7 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-07-28-2/);
+  assert.match(html, /app\.js\?v=2026-08-06-1/);
   assert.match(html, /style\.css\?v=2026-07-23-5/);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);
@@ -210,6 +210,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(css, /\.overview-command-layout\s*\{[^}]*grid-template-columns:/s);
   assert.match(css, /\.recovery-primary-grid\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*1fr\)/s);
   assert.match(app, /queue-table/);
+  assert.match(app, /\$\('refreshBtn'\)\.addEventListener\('click', \(\) => loadDashboard\(\)\)/);
+  assert.doesNotMatch(app, /loadDashboard\(\{ fresh: true/);
   assert.match(html, /data-tab-target="overview">오늘 판단<\/button>/);
   assert.match(html, /data-tab-target="stores"[^>]*>지점 상세<\/button>/);
   assert.match(html, /data-tab-target="recovery"[^>]*>회복<\/button>/);
