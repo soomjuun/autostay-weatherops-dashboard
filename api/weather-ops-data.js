@@ -2,8 +2,8 @@ const EXPECTED_PACK_VERSION = String(process.env.WEATHER_OPS_EXPECTED_VERSION ||
 const VERSION_REMEDIATION = '시트 탭 수정 대상이 아닙니다. Apps Script Web App을 새 버전으로 재배포하거나 Vercel WEATHER_OPS_API_URL이 최신 Web App URL인지 확인하세요.';
 const APPS_SCRIPT_TOKEN_MISSING = 'WEATHER_OPS_DASHBOARD_TOKEN is not configured';
 const APPS_SCRIPT_TOKEN_UNAUTHORIZED = 'Unauthorized dashboard token';
-const UPSTREAM_TIMEOUT_MS = Math.max(1000, Number(process.env.WEATHER_OPS_UPSTREAM_TIMEOUT_MS || 15000) || 15000);
-const UPSTREAM_RETRY_COUNT = Math.max(0, Number(process.env.WEATHER_OPS_UPSTREAM_RETRY_COUNT || 1) || 0);
+const UPSTREAM_TIMEOUT_MS = Math.max(1000, Number(process.env.WEATHER_OPS_UPSTREAM_TIMEOUT_MS || 50000) || 50000);
+const UPSTREAM_RETRY_COUNT = Math.max(0, Number(process.env.WEATHER_OPS_UPSTREAM_RETRY_COUNT || 0) || 0);
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
@@ -476,7 +476,7 @@ function samplePayload(source) {
   return {
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    buildId: '2026-08-06-operational-purpose-audit.16',
+    buildId: '2026-08-18-recovery-pipeline-integrity.17',
     generatedAt: iso,
     source,
     summary: {
@@ -566,7 +566,7 @@ function samplePayload(source) {
       packVersion: 'v2.16.4',
       sheetVersion: 'v2.16.4',
       dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-      scriptBuildId: '2026-08-06-operational-purpose-audit.16',
+      scriptBuildId: '2026-08-18-recovery-pipeline-integrity.17',
       decisionReadiness: 'shadow_only',
       nextSummaryDueAt: iso,
       systemError24h: 0,

@@ -539,7 +539,7 @@ test('최신 payload와 build 식별자를 프런트 계약에 보존한다', ()
   const normalized = api.normalize({
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    buildId: '2026-08-06-operational-purpose-audit.16',
+    buildId: '2026-08-18-recovery-pipeline-integrity.17',
     summary: {},
     stores: [],
     weatherSignal: {},
@@ -547,7 +547,7 @@ test('최신 payload와 build 식별자를 프런트 계약에 보존한다', ()
     system: {}
   });
   assert.equal(normalized.dashboardPayloadVersion, 'v2.16.4-weather-signal.2');
-  assert.equal(normalized.buildId, '2026-08-06-operational-purpose-audit.16');
+  assert.equal(normalized.buildId, '2026-08-18-recovery-pipeline-integrity.17');
   assert.equal(normalized.overdueExceptions.length, 1);
 });
 
@@ -591,7 +591,7 @@ test('최신 현장 취약정보 계약을 운영 지점과 기상 신호 양쪽
   const normalized = api.normalize({
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    system: { scriptBuildId: '2026-08-06-operational-purpose-audit.16' },
+    system: { scriptBuildId: '2026-08-18-recovery-pipeline-integrity.17' },
     stores: [{
       storeId: 'hanam',
       storeName: '하남 미사',
@@ -619,7 +619,7 @@ test('최신 현장 취약정보 계약을 운영 지점과 기상 신호 양쪽
     }
   });
   const store = normalized.stores[0];
-  assert.equal(normalized.buildId, '2026-08-06-operational-purpose-audit.16');
+  assert.equal(normalized.buildId, '2026-08-18-recovery-pipeline-integrity.17');
   assert.equal(store.siteVulnerability.provided, true);
   assert.equal(store.siteVulnerability.rainPoolingPoints, '입구·롤스크린·세차 출구');
   assert.deepEqual([...store.siteVulnerability.windPriorityActions], ['롤스크린 고정']);
@@ -841,9 +841,11 @@ test('기대 버전은 환경변수 설정 시에만 고정 비교한다', () =>
   assert.match(proxySource, /buildId: data\.buildId \|\| data\.build_id/);
   assert.match(proxySource, /overdueExceptions: normalizeActionRows/);
   assert.match(proxySource, /v2\.16\.4-weather-signal\.2/);
-  assert.match(proxySource, /2026-08-06-operational-purpose-audit\.16/);
-  assert.match(proxySource, /WEATHER_OPS_UPSTREAM_TIMEOUT_MS \|\| 15000/);
-  assert.match(proxySource, /WEATHER_OPS_UPSTREAM_RETRY_COUNT \|\| 1/);
+  assert.match(proxySource, /2026-08-18-recovery-pipeline-integrity\.17/);
+  assert.match(proxySource, /WEATHER_OPS_UPSTREAM_TIMEOUT_MS \|\| 50000/);
+  assert.match(proxySource, /WEATHER_OPS_UPSTREAM_RETRY_COUNT \|\| 0/);
+  const vercelConfig = JSON.parse(fs.readFileSync(path.join(ROOT, 'vercel.json'), 'utf8'));
+  assert.equal(vercelConfig.functions['api/weather-ops-data.js'].maxDuration, 60);
 });
 
 test('Command Center 게이트 상태는 긴 원문을 운영 판단용 표현으로 축약한다', () => {
