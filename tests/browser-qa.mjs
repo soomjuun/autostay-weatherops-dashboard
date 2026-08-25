@@ -160,7 +160,7 @@ const weatherTimeline = [
 const fixturePayload = {
   version: 'v2.16.4',
   dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-  buildId: '2026-08-18-recovery-pipeline-integrity.17',
+  buildId: '2026-08-25-revenue-runtime-hotfix.20',
   generatedAt: now,
   source: 'apps_script',
   summary: { overallStatus: 'Green', headline: '운영 원장은 정상이며 기상 사전점검 2개 지점입니다.', immediateCount: 0, asBlockedCount: 0, recoveryActionCount: 0, dataWaitCount: 0, crmReadyCount: 0 },
@@ -183,7 +183,7 @@ const fixturePayload = {
   marketingActions,
   weatherTimeline,
   system: {
-    scriptBuildId: '2026-08-18-recovery-pipeline-integrity.17',
+    scriptBuildId: '2026-08-25-revenue-runtime-hotfix.20',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
     decisionReadiness: 'prod_ready',
     summaryStatus: 'ok',

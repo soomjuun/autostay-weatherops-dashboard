@@ -476,7 +476,7 @@ function samplePayload(source) {
   return {
     version: 'v2.16.4',
     dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-    buildId: '2026-08-18-recovery-pipeline-integrity.17',
+    buildId: '2026-08-25-revenue-runtime-hotfix.20',
     generatedAt: iso,
     source,
     summary: {
@@ -566,7 +566,7 @@ function samplePayload(source) {
       packVersion: 'v2.16.4',
       sheetVersion: 'v2.16.4',
       dashboardPayloadVersion: 'v2.16.4-weather-signal.2',
-      scriptBuildId: '2026-08-18-recovery-pipeline-integrity.17',
+      scriptBuildId: '2026-08-25-revenue-runtime-hotfix.20',
       decisionReadiness: 'shadow_only',
       nextSummaryDueAt: iso,
       systemError24h: 0,
