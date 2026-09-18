@@ -73,6 +73,26 @@ test('기상 조치 없음과 AS 확인 대기는 동시에 표시하고 AS 다�
   assert.match(api.dashboardHeadline(), /AS 확인 1개점/);
 });
 
+test('AS 보고 메모를 다음 행동과 분리하고 공백 코드만 안전하게 정리한다', () => {
+  const { api } = loadDashboardLogic();
+  const report = '점검 후 해결 보고. 오류로?  갱신 확인 요청 &#x20; &amp;nbsp; <img src=x onerror=alert(1)>';
+  const store = api.normalizeStore({ id: 'test', asStatus: 'AS 차단', nextAction: report });
+  const action = { storeId: 'test', riskType: 'vendor_as', action: report, status: '운영 정상화' };
+  api.state.data = { stores: [store], opsActions: [action] };
+  assert.equal(api.storeNextActionText(store), 'AS 원장과 현장 정상운영 가능 여부 확인');
+  assert.equal(api.priorityQueueRows()[0].action.includes('오류로?'), false);
+  const html = api.renderActionList([action], '사업운영팀', 'operations');
+  assert.match(html, /<details class="source-report"><summary>보고 원문<\/summary>/);
+  assert.match(html, /오류로\? 갱신 확인 요청 &lt;img/);
+  assert.doesNotMatch(html, /&#x20;|&amp;nbsp;|<img/);
+  assert.match(html, /원천 상태 운영 정상화/);
+  assert.equal(action.action, report);
+  assert.equal(store.nextAction, report);
+  assert.equal(store.asStatus, 'AS 차단');
+  store.asStatus = '정상';
+  assert.equal(api.storeNextActionText(store), '최신 AS 상태와 미해결 기록 대조');
+});
+
 test('저장본 갱신 실패를 현재 상태로 주장하지 않는다', () => {
   const { api } = loadDashboardLogic();
   api.state.dataIsCached = true;
@@ -322,8 +342,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-09-18-operations-quality-1/);
-  assert.match(html, /style\.css\?v=2026-09-18-operations-quality-2/);
+  assert.match(html, /app\.js\?v=2026-09-18-report-copy-1/);
+  assert.match(html, /style\.css\?v=2026-09-18-report-copy-1/);
   assert.match(css, /\.command-hero \.mission-card \.kpi-value\s*\{[^}]*word-break:\s*keep-all/s);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);

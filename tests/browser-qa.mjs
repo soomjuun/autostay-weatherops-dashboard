@@ -205,7 +205,7 @@ if (qualityScenario && !payloadPath) {
   fixturePayload.opsActions = [0, 1].flatMap((index) => [0, 1].map((report) => ({
     storeId: stores[index].id, store: stores[index].name, reportId: `fixture-${index}-${report}`,
     riskType: 'vendor_as', owner: stores[index].dri, status: '수리 완료',
-    action: '긴 AS 사유 검증: 협력사 작업 완료와 현장 정상운영 확인을 구분하고 마지막 보고 원본을 보존해야 합니다.',
+    action: '긴 AS 사유 검증: 협력사 작업 완료와 현장 정상운영 확인을 구분하고 마지막 보고 원본을 보존해야 합니다. 오류로?  갱신 확인 요청 &#x20;',
     dueAt: report ? '' : '2026-09-01T10:00:00+09:00'
   })));
   fixturePayload.recovery.storeSeries[stores[0].id] = { processedRate: [0, null, 100], revenueRate: [null, 0, 90] };
@@ -358,6 +358,7 @@ try {
     return {
       activePanel: document.querySelector('[data-tab-panel]:not([hidden])')?.dataset.tabPanel || '',
       actionCards: heights('.action-item'),
+      actionGroups: ['#opsActions', '#marketingActions'].map((selector) => heights(`${selector} .action-item`)),
       tableRows: heights('#storeTable tr'),
       marketingColumns: getComputedStyle(document.getElementById('marketingActions')).gridTemplateColumns.split(' ').length,
       marketingCardCount: document.querySelectorAll('#marketingActions .action-item').length,
@@ -442,6 +443,18 @@ try {
         tableCards: document.querySelectorAll('#storeTable tr').length
       }));
       await page.screenshot({ path: path.join(OUTPUT, '07-mobile-stores.png'), fullPage: true });
+      if (qualityScenario && !payloadPath) {
+        const report = page.locator('#opsActions .source-report').first();
+        if (await report.locator('p').isVisible()) throw new Error('Source report must be collapsed initially');
+        await report.locator('summary').focus();
+        await page.keyboard.press('Enter');
+        if (!await report.locator('p').isVisible()) throw new Error('Source report must open by keyboard');
+        const reportText = await report.locator('p').innerText();
+        if (reportText.includes('&#x20;') || !reportText.includes('오류로? 갱신')) throw new Error('Report formatting changed source meaning');
+        await report.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.join(OUTPUT, '15-mobile-source-report.png'), fullPage: false });
+        await report.locator('summary').click();
+      }
       await page.locator('#storeTable tr').first().scrollIntoViewIfNeeded();
       await page.screenshot({ path: path.join(OUTPUT, '12-mobile-store-detail.png'), fullPage: false });
       await page.locator('#tab-recovery').click();
@@ -526,7 +539,7 @@ try {
   if (!payloadPath && (storeDensity.marketingCardCount !== 5 || !storeDensity.marketingText.includes('동일 제안 2회'))) process.exitCode = 1;
   if (storeDensity.actionToRiskGap !== 12 || storeDensity.riskToTableGap !== 12 || storeDensity.teamGap !== 12) process.exitCode = 1;
   if (!storeDensity.tableRows.length || Math.max(...storeDensity.tableRows) - Math.min(...storeDensity.tableRows) > 4) process.exitCode = 1;
-  if (!storeDensity.actionCards.length || Math.max(...storeDensity.actionCards) - Math.min(...storeDensity.actionCards) > 4) process.exitCode = 1;
+  if (!storeDensity.actionCards.length || storeDensity.actionGroups.some((heights) => heights.length && Math.max(...heights) - Math.min(...heights) > 4)) process.exitCode = 1;
   if (recoveryDensity.activePanel !== 'recovery' || recoveryDensity.queueHeader[0] !== 44) process.exitCode = 1;
   if (!payloadPath && !qualityScenario && (!recoveryDensity.funnelTitle.startsWith('회복 단계 현황')
     || !recoveryDensity.funnelText.includes('집계 단위가 달라 전환율 계산 제외')

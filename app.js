@@ -2516,7 +2516,11 @@ function hasStoreSignalData(store) {
 }
 
 function storeNextActionText(store) {
-  const current = String(store.nextAction || '-').trim() || '-';
+  const current = displaySourceText(store.nextAction) || '-';
+  const hasAsRecord = arrayFrom(state.data?.opsActions).some((item) => isAsAction(item) && actionStore(item)?.id === store.id);
+  if (hasAsRecord) return isBlockingAsStatus(store)
+    ? 'AS 원장과 현장 정상운영 가능 여부 확인'
+    : '최신 AS 상태와 미해결 기록 대조';
   const normalFallback = /^(정상\s*운영\s*유지|전 지점 정상가동|정상운영 확인|모든 문제 해결)$/.test(current);
   if (isBlockingAsStatus(store)) return current !== '-' && !normalFallback ? current : 'AS 원장과 현장 정상운영 가능 여부 확인';
   if (!hasStoreSignalData(store) && normalizeStatus(store.prodStatus) === 'Green') {
@@ -2589,13 +2593,14 @@ function renderActionList(items, fallbackTeam, kind) {
           <span class="action-store">${escapeHtml(store)}</span>
         </div>
         <div class="action-scope scope-${escapeAttr(kind || 'operations')}">${escapeHtml(scopeText)}</div>
-        <div class="action-body">${escapeHtml(action)}</div>
+        <div class="action-body">${escapeHtml(asAction ? (currentStore && !isBlockingAsStatus(currentStore) ? '최신 AS 상태와 미해결 기록 대조' : 'AS 원장과 현장 정상운영 가능 여부 확인') : displaySourceText(action))}</div>
+        ${asAction && action !== '-' ? `<details class="source-report"><summary>보고 원문</summary><p>${escapeHtml(displaySourceText(action))}</p></details>` : ''}
         <div class="action-foot">
           <span>담당 ${escapeHtml(owner)}</span>
           <span>기한 ${escapeHtml(asAction ? (due === '-' ? '미입력' : formatMaybeDate(due)) : formatActionDue(due))}</span>
           ${asAction ? `<span>보고 시각 ${escapeHtml(firstPresent(item, ['reportedAt', 'reported_at']) ? formatDateTime(firstPresent(item, ['reportedAt', 'reported_at'])) : '원천 미제공')}</span>` : ''}
           ${asAction && firstPresent(item, ['reportId', 'report_id', 'eventId', 'event_id']) ? `<span>원장 ID ${escapeHtml(firstPresent(item, ['reportId', 'report_id', 'eventId', 'event_id']))}</span>` : ''}
-          ${kind === 'marketing' && itemStatus ? `<span>상태 ${escapeHtml(itemStatus)}</span>` : ''}
+          ${(asAction || kind === 'marketing') && itemStatus ? `<span>${asAction ? '원천 상태' : '상태'} ${escapeHtml(displaySourceText(itemStatus))}</span>` : ''}
           ${kind === 'marketing' && repeatCount > 1 ? `<span>동일 제안 ${repeatCount.toLocaleString('ko-KR')}회</span>` : ''}
           ${audience !== null && Number.isFinite(Number(audience)) ? `<span>대상 ${Number(audience).toLocaleString('ko-KR')}명</span>` : ''}
         </div>
@@ -4392,6 +4397,14 @@ function escapeHtml(value) {
     '"': '&quot;',
     "'": '&#39;'
   }[char]));
+}
+
+function displaySourceText(value) {
+  // Decode only whitespace entities; never interpret source text as HTML.
+  return String(value ?? '')
+    .replace(/&(?:amp;)?(?:nbsp|#0*32|#x0*20|#0*160|#x0*a0);/gi, ' ')
+    .replace(/[\s\u200b\ufeff]+/g, ' ')
+    .trim();
 }
 
 function escapeAttr(value) {
