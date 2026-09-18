@@ -323,7 +323,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
   assert.match(html, /app\.js\?v=2026-09-18-operations-quality-1/);
-  assert.match(html, /style\.css\?v=2026-09-18-operations-quality-1/);
+  assert.match(html, /style\.css\?v=2026-09-18-operations-quality-2/);
+  assert.match(css, /\.command-hero \.mission-card \.kpi-value\s*\{[^}]*word-break:\s*keep-all/s);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);
   assert.match(css, /--density-row:\s*56px/);

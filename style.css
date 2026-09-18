@@ -2048,6 +2048,9 @@ tbody tr:hover {
 .command-hero .mission-card .kpi-value {
   margin-top: 7px;
   font-size: 21px;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  text-wrap: balance;
 }
 .command-hero .mission-card .kpi-note {
   display: -webkit-box;
