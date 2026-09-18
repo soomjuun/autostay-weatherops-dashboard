@@ -9,6 +9,7 @@ const ROOT = path.resolve(__dirname, '..');
 function loadDashboardLogic() {
   const source = fs.readFileSync(path.join(ROOT, 'app.js'), 'utf8');
   let scheduled = null;
+  const elements = {};
   const context = {
     AbortController,
     Date,
@@ -19,7 +20,7 @@ function loadDashboardLogic() {
     sessionStorage: { getItem: () => null, setItem: () => {} },
     document: {
       addEventListener: () => {},
-      getElementById: () => null,
+      getElementById: (id) => elements[id] || null,
       querySelector: () => null,
       visibilityState: 'visible'
     },
@@ -34,7 +35,8 @@ function loadDashboardLogic() {
     }
   };
   vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, formatActionDue, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, compactRepeatedActions, isSequentialRecoveryFlow, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage, compactAsStatus, compactRecoveryStatus, priorityQueueRows, weatherComparisonRow, weatherComparisonSummary, formatRiskTypeLabel, actionRiskTypeText, storeWeatherTitle, weatherDetailText, riskColumnLabel };`, context);
-  return { api: context.__dashboardTest, scheduled: () => scheduled };
+  vm.runInNewContext('Object.assign(globalThis.__dashboardTest, { numericOrNull, officialActionLabel, isBlockingAsStatus, asReportAge, uniqueActionRows, rateSeriesForStore, recoveryGapMeaning, recoveryEmptyLabel, renderRecoveryStageHeatmap, renderRecoveryComparison, renderProcessedBulletList, renderRecoveryQueue, safeSourceUrl, renderAsReferences, renderCommandMatrixRow });', context);
+  return { api: context.__dashboardTest, elements, scheduled: () => scheduled };
 }
 
 function mockResponse() {
@@ -49,6 +51,125 @@ function mockResponse() {
   };
 }
 
+test('AS 구조화 상태만 사용하고 차단기 및 완료 메모로 재판정하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  assert.equal(api.isBlockingAsStatus({ asStatus: '정상', normalizationBlocker: '차단기 교체 완료' }), false);
+  assert.equal(api.isBlockingAsStatus({ asStatus: '정상화 대기', vendorStatus: '수리 완료' }), true);
+  assert.equal(api.isBlockingAsStatus({ asStatus: 'AS 진행 중' }), true);
+  assert.equal(api.isBlockingAsStatus({ vendorStatus: '차단기 점검' }), false);
+});
+
+test('기상 조치 없음과 AS 확인 대기는 동시에 표시하고 AS 다음 행동을 유지한다', () => {
+  const { api } = loadDashboardLogic();
+  const store = api.normalizeStore({ id: 'test', name: '검증 지점', prodStatus: 'Green', openIssueCount: 0, asStatus: '정상화 대기', nextAction: '현장 정상운영 확인' });
+  api.state.data = { stores: [store], summary: {}, weatherSignal: {}, opsActions: [] };
+  assert.equal(api.officialActionLabel(store), '미완료 없음');
+  assert.equal(api.officialActionLabel({ prodStatus: 'Green' }), '건수 확인 전');
+  assert.equal(api.storeNextActionText(store), '현장 정상운영 확인');
+  const html = api.renderCommandMatrixRow(store);
+  assert.match(html, /미완료 없음/);
+  assert.match(html, /확인 대기/);
+  assert.doesNotMatch(html, /운영 정상/);
+  assert.match(api.dashboardHeadline(), /AS 확인 1개점/);
+});
+
+test('저장본 갱신 실패를 현재 상태로 주장하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.dataIsCached = true;
+  api.state.data = { stores: [], summary: {} };
+  assert.equal(api.primaryDashboardStatusText(), '현재 상태 확인 불가');
+  assert.match(api.dashboardHeadline(), /마지막 성공 기록/);
+});
+
+test('현재 DRI를 보존하고 AS 보고 시각을 generatedAt으로 대체하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  const store = api.normalizeStore({ id: 'gwangmyeong', dri: '장진석 매니저', generatedAt: '2026-09-18T10:00:00+09:00', signalDataStatus: 'error' });
+  assert.equal(store.dri, '장진석 매니저');
+  assert.equal(store.asReportedAt, '');
+  assert.equal(api.asReportAge(store), '원천 미제공');
+  assert.equal(store.signalSourceStatus, 'error');
+  assert.match(api.asReportAge({ asReportedAt: '2026-09-01T10:00:00+09:00' }, new Date('2026-09-18T10:00:00+09:00').getTime()), /17일 경과/);
+});
+
+test('AS 큐는 지점별로 요약하되 서로 다른 보고와 과거 충돌 기록은 보존한다', () => {
+  const { api } = loadDashboardLogic();
+  const store = api.normalizeStore({ id: 'test', name: '검증 지점', prodStatus: 'Green', asStatus: '정상', openIssueCount: 0 });
+  const action = { storeId: 'test', store: '검증 지점', riskType: 'vendor_as', action: '현장 확인 필요', reportId: 'one' };
+  api.state.data = { stores: [store], opsActions: [action, { ...action }, { ...action, reportId: 'two' }] };
+  assert.equal(api.uniqueActionRows(api.state.data.opsActions).length, 2);
+  const rows = api.priorityQueueRows();
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].scope, '원천 대조');
+  const html = api.renderAsReferences(store);
+  assert.equal((html.match(/class="action-item"/g) || []).length, 2);
+  assert.match(html, /AS 기록 \/ 최신 상태 대조 필요/);
+  assert.match(html, /기한 미입력/);
+  assert.doesNotMatch(html, /기한초과/);
+});
+
+test('회복 숫자 0과 결측, 대상 없음과 집계 대기를 구분한다', () => {
+  const { api } = loadDashboardLogic();
+  for (const value of [null, undefined, '', ' ', false, [], {}]) assert.equal(api.numericOrNull(value), null);
+  assert.equal(api.numericOrNull(0), 0);
+  assert.equal(api.numericOrNull('0'), 0);
+  api.state.data = { recoveryProvided: true, recovery: { eligibleEventCount: 0, dataStatus: 'ok' } };
+  assert.equal(api.recoveryEmptyLabel(), '0건 / 집계 대상 없음');
+  api.state.data.recovery.dataStatus = 'pending';
+  assert.match(api.recoveryEmptyLabel(), /집계 대기/);
+  api.state.data.recoveryProvided = false;
+  assert.match(api.recoveryEmptyLabel(), /확인 불가/);
+  assert.equal(api.recoveryGapMeaning(null), '비교 확인 불가');
+  assert.equal(api.rateSeriesForStore('missing', { processedRate: [100] }).processedRate.length, 0);
+});
+
+test('회복 차트는 유효 0을 표시하고 분모 0으로 회복률을 만들지 않는다', () => {
+  const { api, elements } = loadDashboardLogic();
+  for (const id of ['recoveryStageHeatmap', 'processedBulletList', 'recoveryComparison']) elements[id] = { innerHTML: '' };
+  api.state.data = { stores: [{ id: 'test', name: '검증 지점' }], recovery: { labels: ['D-day'], storeSeries: { test: { processedRate: [0], revenueRate: [null] } } }, visuals: { processedBulletByStore: [{ storeId: 'test', store: '검증 지점', actual: 0, baseline: 100, rate: 0 }] } };
+  api.renderRecoveryStageHeatmap();
+  assert.match(elements.recoveryStageHeatmap.innerHTML, /0%/);
+  api.renderProcessedBulletList();
+  assert.match(elements.processedBulletList.innerHTML, /0%/);
+  assert.match(elements.processedBulletList.innerHTML, /width:0%/);
+  api.state.data.visuals.processedBulletByStore[0] = { storeId: 'test', store: '검증 지점', actual: 0, baseline: 0, rate: 100 };
+  api.renderProcessedBulletList();
+  assert.match(elements.processedBulletList.innerHTML, /비율 확인 불가/);
+  assert.doesNotMatch(elements.processedBulletList.innerHTML, />100%</);
+});
+
+test('미수신 액션을 0건으로 확정하지 않고 원천 링크는 HTTPS만 허용한다', () => {
+  const { api } = loadDashboardLogic();
+  api.state.data = api.normalize({ opsActions: [], opsActionsProvided: false });
+  assert.match(api.renderActionList([], '사업운영팀', 'operations'), /원천 미수신/);
+  assert.equal(api.safeSourceUrl('javascript:alert(1)'), '');
+  assert.equal(api.safeSourceUrl('https://user:secret@example.com'), '');
+  assert.equal(api.safeSourceUrl('https://example.com/request'), 'https://example.com/request');
+});
+
+test('프록시가 빈 배열과 원천 필드 미수신을 별도로 보존한다', () => {
+  const context = { module: { exports: {} }, process: { env: {} } };
+  const source = fs.readFileSync(path.join(ROOT, 'api/weather-ops-data.js'), 'utf8');
+  vm.runInNewContext(`${source}\n;globalThis.normalizeForTest = normalizePayload;`, context);
+  const missing = context.normalizeForTest({ stores: [] }, 'apps_script');
+  assert.equal(missing.opsActionsProvided, false);
+  assert.equal(missing.recoveryProvided, false);
+  const empty = context.normalizeForTest({ stores: [], opsActions: [], marketingActions: [], recovery: {} }, 'apps_script');
+  assert.equal(empty.opsActionsProvided, true);
+  assert.equal(empty.marketingActionsProvided, true);
+  assert.equal(empty.recoveryProvided, true);
+});
+
+test('회복 비교의 한쪽 결측은 0점이나 균형으로 그리지 않는다', () => {
+  const { api, elements } = loadDashboardLogic();
+  elements.recoveryComparison = { innerHTML: '' };
+  api.state.data = { stores: [{ id: 'test' }], visuals: { recoveryGapByStore: [{ storeId: 'test', store: '검증 지점', processedRate: 0, revenueRate: null, gap: 0 }] } };
+  api.renderRecoveryComparison();
+  const html = elements.recoveryComparison.innerHTML;
+  assert.match(html, /처리대수 0%/);
+  assert.match(html, /비교 확인 불가/);
+  assert.doesNotMatch(html, /dumbbell-dot revenue|dumbbell-range|매출 균형/);
+});
+
 test('기상 신호가 없으면 운영 정상과 기상 판단 대기를 분리한다', () => {
   const { api } = loadDashboardLogic();
   api.state.data = {
@@ -57,7 +178,7 @@ test('기상 신호가 없으면 운영 정상과 기상 판단 대기를 분리
     weatherSignal: {},
     system: {}
   };
-  assert.equal(api.dashboardHeadline(), '운영 원장 기준 즉시 조치는 없습니다. 최신 기상 신호 수신 전이므로 기상 판단은 대기입니다.');
+  assert.equal(api.dashboardHeadline(), '기상 미완료 조치 여부는 원장 기준입니다. 최신 기상 신호 수신 전이므로 기상 판단은 대기입니다.');
   assert.equal(api.primaryDashboardStatus(), 'Gray');
   assert.equal(api.primaryDashboardStatusLabel(), '기상 판단');
   assert.equal(api.decisionReadiness(), 'no_signal');
@@ -201,8 +322,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-08-06-1/);
-  assert.match(html, /style\.css\?v=2026-07-23-5/);
+  assert.match(html, /app\.js\?v=2026-09-18-operations-quality-1/);
+  assert.match(html, /style\.css\?v=2026-09-18-operations-quality-1/);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);
   assert.match(css, /--density-row:\s*56px/);
@@ -805,8 +926,8 @@ test('회복 집계는 성과 대기를 현재 조치 건수에 합산하지 않
     system: { decisionReadiness: 'prod_ready' }
   };
   const recoveryCard = api.missionCards()[3];
-  assert.equal(recoveryCard.value, '49건 후보');
-  assert.match(recoveryCard.note, /성과 해석 대기 7/);
+  assert.equal(recoveryCard.value, '49건 원장 후보');
+  assert.match(recoveryCard.note, /집계 대기 7/);
   assert.match(recoveryCard.note, /CRM 후보 27/);
 });
 
@@ -852,11 +973,11 @@ test('Command Center 게이트 상태는 긴 원문을 운영 판단용 표현�
   const { api } = loadDashboardLogic();
   assert.deepEqual(
     { ...api.compactAsStatus({ asStatus: '정상화 대기', normalizationBlocker: '부품 입고 대기' }) },
-    { label: '차단·대기', className: 'blocked' }
+    { label: '확인 대기', className: 'blocked' }
   );
   assert.deepEqual(
     { ...api.compactAsStatus({ asStatus: '정상' }) },
-    { label: '정상', className: 'clear' }
+    { label: '원장 정상화', className: 'clear' }
   );
   assert.deepEqual(
     { ...api.compactRecoveryStatus({ recoveryStatus: '회복 조치 필요' }) },

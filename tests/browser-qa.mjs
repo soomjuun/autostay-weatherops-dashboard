@@ -192,6 +192,25 @@ const fixturePayload = {
   }
 };
 const payloadPath = process.env.WEATHER_OPS_QA_PAYLOAD;
+const qualityScenario = process.env.WEATHER_OPS_QA_SCENARIO === 'operations-quality';
+if (qualityScenario && !payloadPath) {
+  fixturePayload.source = 'sample_local_test_only';
+  fixturePayload.system.scriptBuildId = 'fixture-operations-quality';
+  fixturePayload.stores.forEach((store, index) => {
+    store.openIssueCount = 0;
+    store.asStatus = index < 2 ? '정상화 대기' : '정상';
+    if (index < 2) store.nextAction = '협력사 작업 완료 기록은 있으나 정상운영 확인이 없습니다. 담당자와 기존 기술요청에서 실제 가동 가능 여부를 확인하세요.';
+  });
+  fixturePayload.summary.asBlockedCount = 2;
+  fixturePayload.opsActions = [0, 1].flatMap((index) => [0, 1].map((report) => ({
+    storeId: stores[index].id, store: stores[index].name, reportId: `fixture-${index}-${report}`,
+    riskType: 'vendor_as', owner: stores[index].dri, status: '수리 완료',
+    action: '긴 AS 사유 검증: 협력사 작업 완료와 현장 정상운영 확인을 구분하고 마지막 보고 원본을 보존해야 합니다.',
+    dueAt: report ? '' : '2026-09-01T10:00:00+09:00'
+  })));
+  fixturePayload.recovery.storeSeries[stores[0].id] = { processedRate: [0, null, 100], revenueRate: [null, 0, 90] };
+  fixturePayload.visuals.processedBulletByStore[0] = { storeId: stores[0].id, store: stores[0].name, actual: 0, baseline: 0, rate: 100 };
+}
 const payload = payloadPath
   ? JSON.parse(await fs.readFile(path.resolve(payloadPath), 'utf8'))
   : fixturePayload;
@@ -246,6 +265,10 @@ await fs.mkdir(OUTPUT, { recursive: true });
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
 const address = server.address();
 const baseUrl = `http://127.0.0.1:${address.port}`;
+if (process.env.WEATHER_OPS_QA_PREVIEW === '1') {
+  console.log(`LOCAL TEST PREVIEW ${baseUrl}`);
+  await new Promise(() => {});
+}
 const browser = await chromium.launch({ headless: true, executablePath: CHROME });
 const page = await browser.newPage({ viewport: { width: 1440, height: 1200 }, deviceScaleFactor: 1 });
 const consoleErrors = [];
@@ -419,6 +442,8 @@ try {
         tableCards: document.querySelectorAll('#storeTable tr').length
       }));
       await page.screenshot({ path: path.join(OUTPUT, '07-mobile-stores.png'), fullPage: true });
+      await page.locator('#storeTable tr').first().scrollIntoViewIfNeeded();
+      await page.screenshot({ path: path.join(OUTPUT, '12-mobile-store-detail.png'), fullPage: false });
       await page.locator('#tab-recovery').click();
       const recoveryMobile = await page.evaluate(() => ({
         scrollWidth: document.documentElement.scrollWidth,
@@ -440,6 +465,21 @@ try {
     }
   }
 
+  const unexpectedConsoleErrors = consoleErrors.slice();
+  await page.route('**/api/weather-ops-data*', (route) => route.fulfill({ status: 504, contentType: 'application/json', body: JSON.stringify({ source: 'upstream_timeout' }) }));
+  await page.locator('#refreshBtn').click();
+  await page.waitForFunction(() => document.getElementById('overallStatus')?.textContent.includes('현재 상태 확인 불가'));
+  const cachedError = await page.locator('#headline').innerText();
+  await page.screenshot({ path: path.join(OUTPUT, '13-cached-error-mobile.png'), fullPage: false });
+  const emptyPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  emptyPage.on('pageerror', (error) => unexpectedConsoleErrors.push(error.message));
+  await emptyPage.route('**/api/weather-ops-data*', (route) => route.fulfill({ status: 504, contentType: 'application/json', body: JSON.stringify({ source: 'upstream_timeout' }) }));
+  await emptyPage.goto(baseUrl, { waitUntil: 'networkidle' });
+  const fatalError = await emptyPage.locator('#overallStatus').innerText();
+  const missingCount = await emptyPage.locator('#mapCount').innerText();
+  await emptyPage.screenshot({ path: path.join(OUTPUT, '14-empty-error-mobile.png'), fullPage: false });
+  await emptyPage.close();
+  unexpectedConsoleErrors.push(...consoleErrors.slice(unexpectedConsoleErrors.length).filter((message) => !message.includes('504')));
   const result = {
     baseUrl,
     desktop,
@@ -458,9 +498,12 @@ try {
     dataLayout,
     mobileTabs,
     responsive,
-    consoleErrors
+    consoleErrors: unexpectedConsoleErrors,
+    errorStates: { cachedError, fatalError, missingCount }
   };
+  await fs.writeFile(path.join(OUTPUT, 'results.json'), JSON.stringify(result, null, 2));
   console.log(JSON.stringify(result, null, 2));
+  if (!cachedError.includes('마지막 성공 기록') || fatalError !== '연결 오류' || missingCount !== '확인 불가') process.exitCode = 1;
   if (desktop.cards !== expectedStoreCount || desktop.matrixColumns !== 8 || desktop.tabs !== 4 || desktop.activePanel !== 'overview') process.exitCode = 1;
   if (desktop.priorityItems < 1 || desktop.priorityItems > 3 || desktop.weatherComparisonRows !== expectedStoreCount) process.exitCode = 1;
   if (desktop.overviewLayout.order.join(',') !== 'priority,matrix,weather,source') process.exitCode = 1;
@@ -485,9 +528,9 @@ try {
   if (!storeDensity.tableRows.length || Math.max(...storeDensity.tableRows) - Math.min(...storeDensity.tableRows) > 4) process.exitCode = 1;
   if (!storeDensity.actionCards.length || Math.max(...storeDensity.actionCards) - Math.min(...storeDensity.actionCards) > 4) process.exitCode = 1;
   if (recoveryDensity.activePanel !== 'recovery' || recoveryDensity.queueHeader[0] !== 44) process.exitCode = 1;
-  if (!payloadPath && (!recoveryDensity.funnelTitle.startsWith('회복 단계 현황')
+  if (!payloadPath && !qualityScenario && (!recoveryDensity.funnelTitle.startsWith('회복 단계 현황')
     || !recoveryDensity.funnelText.includes('집계 단위가 달라 전환율 계산 제외')
-    || !recoveryDensity.funnelText.includes('현재 AS 차단은 없습니다'))) process.exitCode = 1;
+    || !recoveryDensity.funnelText.includes('현재 AS 확인 대상과 다른 집계입니다'))) process.exitCode = 1;
   if (recoveryDensity.visualPanels < 1 || !recoveryStack.chartVisible || recoveryStack.queueToChartGap !== 12 || recoveryStack.visualPanelGaps.some((gap) => gap !== 12)) process.exitCode = 1;
   if (!recoveryDensity.queueRows.length || Math.max(...recoveryDensity.queueRows) - Math.min(...recoveryDensity.queueRows) > 1) process.exitCode = 1;
   if (dataLayout.activePanel !== 'data' || dataLayout.sourceToTimelineGap !== 12 || dataLayout.timelineToSystemGap !== 12) process.exitCode = 1;
@@ -495,7 +538,7 @@ try {
   if (mobileTabs.recovery?.scrollWidth > mobileTabs.recovery?.clientWidth || mobileTabs.recovery?.queueRows !== expectedRecoveryQueueCount || mobileTabs.recovery?.queueHeaderVisible || mobileTabs.recovery?.visualPanels !== recoveryDensity.visualPanels || mobileTabs.recovery?.visualColumnCount !== 1) process.exitCode = 1;
   if (mobileTabs.data?.scrollWidth > mobileTabs.data?.clientWidth || mobileTabs.data?.activePanel !== 'data') process.exitCode = 1;
   if (responsive.some((item) => item.scrollWidth > item.clientWidth || item.clippedText || item.overviewOrder.join(',') !== 'priority,matrix,weather,source')) process.exitCode = 1;
-  if (consoleErrors.length) process.exitCode = 1;
+  if (unexpectedConsoleErrors.length) process.exitCode = 1;
 } finally {
   await browser.close();
   await new Promise((resolve) => server.close(resolve));

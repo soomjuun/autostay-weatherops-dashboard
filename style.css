@@ -2223,7 +2223,7 @@ tbody tr:hover {
 .priority-list[data-item-count="3"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .priority-item {
   display: grid;
-  grid-template-rows: var(--density-chip) auto auto;
+  grid-template-rows: minmax(var(--density-chip), auto) auto auto auto;
   gap: 3px;
   width: 100%;
   min-height: var(--density-summary-row);
@@ -2256,7 +2256,13 @@ tbody tr:hover {
 }
 .priority-reason { font-size: 12px; font-weight: 800; }
 .priority-meta { color: var(--muted); font-size: 10.5px; }
-.priority-action { display: none; }
+.priority-action { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; font-size: 11px; line-height: 1.5; word-break: keep-all; overflow-wrap: anywhere; }
+.priority-reason { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.priority-level { max-width: 80px; word-break: keep-all; }
+.as-references { min-width: 0; border-top: 1px solid var(--line); padding-top: 12px; }
+.as-references p { font-size: 12px; color: var(--muted); word-break: keep-all; overflow-wrap: anywhere; }
+.as-references nav { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.as-references a { font-size: 12px; text-underline-offset: 3px; }
 .priority-list > .empty-state { grid-column: 1 / -1; }
 .panel-link {
   width: 100%;
