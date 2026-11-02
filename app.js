@@ -380,6 +380,8 @@ function normalize(payload) {
     dashboardPayloadVersion: firstPresent(data, ['dashboardPayloadVersion', 'dashboard_payload_version']) || '',
     decisionReadiness: firstPresent(data, ['decisionReadiness', 'decision_readiness']) || firstPresent(system, ['decisionReadiness', 'decision_readiness']) || '',
     summary: objectFrom(data.summary),
+    asCases: data.asCases && Array.isArray(data.asCases.items) ? data.asCases : null,
+    opsActionsMeta: objectFrom(data.opsActionsMeta),
     stores,
     weatherSignal,
     opsActionsProvided: data.opsActionsProvided !== false && Array.isArray(firstPresent(data, ['opsActions', 'ops_actions', 'operationsActions', 'operations_actions'])),
@@ -488,6 +490,8 @@ function weatherSignalStoreMap(weatherSignal) {
 
 function normalizeStore(store, signalByStore = {}) {
   store = objectFrom(store);
+  const asCases = arrayFrom(store.asCases);
+  const oldestCase = asCases[0] || {};
   const name = firstPresent(store, ['name', 'storeName', 'store_name', 'store', '지점명', '지점', '매장명']) || '-';
   const id = firstPresent(store, ['id', 'storeId', 'store_id', 'storeCode', 'store_code', '지점ID']) || slug(name);
   const signal = signalByStore[slug(id)] || signalByStore[slug(name)] || {};
@@ -551,8 +555,13 @@ function normalizeStore(store, signalByStore = {}) {
     normalizationBlocker: firstPresent(store, ['normalizationBlocker', 'normalization_blocker', 'capacityBlocker', 'capacity_blocker', 'AS차단사유']) || '',
     vendorStatus: firstPresent(store, ['vendorStatus', 'vendor_status', 'asVendorStatus', 'as_vendor_status']) || '',
     vendorEta: firstPresent(store, ['vendorEta', 'vendor_eta', 'asEta', 'as_eta', 'repairEta', 'repair_eta']) || '',
-    asReportedAt: firstPresent(store, ['asReportedAt', 'as_reported_at']) || '',
+    asCases,
+    asUnresolvedCount: numericOrNull(store.asUnresolvedCount),
+    asConflict: store.asConflict === true,
+    asConflictEventIds: arrayFrom(store.asConflictEventIds),
+    asReportedAt: firstPresent(store, ['asReportedAt', 'as_reported_at']) || oldestCase.reportedAt || '',
     asReportId: firstPresent(store, ['asReportId', 'as_report_id']) || '',
+    asNextAction: firstPresent(store, ['asNextAction', 'as_next_action']) || '',
     technicalRequestUrl: firstPresent(store, ['technicalRequestUrl', 'technical_request_url']) || '',
     workflowUrl: firstPresent(store, ['workflowUrl', 'workflow_url']) || '',
     downtimeStartedAt: firstPresent(store, ['downtimeStartedAt', 'downtime_started_at', 'outageStartedAt', 'outage_started_at']) || '',
@@ -893,7 +902,7 @@ function render() {
 
 function updateSectionVisibility() {
   const queueRows = arrayFrom(state.data.recovery && state.data.recovery.queue).filter(matchesSelectedStore);
-  const opsRows = arrayFrom(state.data.opsActions).filter(matchesSelectedStore);
+  const opsRows = dashboardActionRows().filter(matchesSelectedStore);
   const marketingRows = arrayFrom(state.data.marketingActions).filter(matchesSelectedStore);
   const overdueCount = historicalOverdueSummary().count;
   const recoveryActive = hasActiveRecoveryData();
@@ -911,7 +920,7 @@ function updateSectionVisibility() {
     actionSection.classList.toggle('marketing-only', opsRows.length === 0 && overdueCount === 0 && marketingRows.length > 0);
     actionSection.classList.toggle('ops-summary-only', opsRows.length === 0 && overdueCount > 0 && marketingRows.length > 0);
   }
-  if (queuePanel) queuePanel.hidden = queueRows.length === 0;
+  if (queuePanel) queuePanel.hidden = false;
   if ($('recoveryFunnelPanel')) $('recoveryFunnelPanel').hidden = !funnelVisible;
   if ($('recoveryStagePanel')) $('recoveryStagePanel').hidden = !stageVisible;
   if ($('recoveryGapPanel')) $('recoveryGapPanel').hidden = !gapVisible;
@@ -922,10 +931,11 @@ function updateSectionVisibility() {
     visualGrid.classList.toggle('two-panels', visibleCount === 2);
     visualGrid.classList.toggle('three-panels', visibleCount === 3);
   }
-  if (primaryGrid) primaryGrid.classList.toggle('queue-hidden', queueRows.length === 0);
+  if (primaryGrid) primaryGrid.classList.toggle('queue-hidden', false);
 }
 
 function hasActiveRecoveryData() {
+  if (state.data.recovery?.dataStatus === 'no_target') return false;
   const queue = arrayFrom(state.data.recovery && state.data.recovery.queue).filter(matchesSelectedStore);
   if (queue.length) return true;
 
@@ -1827,6 +1837,8 @@ function missionCards() {
   const asCoverage = stores.length > 0 && stores.every((store) => compactAsStatus(store).className !== 'unknown');
   const downtimeCount = asCoverage ? derivedAsBlocked : null;
   const longestDowntime = missionLongestDowntime(stores);
+  const recoveryAsCount = state.data.recoveryProvided === false || !Array.isArray(state.data.recovery?.queue) ? null
+    : state.data.recovery.queue.filter((item) => isBlockingAsStatus({ asStatus: item.status || item.recoveryStatus || item.recovery_status })).length;
 
   const csMetric = firstMetricNumber(summary, [
     'csActionCount', 'cs_action_count', 'csRiskCount', 'cs_risk_count',
@@ -1846,7 +1858,7 @@ function missionCards() {
   const recoveryAction = metricFromKeysNumber(summary, ['recoveryActionCount', 'recovery_action_count']);
   const dataWait = metricFromKeysNumber(summary, ['dataWaitCount', 'data_wait_count']);
   const crmReady = metricFromKeysNumber(summary, ['crmReadyCount', 'crm_ready_count']);
-  const recoveryCandidateCount = recoveryAction;
+  const recoveryCandidateCount = state.data.recovery?.dataStatus === 'no_target' ? 0 : recoveryAction;
 
   return [
     {
@@ -1858,7 +1870,9 @@ function missionCards() {
     {
       label: '다운타임 축소',
       value: downtimeCount === null ? '확인 불가' : `${downtimeCount}개점`,
-      note: asBlocked !== null && asBlocked !== derivedAsBlocked ? `지점 상태와 AS 집계 ${asBlocked}건 불일치` : (longestDowntime ? `최장 ${longestDowntime}` : (downtimeCount > 0 ? 'AS 상태와 정상운영 가능 여부 확인' : '원장 기준 AS 확인 대상 없음')),
+      note: asBlocked !== null && asBlocked !== derivedAsBlocked ? `원천 요약 ${asBlocked}개점과 지점 상태 대조 필요`
+        : (recoveryAsCount !== null ? `지점 상태 기준 / 표시 회복 AS ${recoveryAsCount}행은 별도 범위`
+          : (longestDowntime ? `실제 다운타임 최장 ${longestDowntime}` : (downtimeCount > 0 ? 'AS 상태와 정상운영 가능 여부 확인' : '원장 기준 AS 확인 대상 없음'))),
       level: downtimeCount === null ? 'wait' : (downtimeCount > 0 ? 'action' : 'ok')
     },
     {
@@ -1874,7 +1888,7 @@ function missionCards() {
     {
       label: '수요·매출 회복',
       value: recoveryCandidateCount === null ? '확인 불가' : (recoveryCandidateCount === 0 ? '0건 / 대상 없음' : `${recoveryCandidateCount}건 원장 후보`),
-      note: `기간 미제공 / 집계 대기 ${dataWait ?? '확인 불가'} / CRM 후보 ${crmReady ?? '확인 불가'}`,
+      note: `${recoveryPeriodText()} / 집계 대기 ${dataWait ?? '확인 불가'} / CRM 후보 ${crmReady ?? '확인 불가'}`,
       level: recoveryCandidateCount === null ? 'wait' : (recoveryCandidateCount > 0 || (dataWait || 0) > 0 ? 'watch' : 'ok')
     }
   ];
@@ -1907,6 +1921,12 @@ function isAsAction(item) {
   return arrayFrom(item.riskTypes || item.risk_types).concat(item.riskType || item.risk_type || []).includes('vendor_as');
 }
 
+function dashboardActionRows() {
+  if (!state.data?.asCases) return arrayFrom(state.data?.opsActions);
+  const cases = state.data.asCases.items.map((item) => ({ ...item, store: item.storeName, riskType: 'vendor_as', action: item.asNextAction, due: item.dueAt }));
+  return [...arrayFrom(state.data.opsActions).filter((item) => !isAsAction(item)), ...cases];
+}
+
 function actionStore(item) {
   const keys = ['storeId', 'store_id', 'store', 'storeName', 'store_name', 'name'].map((key) => slug(item[key])).filter(Boolean);
   return arrayFrom(state.data && state.data.stores).find((store) => [store.id, store.name].some((value) => keys.includes(slug(value))));
@@ -1930,6 +1950,12 @@ function asReportAge(store, now = Date.now()) {
   const elapsed = now - reported.getTime();
   if (elapsed < 0) return `${formatDateTime(store.asReportedAt)} / 보고 시각 확인 필요`;
   return `${formatDateTime(store.asReportedAt)} / ${Math.floor(elapsed / 86400000)}일 경과`;
+}
+
+function asReportOrder(store) {
+  const date = new Date(store.asReportedAt);
+  return store.asReportedAt && Number.isFinite(date.getTime()) && !isSentinelDate(date)
+    ? date.getTime() : (state.data.asCases ? Number.NEGATIVE_INFINITY : Number.POSITIVE_INFINITY);
 }
 
 function missionLongestDowntime(stores) {
@@ -2198,15 +2224,15 @@ function priorityQueueRows() {
   stores.forEach((store) => {
     [store.id, store.name].filter(Boolean).forEach((key) => storeMap.set(slug(key), store));
   });
-  const actions = uniqueActionRows(state.data.opsActions).filter(matchesSelectedStore);
+  const actions = uniqueActionRows(dashboardActionRows()).filter(matchesSelectedStore);
   const asRows = stores.filter((store) => isBlockingAsStatus(store) || actions.some((item) => isAsAction(item) && actionStore(item)?.id === store.id)).map((store) => {
     const records = actions.filter((item) => isAsAction(item) && actionStore(item)?.id === store.id);
     const pending = isBlockingAsStatus(store);
     return {
-      type: 'as', rank: pending ? (compactAsStatus(store).label === '원장 차단' ? -1 : 0) : 1, storeId: store.id, storeName: store.name,
+      type: 'as', rank: pending ? (compactAsStatus(store).label === '원장 차단' ? -1 : 0) : 1, reportOrder: asReportOrder(store), storeId: store.id, storeName: store.name,
       status: pending ? 'Orange' : 'Yellow', scope: pending ? 'AS 확인' : '원천 대조',
-      statusLabel: compactAsStatus(store).label,
-      reason: pending ? (store.normalizationBlocker || 'AS 원장과 정상운영 가능 여부 확인 필요') : '최신 지점 상태와 AS 액션 기록이 다릅니다.',
+      statusLabel: store.asConflict ? '원장 충돌' : compactAsStatus(store).label,
+      reason: store.asConflict ? `완료 사건과 미해결 사건 대조: ${store.asConflictEventIds.join(', ')}` : (pending ? (store.normalizationBlocker || 'AS 원장과 정상운영 가능 여부 확인 필요') : '최신 지점 상태와 AS 액션 기록이 다릅니다.'),
       meta: `담당 ${store.dri || '확인 필요'} / 마지막 보고 ${asReportAge(store)}`,
       action: records.length > 1 ? `AS 원장 ${records.length}건 상세 대조 / ${storeNextActionText(store)}` : storeNextActionText(store)
     };
@@ -2241,6 +2267,7 @@ function priorityQueueRows() {
     }));
   return [...asRows, ...officialRows, ...weatherRows.filter((row) => !asRows.some((asRow) => asRow.storeId === row.storeId))].sort((a, b) => (
     a.rank - b.rank
+    || (a.type === 'as' && b.type === 'as' ? (a.reportOrder - b.reportOrder || 0) : 0)
     || (STATUS_ORDER[b.status] || 0) - (STATUS_ORDER[a.status] || 0)
     || a.storeName.localeCompare(b.storeName, 'ko')
   ));
@@ -2517,7 +2544,8 @@ function hasStoreSignalData(store) {
 
 function storeNextActionText(store) {
   const current = displaySourceText(store.nextAction) || '-';
-  const hasAsRecord = arrayFrom(state.data?.opsActions).some((item) => isAsAction(item) && actionStore(item)?.id === store.id);
+  if (store.asNextAction && isBlockingAsStatus(store)) return displaySourceText(store.asNextAction);
+  const hasAsRecord = dashboardActionRows().some((item) => isAsAction(item) && actionStore(item)?.id === store.id);
   if (hasAsRecord) return isBlockingAsStatus(store)
     ? 'AS 원장과 현장 정상운영 가능 여부 확인'
     : '최신 AS 상태와 미해결 기록 대조';
@@ -2530,7 +2558,9 @@ function storeNextActionText(store) {
 }
 
 function renderActions() {
-  $('opsActions').innerHTML = renderActionList(state.data.opsActions, '사업운영팀', 'operations');
+  const meta = state.data.asCases;
+  const coverage = meta ? `<p class="queue-scope">전체 prod 미해결 AS ${escapeHtml(meta.totalCount ?? '확인 불가')}건 / 수신 ${escapeHtml(meta.returnedCount ?? meta.items.length)}건${meta.truncated ? ' / 일부만 수신' : ''}</p>` : '';
+  $('opsActions').innerHTML = coverage + renderActionList(dashboardActionRows(), '사업운영팀', 'operations');
   renderOverdueExceptions();
   $('marketingActions').innerHTML = renderActionList(state.data.marketingActions, '마케팅팀', 'marketing');
 }
@@ -2593,10 +2623,19 @@ function renderActionList(items, fallbackTeam, kind) {
           <span class="action-store">${escapeHtml(store)}</span>
         </div>
         <div class="action-scope scope-${escapeAttr(kind || 'operations')}">${escapeHtml(scopeText)}</div>
-        <div class="action-body">${escapeHtml(asAction ? (currentStore && !isBlockingAsStatus(currentStore) ? '최신 AS 상태와 미해결 기록 대조' : 'AS 원장과 현장 정상운영 가능 여부 확인') : displaySourceText(action))}</div>
-        ${asAction && action !== '-' ? `<details class="source-report"><summary>보고 원문</summary><p>${escapeHtml(displaySourceText(action))}</p></details>` : ''}
+        <div class="action-body">${escapeHtml(asAction ? (item.asNextAction || (currentStore ? storeNextActionText(currentStore) : 'AS 원장과 현장 정상운영 가능 여부 확인')) : displaySourceText(action))}</div>
+        ${asAction && action !== '-' ? `<details class="source-report"><summary>보고 원문</summary><p>${escapeHtml(displaySourceText(item.normalizationBlocker || action))}</p></details>` : ''}
         <div class="action-foot">
+          ${asAction && currentStore ? `<span>현재 매니저 ${escapeHtml(currentStore.dri || '원천 미제공')}</span>` : ''}
           <span>담당 ${escapeHtml(owner)}</span>
+          ${asAction && item.supportRole ? `<span>지원 ${escapeHtml(item.supportRole)}</span>` : ''}
+          ${asAction && item.recordUpdatedAt ? `<span>원장 갱신 ${escapeHtml(formatDateTime(item.recordUpdatedAt))}</span>` : ''}
+          ${asAction && item.normalizationGate ? `<span>게이트 ${escapeHtml(item.normalizationGate)}</span>` : ''}
+          ${asAction && item.normalOperationStatus ? `<span>정상운영 답변 ${escapeHtml(item.normalOperationStatus)}</span>` : ''}
+          ${asAction && (item.eta || item.etaRaw) ? `<span>협력사 ETA ${escapeHtml(item.eta ? formatDateTime(item.eta) : `${item.etaRaw} (시각 해석 불가)`)}</span>` : ''}
+          ${asAction && item.dueType ? `<span>기한 종류 ${escapeHtml(({ request_confirmation: '기술요청 확인', dispatch_eta: 'ETA 확보', normalization: '정상화 확인' })[item.dueType] || item.dueType)}</span>` : ''}
+          ${asAction && item.reportedAt ? `<span>보고 후 경과 ${escapeHtml(asReportAge({ asReportedAt: item.reportedAt }))} (다운타임 아님)</span>` : ''}
+          ${asAction && safeSourceUrl(item.technicalRequestUrl) ? `<a href="${escapeAttr(safeSourceUrl(item.technicalRequestUrl))}" target="_blank" rel="noopener noreferrer">기술요청</a>` : ''}
           <span>기한 ${escapeHtml(asAction ? (due === '-' ? '미입력' : formatMaybeDate(due)) : formatActionDue(due))}</span>
           ${asAction ? `<span>보고 시각 ${escapeHtml(firstPresent(item, ['reportedAt', 'reported_at']) ? formatDateTime(firstPresent(item, ['reportedAt', 'reported_at'])) : '원천 미제공')}</span>` : ''}
           ${asAction && firstPresent(item, ['reportId', 'report_id', 'eventId', 'event_id']) ? `<span>원장 ID ${escapeHtml(firstPresent(item, ['reportId', 'report_id', 'eventId', 'event_id']))}</span>` : ''}
@@ -2771,6 +2810,10 @@ function isNoActiveRiskMatrix(rows, columns) {
 }
 
 function renderRecoveryFunnel() {
+  if (state.data.recovery?.dataStatus === 'no_target') {
+    $('recoveryFunnel').innerHTML = `<div class="empty-state">${escapeHtml(recoveryPeriodText())} / ${escapeHtml(recoveryEmptyLabel())}</div>`;
+    return;
+  }
   const allRows = recoveryFunnelRows();
   const rows = allRows.filter((row) => !isAsBlockedFunnelRow(row));
   const sideRows = allRows.filter(isAsBlockedFunnelRow);
@@ -2867,9 +2910,24 @@ function recoveryEmptyLabel() {
   const recovery = state.data.recovery || {};
   const status = String(recovery.dataStatus || '').toLowerCase();
   if (state.data.recoveryProvided === false || ['error', 'missing', 'failed'].includes(status)) return '회복 원천 미수신 / 확인 불가';
-  if (['pending', 'calculating'].includes(status)) return '회복 성과 집계 대기';
+  if (['pending', 'calculating', 'partial_or_waiting'].includes(status)) return '회복 성과 집계 대기 또는 일부 미확정';
+  if (status === 'no_target' && numericOrNull(recovery.eventCount) === 0) return '0건 / 집계 대상 없음';
   if (numericOrNull(recovery.eligibleEventCount) === 0) return '0건 / 집계 대상 없음';
   return '유효 회복률 없음 / 집계 대상 여부 확인 필요';
+}
+
+function recoveryPeriodText() {
+  const recovery = state.data.recovery || {};
+  const valid = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || ''));
+  return valid(recovery.periodStart) && valid(recovery.periodEnd)
+    ? `${recovery.periodStart} ~ ${recovery.periodEnd} (사건일 기준)` : '기간 미제공';
+}
+
+function recoveryScopeText() {
+  const recovery = state.data.recovery || {};
+  const count = (key) => numericOrNull(recovery[key]) ?? '확인 불가';
+  const denominators = arrayFrom(recovery.denominators).map(row => `${row.stage}: 처리대수 ${numericOrNull(row.processed) ?? '미제공'}행 / 매출 ${numericOrNull(row.revenue) ?? '미제공'}행`).join(', ');
+  return `${recoveryPeriodText()} / 사건 ${count('eventCount')}건, 지점 ${count('storeCount')}개, 단계 ${count('stageRowCount')}행${denominators ? `. 지표 분모 ${denominators}` : ''}${recovery.queueMeta?.truncated ? '. 회복 목록 일부만 수신' : ''}`;
 }
 
 function renderRecoveryComparison() {
@@ -2921,9 +2979,12 @@ function renderRecoveryQueue() {
   const queue = (state.data.recovery && state.data.recovery.queue) || [];
   const filtered = queue.filter(matchesSelectedStore);
   const countTarget = $('recoveryQueueCount');
-  if (countTarget) countTarget.textContent = `${filtered.length}건 · 최근 기록`;
+  if (countTarget) countTarget.textContent = state.data.recoveryProvided === false ? '확인 불가' : `${filtered.length}행 / 표시 기록`;
+  const asStoreCount = filteredStores().filter(isBlockingAsStatus).length;
+  const queueAsCount = filtered.filter((item) => isBlockingAsStatus({ asStatus: item.status || item.recoveryStatus || item.recovery_status })).length;
+  const scope = `<p class="queue-scope">지점 상태 AS 확인 ${asStoreCount}개점 / 표시된 회복 기록 내 AS ${queueAsCount}행. 집계 대상이 다르며 전체 미해결 AS 수와 같지 않습니다.</p><p class="queue-scope">${escapeHtml(recoveryScopeText())}</p>`;
   if (!filtered.length) {
-    $('recoveryQueue').innerHTML = `<div class="empty-state">${state.data.recoveryProvided === false ? '회복 원천 미수신 / 확인 불가' : '현재 필터 기준 미완료 회복 기록 0건. 집계 기간은 원천에서 제공하지 않았습니다.'}</div>`;
+    $('recoveryQueue').innerHTML = state.data.recoveryProvided === false ? '<div class="empty-state">회복 원천 미수신 / 확인 불가</div>' : `${scope}<div class="empty-state">현재 필터 기준 미완료 회복 기록 0행. 전체 AS 완료를 의미하지 않습니다.</div>`;
     return;
   }
   const rows = filtered.map((item) => {
@@ -2956,7 +3017,7 @@ function renderRecoveryQueue() {
       </div>
     `;
   }).join('');
-  $('recoveryQueue').innerHTML = `
+  $('recoveryQueue').innerHTML = scope + `
     <div class="queue-table" role="table" aria-label="지점별 회복 큐">
       <div class="queue-table-head" role="row">
         <span role="columnheader">지점</span>
@@ -3287,6 +3348,26 @@ function systemIssueSummary(type, count = 0) {
   return '';
 }
 
+function systemExecutionScope(system) {
+  const tickStatus = firstPresent(system, ['lastTickStatus', 'last_tick_status']);
+  const tickAt = firstPresent(system, ['lastTickAt', 'last_tick_at']);
+  const unresolved = numericOrNull(firstPresent(system, ['unresolvedErrorCount', 'unresolved_error_count']));
+  return `최근 틱 ${tickStatus || '원천 미제공'}${tickAt ? ` (${formatDateTime(tickAt)})` : ''} / 전체 미해결 오류 ${unresolved === null ? '원천 미제공' : `${unresolved}건`}. 최근 24시간 집계와 과거 오류 이력은 범위가 다릅니다.`;
+}
+
+function renderSystemFollowthrough(system) {
+  const pipeline = objectFrom(system.revenuePipeline);
+  const cleanup = objectFrom(system.errorCleanup);
+  const value = (input) => input === null || input === undefined || input === '' ? '원천 미제공' : input;
+  const stages = [['원천 동기화', 'sourceStatus', 'sourceAt'], ['영향 계산', 'impactStatus', 'impactAt'], ['회복 계산', 'recoveryStatus', 'recoveryAt']];
+  return `<div class="system-item info system-wide"><div class="system-label">오류 정리와 매출 파이프라인</div>
+    <div class="system-value">${escapeHtml(`오류 정리 ${value(cleanup.status)} / ${cleanup.at ? formatDateTime(cleanup.at) : '시각 미제공'}`)}</div>
+    <div class="system-value">${escapeHtml(`파이프라인 ${value(pipeline.stage)} / 활성 원천 ${value(pipeline.activeSourceCount)}개`)}</div>
+    ${stages.map(([label, status, at]) => `<div class="system-value">${escapeHtml(`${label}: ${value(pipeline[status])} / ${pipeline[at] ? formatDateTime(pipeline[at]) : '시각 미제공'}`)}</div>`).join('')}
+    ${arrayFrom(system.errorHistory).length ? `<details class="source-report"><summary>과거 오류 이력 (현재 미해결과 별도)</summary>${system.errorHistory.map(row => `<p>${escapeHtml(`${row.resolved === true || row.resolved === 'Y' ? '해소됨' : row.resolved === false || row.resolved === 'N' ? '미해결 기록' : '해소 여부 미제공'} / ${row.message || row.detail || '-'} / 해소 시각 ${row.resolvedAt ? formatDateTime(row.resolvedAt) : '미제공'}${row.resolutionNote ? ` / ${row.resolutionNote}` : ''}`)}</p>`).join('')}</details>` : ''}
+  </div>`;
+}
+
 function formatSystemIssueValue(value) {
   if (value === undefined || value === null || value === '') return [];
   if (Array.isArray(value)) return value.flatMap(formatSystemIssueValue);
@@ -3343,8 +3424,8 @@ function renderSystem() {
     { label: '데이터 상태', value: operationalDataStatus(system), className: operationalDataStatusClass() },
     { label: '판단 상태', value: decisionReadinessLabel(), className: decisionReadinessClass() },
     { label: '기상 신호', value: weatherSignalSummaryText(), className: !hasWeatherSignalData() ? 'info' : (weatherSignalIsStale() || weatherSignalHasRisk() ? 'warning' : 'ok') },
-    { label: '시스템 오류', value: systemErrorCountValue === '-' ? '-' : `${systemErrorCount}건`, className: systemErrorCount > 0 ? 'danger' : (systemErrorCountValue === '-' ? 'info' : 'ok') },
-    { label: sourceWarningOnly ? '원천 경고' : '시스템 경고', value: systemWarnCountValue === '-' ? '-' : `${systemWarnCount}건`, className: systemWarnCount > 0 ? 'warning' : (systemWarnCountValue === '-' ? 'info' : 'ok') }
+    { label: '시스템 오류', value: systemErrorCountValue === '-' ? '확인 불가' : `최근 24시간 ${systemErrorCount}건`, className: systemErrorCount > 0 ? 'danger' : (systemErrorCountValue === '-' ? 'info' : 'ok') },
+    { label: sourceWarningOnly ? '원천 경고' : '시스템 경고', value: systemWarnCountValue === '-' ? '확인 불가' : `최근 24시간 ${systemWarnCount}건`, className: systemWarnCount > 0 ? 'warning' : (systemWarnCountValue === '-' ? 'info' : 'ok') }
   ];
   $('systemStatus').innerHTML = items.map((item) => `
     <div class="system-item ${escapeAttr(item.className)}">
@@ -3352,7 +3433,7 @@ function renderSystem() {
       <div class="system-label">${escapeHtml(item.label)}${renderInfoTip(systemItemHelpText(item.label), `${item.label} 기준`)}</div>
       <div class="system-value">${escapeHtml(formatMaybeDate(item.value))}</div>
     </div>
-  `).join('') + (systemErrorDetail ? `
+  `).join('') + `<div class="system-item info system-wide"><div class="system-label">실행 상태와 오류 범위</div><div class="system-value">${escapeHtml(systemExecutionScope(system))}</div></div>` + (system.revenuePipeline || system.errorCleanup || system.errorHistory ? renderSystemFollowthrough(system) : '') + (systemErrorDetail ? `
     <div class="system-item danger system-wide">
       <span class="system-dot" aria-hidden="true"></span>
       <div class="system-label">시스템 오류 상세${renderInfoTip(systemItemHelpText('시스템 오류 상세'), '시스템 오류 상세 기준')}</div>
@@ -3920,7 +4001,7 @@ function safeSourceUrl(value) {
 }
 
 function renderAsReferences(store) {
-  const records = uniqueActionRows(state.data.opsActions).filter((item) => isAsAction(item) && actionStore(item)?.id === store.id);
+  const records = uniqueActionRows(dashboardActionRows()).filter((item) => isAsAction(item) && actionStore(item)?.id === store.id);
   if (!records.length && !isBlockingAsStatus(store) && !store.technicalRequestUrl && !store.workflowUrl) return '';
   const links = [
     ['기술요청', store.technicalRequestUrl], ['워크플로', store.workflowUrl],
@@ -3930,6 +4011,7 @@ function renderAsReferences(store) {
   return `<section class="store-detail-section as-references">
     <h3>AS 원장 대조</h3>
     <p>지점 최신 상태: ${escapeHtml(store.asStatus)}. 협력사 작업 완료와 정상운영 확인은 별개입니다.</p>
+    ${store.asConflict ? `<p>사건 충돌: ${escapeHtml(store.asConflictEventIds.join(', '))}</p>` : ''}
     ${records.length ? renderActionList(records, '사업운영팀', 'operations') : '<p>연결된 AS 액션 기록이 없습니다. 누락 여부는 원장에서 확인하세요.</p>'}
     <nav aria-label="AS 원천 링크">${links.map(([label, url]) => `<a href="${escapeAttr(safeSourceUrl(url))}" target="_blank" rel="noopener noreferrer">${escapeHtml(label)}</a>`).join(' ')}</nav>
   </section>`;

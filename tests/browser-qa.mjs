@@ -192,7 +192,8 @@ const fixturePayload = {
   }
 };
 const payloadPath = process.env.WEATHER_OPS_QA_PAYLOAD;
-const qualityScenario = process.env.WEATHER_OPS_QA_SCENARIO === 'operations-quality';
+const caseScenario = process.env.WEATHER_OPS_QA_SCENARIO === 'case-contract';
+const qualityScenario = caseScenario || process.env.WEATHER_OPS_QA_SCENARIO === 'operations-quality';
 if (qualityScenario && !payloadPath) {
   fixturePayload.source = 'sample_local_test_only';
   fixturePayload.system.scriptBuildId = 'fixture-operations-quality';
@@ -210,6 +211,20 @@ if (qualityScenario && !payloadPath) {
   })));
   fixturePayload.recovery.storeSeries[stores[0].id] = { processedRate: [0, null, 100], revenueRate: [null, 0, 90] };
   fixturePayload.visuals.processedBulletByStore[0] = { storeId: stores[0].id, store: stores[0].name, actual: 0, baseline: 0, rate: 100 };
+}
+if (caseScenario && !payloadPath) {
+  const items = fixturePayload.stores.slice(0, 3).map((store, index) => ({
+    eventId: `fixture-case-${index}`, reportId: `fixture-case-${index}`, storeId: store.id, storeName: store.name,
+    reportedAt: index === 0 ? null : '2026-08-19T08:09:00+09:00', recordUpdatedAt: '2026-11-02T12:28:00+09:00',
+    status: '정상화 대기', unresolved: true, dri: store.dri, owner: '당시 사건 담당', supportRole: '사업운영팀 및 시설 지원',
+    normalizationGate: '정상화 대기', normalizationBlocker: '오류로?  갱신 확인 요청 &#x20;', asNextAction: '기술요청 링크와 현장 정상운영 가능 여부 확인',
+    technicalRequestUrl: 'https://example.com/technical-request', dueType: 'normalization', dueAt: null
+  }));
+  fixturePayload.asCases = { items, totalCount: 3, returnedCount: 3, truncated: false, sort: 'reportedAt_asc_null_first', scope: 'all_prod_latest_per_event' };
+  fixturePayload.stores.slice(0, 3).forEach((store, i) => Object.assign(store, { asStatus: '정상화 대기', asCases: [items[i]], asUnresolvedCount: 1, asConflict: i === 0, asConflictEventIds: i === 0 ? ['fixture-completed', items[i].eventId] : [], asNextAction: items[i].asNextAction }));
+  fixturePayload.summary.asBlockedCount = 3;
+  Object.assign(fixturePayload.recovery, { periodStart: '2026-10-20', periodEnd: '2026-11-02', eventCount: 2, storeCount: 2, stageRowCount: 6, dataStatus: 'partial_or_waiting', calculationStatus: 'COMPLETE', denominators: [{ stage: 'D-day', processed: 0, revenue: 1 }], queueMeta: { totalCount: 6, returnedCount: 6, truncated: false } });
+  Object.assign(fixturePayload.system, { scriptBuildId: 'fixture-case-contract', unresolvedErrorCount: 0, lastTickStatus: 'OK', lastTickAt: '2026-11-02T12:28:00+09:00', errorCleanup: { status: null, at: null }, revenuePipeline: { stage: 'COMPLETE', activeSourceCount: 16, sourceStatus: 'OK', impactStatus: 'OK', recoveryStatus: 'OK' }, errorHistory: [{ resolved: true, message: '過去 오류 검증', resolvedAt: '2026-11-02T11:56:43+09:00' }] });
 }
 const payload = payloadPath
   ? JSON.parse(await fs.readFile(path.resolve(payloadPath), 'utf8'))
@@ -478,6 +493,20 @@ try {
     }
   }
 
+  if (caseScenario) {
+    const noTarget = structuredClone(payload);
+    Object.assign(noTarget.recovery, { eventCount: 0, storeCount: 0, stageRowCount: 0, dataStatus: 'no_target', queue: [], queueMeta: { totalCount: 0, returnedCount: 0, truncated: false }, asQueueRowCount: 0, storeSeries: {}, processedRate: [], revenueRate: [] });
+    const noTargetPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+    await noTargetPage.route('**/api/weather-ops-data*', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(noTarget) }));
+    await noTargetPage.goto(baseUrl, { waitUntil: 'networkidle' });
+    await noTargetPage.locator('#tab-recovery').click();
+    const scope = await noTargetPage.locator('#recoveryQueue').innerText();
+    if (!scope.includes('AS 확인 3개점') || !scope.includes('회복 기록 내 AS 0행') || !scope.includes('2026-10-20 ~ 2026-11-02')) throw new Error('AS/recovery population mismatch');
+    if (!(await noTargetPage.locator('#recoveryFunnel').innerText()).includes('집계 대상 없음')) throw new Error('No-target recovery must not show historical funnel');
+    await noTargetPage.locator('#recoveryQueue').scrollIntoViewIfNeeded();
+    await noTargetPage.screenshot({ path: path.join(OUTPUT, '16-mobile-no-target.png'), fullPage: false });
+    await noTargetPage.close();
+  }
   const unexpectedConsoleErrors = consoleErrors.slice();
   await page.route('**/api/weather-ops-data*', (route) => route.fulfill({ status: 504, contentType: 'application/json', body: JSON.stringify({ source: 'upstream_timeout' }) }));
   await page.locator('#refreshBtn').click();

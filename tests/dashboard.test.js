@@ -36,6 +36,7 @@ function loadDashboardLogic() {
   };
   vm.runInNewContext(`${source}\n;globalThis.__dashboardTest = { state, dashboardHeadline, keepMetricValueTogether, formatPeakTime, formatActionDue, startAutoRefresh, missionCards, normalize, normalizeStore, normalizeSignalWeatherValues, normalizeEnhancedSignal, normalizeSiteVulnerability, normalizeSignalSourceStatus, signalSourceNotice, signalSourceDetail, systemIssueSummary, weatherMetricRows, combinedWeatherMetricRows, weatherSourceRows, weatherSourceDetailRows, weatherSourceContractText, siteVulnerabilityContractText, siteVulnerabilityContractWarning, enhancedSignals, enhancedSignalDistribution, enhancedStoreLine, enhancedStoreDetailRows, enhancedSourceDetail, enhancedOperationalImpactText, humanizeRadarSpatialScope, humanizeRadarFallbackType, isEnhancedFallbackNotice, renderActionList, compactRepeatedActions, isSequentialRecoveryFlow, historicalOverdueSummary, hasActiveRecoveryData, primaryDashboardStatus, primaryDashboardStatusLabel, primaryDashboardStatusText, decisionReadiness, decisionReadinessLabel, decisionReadinessHelpText, decisionReadinessClass, weatherSignalIsStale, weatherSignalFreshnessWarning, summaryScheduleCandidates, summaryDateMatchesPolicy, operationalDataStatusClass, storeNextActionText, hasCustomerStatusData, customerStatusText, customerImpactText, customerStatusView, weatherMetricRowsEquivalent, siteVulnerabilityContext, siteVulnerabilityDetailRows, siteVulnerabilitySummaryRows, siteVulnerabilityFilterMatch, formatRainDrainage, compactAsStatus, compactRecoveryStatus, priorityQueueRows, weatherComparisonRow, weatherComparisonSummary, formatRiskTypeLabel, actionRiskTypeText, storeWeatherTitle, weatherDetailText, riskColumnLabel };`, context);
   vm.runInNewContext('Object.assign(globalThis.__dashboardTest, { numericOrNull, officialActionLabel, isBlockingAsStatus, asReportAge, uniqueActionRows, rateSeriesForStore, recoveryGapMeaning, recoveryEmptyLabel, renderRecoveryStageHeatmap, renderRecoveryComparison, renderProcessedBulletList, renderRecoveryQueue, safeSourceUrl, renderAsReferences, renderCommandMatrixRow });', context);
+  vm.runInNewContext('Object.assign(globalThis.__dashboardTest, { systemExecutionScope, dashboardActionRows, recoveryPeriodText, recoveryScopeText, renderSystemFollowthrough });', context);
   return { api: context.__dashboardTest, elements, scheduled: () => scheduled };
 }
 
@@ -91,6 +92,92 @@ test('AS 보고 메모를 다음 행동과 분리하고 공백 코드만 안전�
   assert.equal(store.asStatus, 'AS 차단');
   store.asStatus = '정상';
   assert.equal(api.storeNextActionText(store), '최신 AS 상태와 미해결 기록 대조');
+});
+
+test('회복 집계 AS 0건과 지점 AS 확인 3개점을 충돌 없이 구분한다', () => {
+  const { api, elements } = loadDashboardLogic();
+  const stores = ['a', 'b', 'c'].map((id) => api.normalizeStore({ id, asStatus: '정상화 대기' }));
+  api.state.data = { stores, summary: { asBlockedCount: 3 }, weatherSignal: {}, recoveryProvided: true, recovery: { queue: [] } };
+  assert.equal(api.missionCards()[1].value, '3개점');
+  assert.doesNotMatch(api.missionCards()[1].note, /불일치/);
+  assert.match(api.missionCards()[1].note, /표시 회복 AS 0행/);
+  elements.recoveryQueue = { innerHTML: '' };
+  elements.recoveryQueueCount = { textContent: '' };
+  api.renderRecoveryQueue();
+  assert.match(elements.recoveryQueue.innerHTML, /AS 확인 3개점/);
+  assert.match(elements.recoveryQueue.innerHTML, /회복 기록 내 AS 0행/);
+  api.state.data.recoveryProvided = false;
+  api.renderRecoveryQueue();
+  assert.equal(elements.recoveryQueueCount.textContent, '확인 불가');
+  assert.doesNotMatch(elements.recoveryQueue.innerHTML, /AS 0행/);
+});
+
+test('같은 AS 우선순위는 실제 보고 시각 순으로 정렬하고 현재 담당자와 원장 담당자를 보존한다', () => {
+  const { api } = loadDashboardLogic();
+  const stores = [
+    { id: 'new', asReportedAt: '2026-10-18T10:00:00+09:00' },
+    { id: 'missing' },
+    { id: 'old', asReportedAt: '2026-08-19T10:00:00+09:00' }
+  ].map(s => api.normalizeStore({ ...s, name: s.id, dri: '현재 매니저', asStatus: '정상화 대기', asNextAction: '기술요청 링크 확인' }));
+  const item = { storeId: 'old', riskType: 'vendor_as', action: '원본 보고', owner: '당시 지원 담당' };
+  api.state.data = { stores, opsActions: [item] };
+  assert.equal(api.priorityQueueRows().map(r => r.storeId).join(','), 'old,new,missing');
+  assert.equal(api.storeNextActionText(stores[2]), '기술요청 링크 확인');
+  const html = api.renderActionList([item], '사업운영팀', 'operations');
+  assert.match(html, /현재 매니저 현재 매니저/);
+  assert.match(html, /담당 당시 지원 담당/);
+  assert.equal(item.owner, '당시 지원 담당');
+});
+
+test('최근 오류 0건으로 전체 오류 해소나 틱 성공을 추정하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  const missing = api.systemExecutionScope({ systemError24h: 0 });
+  assert.match(missing, /전체 미해결 오류 원천 미제공/);
+  assert.match(missing, /최근 틱 원천 미제공/);
+  const known = api.systemExecutionScope({ systemError24h: 0, unresolvedErrorCount: 1, lastTickStatus: 'OK', lastTickAt: '2026-11-02T11:46:00+09:00' });
+  assert.match(known, /전체 미해결 오류 1건/);
+  assert.match(known, /최근 틱 OK/);
+});
+
+test('.23 사건 계약은 프록시와 화면 정규화를 통과하며 AS 중복과 기간 없는 집계를 방지한다', () => {
+  const { api, elements } = loadDashboardLogic();
+  const source = fs.readFileSync(path.join(ROOT, 'api/weather-ops-data.js'), 'utf8');
+  const context = { module: { exports: {} }, process: { env: {} } };
+  vm.runInNewContext(`${source}\n;globalThis.normalizeForTest = normalizePayload;`, context);
+  const cases = [
+    { eventId: 'case-old', storeId: 's', storeName: '검증 지점', reportedAt: null, recordUpdatedAt: '2026-11-02T10:00:00+09:00', status: '정상화 대기', asNextAction: '기술요청 링크 확인', owner: '과거 담당', supportRole: '시설 지원', dueType: 'request_confirmation', technicalRequestUrl: 'https://example.com/task', unresolved: true },
+    { eventId: 'case-new', storeId: 's', storeName: '검증 지점', reportedAt: '2026-10-18T10:00:00+09:00', status: '정상화 대기', asNextAction: '현장 정상운영 확인', unresolved: true }
+  ];
+  const input = { system: { scriptBuildId: '2026-11-02-dashboard-case-contract.23', unresolvedErrorCount: 0, lastTickStatus: 'OK' }, asCases: { items: cases, totalCount: 2, returnedCount: 2, truncated: false, sort: 'reportedAt_asc_null_first' }, stores: [{ id: 's', dri: '현재 매니저', asStatus: '정상화 대기', asCases: cases, asUnresolvedCount: 2, asConflict: true, asConflictEventIds: ['completed', 'case-old'], asNextAction: '기술요청 링크 확인' }], opsActions: [{ storeId: 's', riskType: 'vendor_as', eventId: 'case-old' }], recovery: { periodStart: '2026-10-20', periodEnd: '2026-11-02', eventCount: 0, storeCount: 0, stageRowCount: 0, dataStatus: 'no_target', calculationStatus: 'COMPLETE', denominators: [{ stage: 'D-day', processed: 0, revenue: 0 }], queue: [], queueMeta: { totalCount: 0, returnedCount: 0, truncated: false } } };
+  const proxied = context.normalizeForTest(input, 'apps_script');
+  assert.equal(JSON.stringify(proxied.asCases), JSON.stringify(input.asCases));
+  assert.equal(JSON.stringify(proxied.recovery), JSON.stringify(input.recovery));
+  api.state.data = api.normalize(proxied);
+  assert.equal(api.state.data.stores[0].asUnresolvedCount, 2);
+  assert.equal(api.state.data.stores[0].asConflict, true);
+  assert.equal(api.asReportAge(api.state.data.stores[0]), '원천 미제공');
+  assert.equal(api.dashboardActionRows().length, 2);
+  const html = api.renderAsReferences(api.state.data.stores[0]);
+  assert.match(html, /case-old/);
+  assert.match(html, /case-new/);
+  assert.match(html, /https:\/\/example.com\/task/);
+  assert.match(html, /시설 지원/);
+  assert.match(html, /사건 충돌/);
+  assert.equal(api.recoveryEmptyLabel(), '0건 / 집계 대상 없음');
+  assert.match(api.recoveryScopeText(), /2026-10-20 ~ 2026-11-02/);
+  assert.match(api.recoveryScopeText(), /처리대수 0행/);
+  elements.recoveryQueue = { innerHTML: '' };
+  api.renderRecoveryQueue();
+  assert.match(elements.recoveryQueue.innerHTML, /미완료 회복 기록 0행/);
+});
+
+test('.23 시스템 이력은 해소된 오류를 현재 장애로 표시하지 않는다', () => {
+  const { api } = loadDashboardLogic();
+  const html = api.renderSystemFollowthrough({ errorCleanup: { status: null, at: null }, revenuePipeline: { stage: 'COMPLETE', activeSourceCount: 16, sourceStatus: 'OK', impactStatus: 'OK', recoveryStatus: 'OK' }, errorHistory: [{ resolved: true, message: '과거 오류', resolvedAt: '2026-11-02T11:56:43+09:00', resolutionNote: '후속 실행 성공' }] });
+  assert.match(html, /오류 정리 원천 미제공/);
+  assert.match(html, /해소됨/);
+  assert.match(html, /활성 원천 16개/);
+  assert.doesNotMatch(html, /danger/);
 });
 
 test('저장본 갱신 실패를 현재 상태로 주장하지 않는다', () => {
@@ -342,8 +429,8 @@ test('상태 필터와 정적 자산 버전이 배포용 표기를 사용한다'
   assert.match(html, /data-risk="Green">정상<\/button>/);
   assert.match(html, /data-risk="Gray">신호대기<\/button>/);
   assert.match(html, /CS\/고객/);
-  assert.match(html, /app\.js\?v=2026-09-18-report-copy-1/);
-  assert.match(html, /style\.css\?v=2026-09-18-report-copy-1/);
+  assert.match(html, /app\.js\?v=2026-11-02-as-followthrough-1/);
+  assert.match(html, /style\.css\?v=2026-11-02-as-followthrough-1/);
   assert.match(css, /\.command-hero \.mission-card \.kpi-value\s*\{[^}]*word-break:\s*keep-all/s);
   assert.match(html, /overview-command-layout/);
   assert.doesNotMatch(html, /overview-command-stack/);

@@ -202,6 +202,8 @@ function normalizePayload(payload, source) {
     generatedAt,
     source,
     summary: objectOrEmpty(data.summary),
+    asCases: data.asCases && typeof data.asCases === 'object' ? data.asCases : null,
+    opsActionsMeta: objectOrEmpty(data.opsActionsMeta),
     stores: arrayOrEmpty(data.stores || data.storeRows || data.store_rows),
     weatherSignal,
     decisionReadiness: data.decisionReadiness || data.decision_readiness || system.decisionReadiness || system.decision_readiness || '',
